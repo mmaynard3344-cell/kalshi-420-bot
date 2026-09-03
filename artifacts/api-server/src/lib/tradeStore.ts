@@ -1174,11 +1174,11 @@ export async function initTradeStore(
         CREATE TABLE IF NOT EXISTS eth420_candidate_live_orders (
           id text PRIMARY KEY, ticker text NOT NULL UNIQUE, eastern_date text NOT NULL,
           market_open_time_ms bigint,
-          side text NOT NULL, martingale_step integer NOT NULL, requested_contracts integer NOT NULL,
+          side text NOT NULL, martingale_step integer NOT NULL, requested_contracts numeric NOT NULL,
           limit_price_cents integer NOT NULL, effective_wager_cents integer NOT NULL,
           state_before_json text NOT NULL, kalshi_order_id text, original_primary_kalshi_order_id text, secondary_client_order_id text,
           primary_cancel_confirmed_at_ms bigint, secondary_submission_started_at_ms bigint, secondary_bound_at_ms bigint, status text NOT NULL,
-          filled_contracts integer, realized_pnl_delta_cents integer, settlement_result text,
+          filled_contracts numeric, realized_pnl_delta_cents integer, settlement_result text,
            actual_notional_dollars text, actual_fee_dollars text, fill_price_cents integer,
             settled_at_ms bigint, finalized_at_ms bigint, state_after_json text, created_at_ms bigint NOT NULL, secondary_activation_sequence bigint NOT NULL DEFAULT 0, updated_at_ms bigint NOT NULL
         );
@@ -1199,6 +1199,13 @@ export async function initTradeStore(
          ALTER TABLE eth420_candidate_live_orders ADD COLUMN IF NOT EXISTS secondary_submission_started_at_ms bigint;
          ALTER TABLE eth420_candidate_live_orders ADD COLUMN IF NOT EXISTS secondary_bound_at_ms bigint;
           ALTER TABLE eth420_candidate_live_orders ADD COLUMN IF NOT EXISTS secondary_activation_sequence bigint NOT NULL DEFAULT 0;
+         -- Kalshi reports contract quantities as fixed-point values. Candidate
+         -- entries are still sized in whole contracts, but terminal partial
+         -- fills must retain their exact authenticated decimal quantity.
+         ALTER TABLE eth420_candidate_live_orders
+           ALTER COLUMN requested_contracts TYPE numeric USING requested_contracts::numeric;
+         ALTER TABLE eth420_candidate_live_orders
+           ALTER COLUMN filled_contracts TYPE numeric USING filled_contracts::numeric;
         CREATE INDEX IF NOT EXISTS eth420_candidate_live_orders_pending_idx
           ON eth420_candidate_live_orders (status, created_at_ms ASC);
         -- A candidate-only, one-window execution override. It is armed solely
@@ -1259,14 +1266,18 @@ export async function initTradeStore(
           snapshot_id text PRIMARY KEY, candidate_order_id text NOT NULL,
           ticker text NOT NULL, scheduled_offset_ms integer NOT NULL,
           scheduled_at_ms bigint NOT NULL, observed_at_ms bigint NOT NULL,
-          selected_side text NOT NULL, requested_contracts integer NOT NULL,
-          kalshi_order_id text, order_status text NOT NULL, filled_contracts integer,
+          selected_side text NOT NULL, requested_contracts numeric NOT NULL,
+          kalshi_order_id text, order_status text NOT NULL, filled_contracts numeric,
           selected_best_bid_cents integer, selected_best_ask_cents integer,
           depth_at_50_contracts integer, full_size_executable_price_cents integer,
           quote_age_ms integer, quote_freshness text NOT NULL, observation_state text NOT NULL
         );
         CREATE UNIQUE INDEX IF NOT EXISTS eth420_candidate_execution_snapshots_order_offset_idx
           ON eth420_candidate_execution_snapshots (candidate_order_id, scheduled_offset_ms);
+        ALTER TABLE eth420_candidate_execution_snapshots
+          ALTER COLUMN requested_contracts TYPE numeric USING requested_contracts::numeric;
+        ALTER TABLE eth420_candidate_execution_snapshots
+          ALTER COLUMN filled_contracts TYPE numeric USING filled_contracts::numeric;
         CREATE INDEX IF NOT EXISTS eth420_candidate_execution_snapshots_observed_idx
           ON eth420_candidate_execution_snapshots (observed_at_ms ASC);
         -- Passive classifier output derived solely from retained snapshots.
@@ -8533,7 +8544,10 @@ export async function recordEth420CandidateExecutionSnapshot(
     && ["yes", "no"].includes(snapshot.selectedSide)
     && ["fresh", "stale", "unavailable"].includes(snapshot.quoteFreshness)
     && ["captured", "missed_on_restart"].includes(snapshot.observationState)
-    && Number.isInteger(snapshot.scheduledOffsetMs) && Number.isInteger(snapshot.requestedContracts);
+    && Number.isInteger(snapshot.scheduledOffsetMs)
+    && Number.isFinite(snapshot.requestedContracts) && snapshot.requestedContracts >= 0
+    && (snapshot.filledContracts == null
+      || Number.isFinite(snapshot.filledContracts) && snapshot.filledContracts >= 0);
   if (!_db || !_healthy || !valid) return false;
   try {
     const result = await _db.execute(sql`
@@ -8900,7 +8914,7 @@ export async function settleEth420CandidateLiveOrder(params: {
   actualNotionalDollars: string | null; actualFeeDollars: string | null; fillPriceCents: number | null;
 }): Promise<boolean> {
   if (!_db || !_healthy || !params.id || !["yes", "no"].includes(params.result)
-    || !Number.isInteger(params.filledContracts) || params.filledContracts < 0
+    || !Number.isFinite(params.filledContracts) || params.filledContracts < 0
     || (params.filledContracts === 0
       ? params.actualNotionalDollars !== null || params.actualFeeDollars !== null || params.fillPriceCents !== null
       : !/^\d+(?:\.\d+)?$/.test(params.actualNotionalDollars ?? "")

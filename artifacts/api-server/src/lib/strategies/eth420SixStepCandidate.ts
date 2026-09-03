@@ -312,7 +312,7 @@ function terminalCandidateOrder(raw: CandidateOrderWire, requestedContracts: num
   const status = parsed.orderStatus?.toLowerCase();
   if (!parsed.kalshiOrderId || !parsed.fillCountProvided
     || !["canceled", "cancelled", "executed", "filled", "expired", "rejected"].includes(status ?? "")
-    || !Number.isInteger(parsed.fillCount) || parsed.fillCount < 0 || parsed.fillCount > requestedContracts) return null;
+    || !Number.isFinite(parsed.fillCount) || parsed.fillCount < 0 || parsed.fillCount > requestedContracts) return null;
   return { orderId: parsed.kalshiOrderId, filled: parsed.fillCount };
 }
 
@@ -501,7 +501,7 @@ Promise<{ notional: string; fee: string; fillPriceCents: number } | null> {
     seen.add(page.cursor); cursor = page.cursor;
   }
   const contracts = Number(quantity);
-  return Number.isInteger(contracts) && contracts === expected && contracts > 0
+  return Number.isFinite(contracts) && contracts === expected && contracts > 0
     ? { notional, fee, fillPriceCents: Math.round(weightedCents / contracts) } : null;
 }
 
@@ -781,7 +781,8 @@ function scheduleEth420SecondaryEntry(store: Eth420CandidateLiveStore, order: {
           return {
             orderId: parsed.kalshiOrderId ?? "", clientOrderId: typeof wire["client_order_id"] === "string" ? wire["client_order_id"] : "",
             ticker: typeof wire["ticker"] === "string" ? wire["ticker"] : "", status: parsed.orderStatus,
-            filledContracts: parsed.fillCountProvided && Number.isInteger(parsed.fillCount) ? parsed.fillCount : null,
+            filledContracts: parsed.fillCountProvided && Number.isFinite(parsed.fillCount) && parsed.fillCount >= 0
+              ? parsed.fillCount : null,
           };
         },
         readSelectedSideAsk: async () => {
@@ -795,7 +796,8 @@ function scheduleEth420SecondaryEntry(store: Eth420CandidateLiveStore, order: {
           return {
             orderId: parsed.kalshiOrderId ?? "", clientOrderId: typeof wire["client_order_id"] === "string" ? wire["client_order_id"] : "",
             ticker: typeof wire["ticker"] === "string" ? wire["ticker"] : "", status: parsed.orderStatus,
-            filledContracts: parsed.fillCountProvided && Number.isInteger(parsed.fillCount) ? parsed.fillCount : null,
+            filledContracts: parsed.fillCountProvided && Number.isFinite(parsed.fillCount) && parsed.fillCount >= 0
+              ? parsed.fillCount : null,
           };
         },
         submitSecondary: async (request) => {

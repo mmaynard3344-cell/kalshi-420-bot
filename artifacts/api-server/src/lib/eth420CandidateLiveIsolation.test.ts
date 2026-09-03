@@ -924,6 +924,54 @@ test("candidate ledger rejects nonzero settlement without authenticated fee econ
   await db.execute(sql`DELETE FROM eth420_candidate_live_orders WHERE id=${economicsId}`);
 });
 
+test("candidate reconciliation atomically persists an authenticated decimal partial fill", async () => {
+  const partialDate = "1970-01-19";
+  const partialTicker = `${ticker}-DECIMAL-PARTIAL`;
+  const partialId = `${partialTicker}:eth420-live-v1`;
+  const partialOrderId = "decimal-partial-order-420";
+  const initialState = {
+    easternDate: partialDate, side: "no" as const, step: 0, realizedPnlCents: 0, lastBlockResetAtMs: null,
+  };
+  await db.execute(sql`DELETE FROM eth420_candidate_live_orders WHERE id=${partialId}`);
+  await db.execute(sql`DELETE FROM eth420_candidate_daily_state WHERE eastern_date=${partialDate}`);
+  try {
+    assert.equal(await createEth420CandidateLiveOrder({
+      id: partialId, ticker: partialTicker, easternDate: partialDate, side: "no", step: 0,
+      requestedContracts: 30, limitPriceCents: 50, effectiveWagerCents: 1500,
+      stateBeforeJson: JSON.stringify(initialState),
+    }), true);
+    assert.equal(await acknowledgeEth420CandidateLiveOrder(partialId, partialOrderId, "submitted"), true);
+    const pending = await getEth420CandidateLiveOrder(partialId);
+    _setEth420CandidateAuthFetchForTesting((async <T>(_method: string, path: string): Promise<T> => {
+      if (path === `/portfolio/orders/${partialOrderId}`) {
+        return { order: {
+          order_id: partialOrderId, client_order_id: partialId, ticker: partialTicker,
+          status: "canceled", initial_count_fp: "30.00", fill_count_fp: "19.32", remaining_count_fp: "0.00",
+        } } as T;
+      }
+      if (path.startsWith(`/portfolio/fills?order_id=${partialOrderId}`)) {
+        return { fills: [{
+          fill_id: "decimal-partial-fill-420", order_id: partialOrderId, ticker: partialTicker,
+          count_fp: "19.32", no_price_dollars: "0.5000", fee_cost_dollars: "0.1000",
+        }] } as T;
+      }
+      throw new Error(`unexpected decimal partial recovery path: ${path}`);
+    }) as any);
+    assert.ok(pending);
+    assert.equal(await recoverAndSettleEth420CandidateLiveOrder(await import("./tradeStore.js") as any, pending!, "yes"), true);
+    const settled = await getEth420CandidateLiveOrder(partialId);
+    assert.equal(settled?.status, "settled");
+    assert.equal(settled?.filledContracts, 19.32);
+    const raw = await db.execute(sql`SELECT requested_contracts::text, filled_contracts::text
+      FROM eth420_candidate_live_orders WHERE id=${partialId}`);
+    assert.deepEqual((raw as any).rows, [{ requested_contracts: "30", filled_contracts: "19.32" }]);
+  } finally {
+    _setEth420CandidateAuthFetchForTesting(null);
+    await db.execute(sql`DELETE FROM eth420_candidate_live_orders WHERE id=${partialId}`);
+    await db.execute(sql`DELETE FROM eth420_candidate_daily_state WHERE eastern_date=${partialDate}`);
+  }
+});
+
 test("candidate lifecycle sweep settles submitted rows and recovers unknown rows without evaluating entries", async () => {
   const submittedId = `${ticker}-SWEEP-SUBMITTED:eth420-live-v1`;
   const unknownId = `${ticker}-SWEEP-UNKNOWN:eth420-live-v1`;
@@ -1113,7 +1161,7 @@ test("missing candidate state recovers only the real historical orders and their
   } finally {
     _setEth420CandidateAuthFetchForTesting(null);
   }
-  const settled = await db.execute(sql`SELECT status, filled_contracts, realized_pnl_delta_cents,
+  const settled = await db.execute(sql`SELECT status, filled_contracts::double precision AS filled_contracts, realized_pnl_delta_cents,
     actual_notional_dollars, actual_fee_dollars, fill_price_cents, state_after_json
     FROM eth420_candidate_live_orders WHERE eastern_date=${bootstrapDate} ORDER BY created_at_ms`);
   const settledRows = (settled as any).rows;
