@@ -149,6 +149,87 @@ function getDbPool() {
   return dbPool;
 }
 
+async function candidateLifecycleDiagnostics(req, res, url) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    send(res, 405, 'Method not allowed');
+    return;
+  }
+  const ticker = String(url.searchParams.get('ticker') ?? '').trim();
+  if (!/^KXETH15M-[A-Z0-9-]+$/.test(ticker)) {
+    send(res, 400, JSON.stringify({ error: 'A valid KXETH15M ticker is required' }), 'application/json; charset=utf-8');
+    return;
+  }
+  const pool = getDbPool();
+  if (!pool) {
+    send(res, 503, JSON.stringify({ error: 'DATABASE_URL is not configured on Shawshank' }), 'application/json; charset=utf-8');
+    return;
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN READ ONLY');
+    await client.query("SET LOCAL statement_timeout = '3000ms'");
+    const result = await client.query(`
+      SELECT
+        id,
+        ticker,
+        status,
+        side,
+        requested_contracts,
+        filled_contracts,
+        settlement_result,
+        market_open_time_ms,
+        created_at_ms,
+        finalized_at_ms,
+        settled_at_ms,
+        updated_at_ms,
+        kalshi_order_id,
+        last_recovery_outcome,
+        last_recovery_attempt_at_ms
+      FROM eth420_candidate_live_orders
+      WHERE ticker = $1
+      ORDER BY created_at_ms ASC
+    `, [ticker]);
+    await client.query('COMMIT');
+    const rows = result.rows.map((row) => ({
+      id: String(row.id ?? ''),
+      ticker: String(row.ticker ?? ''),
+      status: String(row.status ?? ''),
+      side: String(row.side ?? ''),
+      requestedContracts: row.requested_contracts == null ? null : Number(row.requested_contracts),
+      filledContracts: row.filled_contracts == null ? null : Number(row.filled_contracts),
+      settlementResult: row.settlement_result == null ? null : String(row.settlement_result),
+      marketOpenTimeMs: row.market_open_time_ms == null ? null : Number(row.market_open_time_ms),
+      createdAtMs: row.created_at_ms == null ? null : Number(row.created_at_ms),
+      finalizedAtMs: row.finalized_at_ms == null ? null : Number(row.finalized_at_ms),
+      settledAtMs: row.settled_at_ms == null ? null : Number(row.settled_at_ms),
+      updatedAtMs: row.updated_at_ms == null ? null : Number(row.updated_at_ms),
+      kalshiOrderId: row.kalshi_order_id == null ? null : String(row.kalshi_order_id),
+      lastRecoveryOutcome: row.last_recovery_outcome == null ? null : String(row.last_recovery_outcome),
+      lastRecoveryAttemptAtMs: row.last_recovery_attempt_at_ms == null ? null : Number(row.last_recovery_attempt_at_ms),
+    }));
+    if (req.method === 'HEAD') {
+      send(res, 200, '', 'application/json; charset=utf-8');
+      return;
+    }
+    send(res, 200, JSON.stringify({
+      ticker,
+      note: 'finalizedAtMs is the bot first durable observation of the official Kalshi result; settledAtMs is the completed candidate settlement write.',
+      rows,
+      count: rows.length,
+    }, null, 2), 'application/json; charset=utf-8');
+  } catch (error) {
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch { /* best effort */ }
+    }
+    console.error('Candidate lifecycle diagnostic read failed', error);
+    send(res, 500, JSON.stringify({ error: 'Candidate lifecycle diagnostic read failed' }), 'application/json; charset=utf-8');
+  } finally {
+    client?.release();
+  }
+}
+
 async function loadBackFlipRows() {
   const pool = getDbPool();
   if (!pool) throw new Error('DATABASE_URL is not configured on Shawshank');
@@ -279,6 +360,10 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   if (url.pathname === '/api/diagnostics/exchange-ticker') {
     void exchangeTickerDiagnostics(req, res, url);
+    return;
+  }
+  if (url.pathname === '/api/diagnostics/candidate-lifecycle') {
+    void candidateLifecycleDiagnostics(req, res, url);
     return;
   }
   if (url.pathname === '/api/diagnostics/back-flips') {
