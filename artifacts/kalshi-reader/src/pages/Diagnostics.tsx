@@ -189,6 +189,7 @@ export default function Diagnostics() {
           <h1 className="mt-1 text-xl font-semibold">ETH 420 Zero-Fill & Back Flip Diagnostics</h1>
         </div>
         <div className="flex gap-2">
+          <a href="/api/diagnostics/back-flips.csv" download className="border border-border px-3 py-2 text-xs hover:bg-muted">Download Back Flip CSV</a>
           <Link href="/" className="border border-border px-3 py-2 text-xs hover:bg-muted">Operator</Link>
           <button type="button" onClick={() => void load()} className="border border-border px-3 py-2 text-xs hover:bg-muted">Refresh</button>
         </div>
