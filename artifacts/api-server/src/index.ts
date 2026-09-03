@@ -73,6 +73,10 @@ const PROTECTIVE_EXIT_RESTORE_RETRY_INTERVAL_MS = 15_000;
 const ETH_MARTINGALE_LIFECYCLE_SWEEP_INTERVAL_MS = 60_000;
 const ETH_420_CANDIDATE_LIFECYCLE_SWEEP_INTERVAL_MS = 60_000;
 const ETH_420_RUNAWAY_RESEARCH_REFRESH_INTERVAL_MS = 60_000;
+const ETH_420_MARKET_WINDOW_MS = 15 * 60_000;
+const ETH_420_BOUNDARY_SETTLEMENT_OFFSETS_MS = [
+  1_000, 3_000, 5_000, 8_000, 12_000, 18_000, 25_000, 35_000, 45_000, 55_000,
+] as const;
 /**
  * The old cross-strategy protective-exit restore monitor can replay every
  * historical BTC/SOL/DOGE position at startup. It is deliberately opt-in while
@@ -240,6 +244,31 @@ app.listen(port, "0.0.0.0", async () => {
       }).catch((err) => logger.warn({ err }, "ETH 420 candidate lifecycle sweep failed"));
     };
     runEth420CandidateLifecycleSweep();
+
+    // Back Flip ownership depends on learning the just-ended candidate result
+    // before the new 15-minute window's ordinary martingale entry can fire.
+    // Keep the 60-second lifecycle sweep as a recovery fallback, but issue a
+    // small, bounded burst of candidate-only settlement reads after each exact
+    // 15-minute boundary. The reconciler's existing single-flight guard makes
+    // overlapping offsets harmless if an exchange read is still in flight.
+    const scheduleEth420BoundarySettlementBurst = () => {
+      const now = Date.now();
+      const boundaryAtMs = Math.floor(now / ETH_420_MARKET_WINDOW_MS) * ETH_420_MARKET_WINDOW_MS
+        + ETH_420_MARKET_WINDOW_MS;
+      const boundaryTimer = setTimeout(() => {
+        for (const offsetMs of ETH_420_BOUNDARY_SETTLEMENT_OFFSETS_MS) {
+          const timer = setTimeout(
+            runEth420CandidateLifecycleSweep,
+            Math.max(0, boundaryAtMs + offsetMs - Date.now()),
+          );
+          timer.unref();
+        }
+        scheduleEth420BoundarySettlementBurst();
+      }, Math.max(0, boundaryAtMs - now));
+      boundaryTimer.unref();
+    };
+    scheduleEth420BoundarySettlementBurst();
+
     void resumeEth420CandidateExecutionTelemetry(tradeStore).catch((err) =>
       logger.warn({ err }, "ETH 420 candidate execution telemetry resume failed"));
     // Research-only: reads retained candidate/snapshot rows and upserts a
