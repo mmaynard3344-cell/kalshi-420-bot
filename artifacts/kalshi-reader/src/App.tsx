@@ -3,6 +3,7 @@ import { checkSessionAndRecover } from '@/lib/sessionGuard';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import Operator from '@/pages/Operator';
+import Diagnostics from '@/pages/Diagnostics';
 import LiveMartingale from '@/pages/LiveMartingale';
 import Dashboard from '@/pages/Dashboard';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
@@ -29,6 +30,7 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
           <Switch>
             <Route path="/" component={Operator} />
+            <Route path="/diagnostics" component={Diagnostics} />
             <Route path="/legacy" component={LiveMartingale} />
             <Route path="/analytics" component={Dashboard} />
             <Route>
