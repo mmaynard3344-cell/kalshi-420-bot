@@ -147,7 +147,7 @@ test("Back Flip at the inclusive 50-cent bid crosses the chosen-side ask IOC at 
   assert.equal(posts[0].price, "0.5500");
   assert.equal(posts[0].time_in_force, "immediate_or_cancel");
 });
-test("invalid first post-settlement B evidence is durably marked fallback before normal candidate submission", async () => {
+test("invalid Back Flip evidence is durably marked fallback and yields ordinary routing to regular martingale", async () => {
   const priorLive = process.env["ETH_420_CANDIDATE_LIVE_ENABLED"];
   const openTimeMs = Date.now() - 2_000;
   const fallbacks: any[] = []; const reserved: any[] = [];
@@ -173,16 +173,14 @@ test("invalid first post-settlement B evidence is durably marked fallback before
     assert.equal(await evaluateAndSubmitEth420CandidateWhenExplicitlyEnabled(store, {
       ticker: "KXETH15M-B", exchangeIndex: 1, openTime: new Date(openTimeMs).toISOString(),
       closeTime: null, status: "open", yesBid: null, noBid: null,
-    }, { ticker: "KXETH15M-B", easternDate: "2026-09-01", observedAtMs: Date.now(), floorStrike: null, openTimeMs }), true);
+    }, { ticker: "KXETH15M-B", easternDate: "2026-09-01", observedAtMs: Date.now(), floorStrike: null, openTimeMs }), false);
   } finally {
     _setEth420CandidateOrderbookCaptureForTesting(null); _setEth420CandidateBalanceReadForTesting(null); _setEth420CandidateAuthFetchForTesting(null);
     if (priorLive == null) delete process.env["ETH_420_CANDIDATE_LIVE_ENABLED"]; else process.env["ETH_420_CANDIDATE_LIVE_ENABLED"] = priorLive;
   }
   assert.equal(fallbacks.length, 1);
   assert.equal(fallbacks[0].reason, "orderbook_unavailable");
-  assert.equal(reserved.length, 1);
-  assert.equal(reserved[0].backFlip, null);
-  assert.equal(reserved[0].side, liveState.side);
+  assert.equal(reserved.length, 0);
 });
 test("sweet spot includes p95, excludes p99, filters NaN, and overrides only the wager", () => {
   const pool = [...Array.from({ length: 49 }, (_, i) => i / 1000), Number.NaN, .05];

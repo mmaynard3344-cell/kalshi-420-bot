@@ -1208,6 +1208,16 @@ export async function initTradeStore(
            ALTER COLUMN filled_contracts TYPE numeric USING filled_contracts::numeric;
         CREATE INDEX IF NOT EXISTS eth420_candidate_live_orders_pending_idx
           ON eth420_candidate_live_orders (status, created_at_ms ASC);
+        -- Both ETH execution strategies share this permanent, ticker-scoped
+        -- ownership record. It is claimed in the same transaction as each
+        -- strategy's order reservation, preventing a second POST after a
+        -- concurrent evaluation or process restart.
+        CREATE TABLE IF NOT EXISTS eth_execution_ticker_owners (
+          ticker text PRIMARY KEY,
+          owner text NOT NULL CHECK (owner IN ('regular_martingale', 'eth420_jump', 'eth420_back_flip')),
+          claimed_at_ms bigint NOT NULL,
+          owner_order_id text NOT NULL
+        );
         -- A candidate-only, one-window execution override. It is armed solely
         -- by the verified zero-fill settlement transaction and claimed by the
         -- target window's primary reservation transaction.
@@ -8220,7 +8230,8 @@ export async function reserveEth420CandidateLiveOrderIfStateMatches(params: Omit
   "kalshiOrderId" | "status" | "filledContracts" | "realizedPnlDeltaCents" | "actualNotionalDollars"
   | "actualFeeDollars" | "fillPriceCents" | "settlementResult" | "stateAfterJson" | "createdAtMs"
   | "updatedAtMs"> & { expectedState: Eth420CandidateState; reservationAtMs?: number;
-    backFlip?: Eth420CandidateBackFlipReservation | null }): Promise<boolean> {
+    backFlip?: Eth420CandidateBackFlipReservation | null;
+    executionOwner: "eth420_jump" | "eth420_back_flip" }): Promise<boolean> {
   const expected = params.expectedState;
   const validState = expected.easternDate === params.easternDate
     && ["yes", "no"].includes(expected.side)
@@ -8230,7 +8241,8 @@ export async function reserveEth420CandidateLiveOrderIfStateMatches(params: Omit
   if (!_db || !_healthy || !params.id || !params.ticker || !["yes", "no"].includes(params.side)
     || !Number.isInteger(params.requestedContracts) || params.requestedContracts < 1 || !validState
     || params.step !== expected.step
-    || params.stateBeforeJson !== JSON.stringify(expected)) return false;
+    || params.stateBeforeJson !== JSON.stringify(expected)
+    || !["eth420_jump", "eth420_back_flip"].includes(params.executionOwner)) return false;
   // This is deliberately a synchronous, in-process guard. No emergency SQL,
   // lock, or I/O may be added to the normal candidate-entry path while the
   // emergency capability is dormant.
@@ -8300,6 +8312,12 @@ export async function reserveEth420CandidateLiveOrderIfStateMatches(params: Omit
         RETURNING value`);
       const reservationSequence = Number((sequence as unknown as { rows: Array<Record<string, unknown>> }).rows[0]?.["value"]);
       if (!Number.isSafeInteger(reservationSequence) || reservationSequence < 1) return false;
+      const ownerClaim = await tx.execute(sql`
+        INSERT INTO eth_execution_ticker_owners (ticker, owner, claimed_at_ms, owner_order_id)
+        VALUES (${params.ticker}, ${params.executionOwner}, ${now}, ${params.id})
+        ON CONFLICT (ticker) DO NOTHING
+        RETURNING ticker`);
+      if ((ownerClaim as unknown as { rows: unknown[] }).rows.length !== 1) return false;
       const inserted = await tx.execute(sql`
         INSERT INTO eth420_candidate_live_orders
           (id, ticker, eastern_date, market_open_time_ms, side, martingale_step, requested_contracts, limit_price_cents,
@@ -8768,6 +8786,42 @@ export async function listRecentEth420CandidateLiveOrders(limit = 50): Promise<{
   } catch (err) {
     logger.warn({ err }, "ETH420 candidate live order dashboard read failed");
     return { available: false, orders: [] };
+  }
+}
+
+/** The prior candidate window must settle before regular execution may use its successor. */
+export async function getEth420CandidatePriorWindowGate(
+  currentOpenTimeMs: number,
+): Promise<"clear" | "hold" | "unavailable"> {
+  if (!_db || !_healthy || !Number.isSafeInteger(currentOpenTimeMs)) return "unavailable";
+  try {
+    const result = await _db.execute(sql`
+      SELECT status FROM eth420_candidate_live_orders
+      WHERE market_open_time_ms=${currentOpenTimeMs - 15 * 60_000}
+      LIMIT 1`);
+    const status = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0]?.["status"];
+    return status == null || ["settled", "rejected_insufficient_balance"].includes(String(status))
+      ? "clear" : "hold";
+  } catch (err) {
+    logger.warn({ err, currentOpenTimeMs }, "ETH420 prior-window routing gate unavailable");
+    return "unavailable";
+  }
+}
+
+/** Read-only verification after a candidate route attempts its durable claim. */
+export async function getEthExecutionTickerOwner(
+  ticker: string,
+): Promise<"regular_martingale" | "eth420_jump" | "eth420_back_flip" | null | "unavailable"> {
+  if (!_db || !_healthy || !ticker) return "unavailable";
+  try {
+    const result = await _db.execute(sql`
+      SELECT owner FROM eth_execution_ticker_owners WHERE ticker=${ticker} LIMIT 1`);
+    const owner = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0]?.["owner"];
+    return owner === "regular_martingale" || owner === "eth420_jump" || owner === "eth420_back_flip"
+      ? owner : null;
+  } catch (err) {
+    logger.warn({ err, ticker }, "ETH execution ownership lookup unavailable");
+    return "unavailable";
   }
 }
 
@@ -11162,6 +11216,14 @@ export async function reserveEthMartingaleEntry(params: {
   const cost = params.noPriceCents * params.requestedContracts + params.reservedFeeCents;
   try {
     return await _db.transaction(async (tx) => {
+      const ownerClaim = await tx.execute(sql`
+        INSERT INTO eth_execution_ticker_owners (ticker, owner, claimed_at_ms, owner_order_id)
+        VALUES (${params.ticker}, 'regular_martingale', ${now}, ${params.id})
+        ON CONFLICT (ticker) DO NOTHING
+        RETURNING ticker`);
+      if ((ownerClaim as unknown as { rows: unknown[] }).rows.length !== 1) {
+        throw new EthMartingaleReservationRollback("ETH ticker is already owned by an execution route");
+      }
       if (params.claimProofFence) {
         const proofClaim = await tx.execute(sql`
           INSERT INTO eth_martingale_proof_fences (generation, claimed_at_ms, ticker, client_order_id)

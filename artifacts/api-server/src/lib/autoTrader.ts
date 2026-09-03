@@ -959,14 +959,16 @@ async function evaluate(
   // legacy 80¢ protective-exit path. Legacy cleanup runs only from the
   // restored-position monitor in index.ts and is never driven by this evaluator.
   if (isEthTicker(state.ticker)) {
-    await (_evaluateEthNoMartingaleImpl ?? evaluateEthNoMartingale)({
-      ticker: state.ticker,
-      exchangeIndex: state.exchangeIndex ?? null,
-      openTime: state.openTime,
-      closeTime: state.closeTime,
-      status: state.status,
-    });
-    await evaluateEth420Candidate(state, _timing);
+    const route = await evaluateEth420Candidate(state, _timing);
+    if (route === "regular") {
+      await (_evaluateEthNoMartingaleImpl ?? evaluateEthNoMartingale)({
+        ticker: state.ticker,
+        exchangeIndex: state.exchangeIndex ?? null,
+        openTime: state.openTime,
+        closeTime: state.closeTime,
+        status: state.status,
+      });
+    }
   }
   // The retired BTC/SOL/DOGE entry evaluator below is intentionally kept only
   // as historical source material. This unconditional production fence has no
@@ -1842,7 +1844,10 @@ async function evaluate(
 /** Candidate-only half of ETH evaluation. It retains the established
  * observation and explicitly-permitted executor, while avoiding main ETH
  * martingale evaluation for candidate settlement handoffs. */
-async function evaluateEth420Candidate(state: MarketState, timing: EvalTiming): Promise<void> {
+async function evaluateEth420Candidate(
+  state: MarketState,
+  timing: EvalTiming,
+): Promise<"candidate" | "hold" | "regular"> {
   const candidateOpenTimeMs = state.openTime == null ? null : Date.parse(state.openTime);
   const candidateMarket = {
     ticker: state.ticker,
@@ -1852,6 +1857,13 @@ async function evaluateEth420Candidate(state: MarketState, timing: EvalTiming): 
   };
   observeEth420Candidate(tradeStore, candidateMarket)
     .catch((err) => logger.warn({ err, ticker: state.ticker }, "ETH 420 candidate observation failed"));
+  // The immediately prior candidate order is authoritative for the successor
+  // window. Unknown storage is deliberately a hold rather than an invitation
+  // for regular martingale to race an unresolved candidate lifecycle.
+  if (candidateOpenTimeMs != null && Number.isFinite(candidateOpenTimeMs)) {
+    const priorGate = await tradeStore.getEth420CandidatePriorWindowGate(candidateOpenTimeMs);
+    if (priorGate !== "clear") return "hold";
+  }
   if (isEth420CandidateExecutionPermitted() || timing.boundaryOpenTimeMs != null) {
     await evaluateAndSubmitEth420CandidateWhenExplicitlyEnabled(
       tradeStore,
@@ -1866,7 +1878,10 @@ async function evaluateEth420Candidate(state: MarketState, timing: EvalTiming): 
         });
       },
     );
+    const owner = await tradeStore.getEthExecutionTickerOwner(state.ticker);
+    if (owner !== null) return owner === "unavailable" ? "hold" : "candidate";
   }
+  return "regular";
 }
 
 /** A fresh candidate-only handoff: it updates the shared market snapshot but

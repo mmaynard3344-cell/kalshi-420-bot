@@ -236,6 +236,7 @@ export interface Eth420CandidateLiveStore extends Eth420CandidateTelemetryStore 
     requestedContracts: number; limitPriceCents: number; effectiveWagerCents: number; stateBeforeJson: string;
     expectedState: Eth420State; reservationAtMs?: number; marketOpenTimeMs?: number | null;
     backFlip?: import("../tradeStore.js").Eth420CandidateBackFlipReservation | null;
+    executionOwner: "eth420_jump" | "eth420_back_flip";
   }): Promise<boolean>;
   acknowledgeEth420CandidateLiveOrder(
     id: string, kalshiOrderId: string | null, status: string, rejectionReason?: string,
@@ -928,6 +929,16 @@ async function submitEth420CandidateOrder(
   }
   const orderId = `${market.ticker}:eth420-live-v1`;
   const reservationAtMs = Date.now();
+  // Ordinary candidate ladder decisions are observational only. The candidate
+  // can own a ticker exclusively for the exceptional p95–p99 jump or a
+  // durably armed Back Flip; otherwise regular martingale remains the route.
+  const executionOwner = backFlip
+    ? "eth420_back_flip" as const
+    : decision.overrideIncreasedWager ? "eth420_jump" as const : null;
+  if (!executionOwner) {
+    note("executor_blocked", "ordinary_candidate_yields_regular_martingale");
+    return false;
+  }
   // This is the last durable gate before any exchange read or POST. It
   // atomically refuses unresolved history, missing-state inconsistency, and a
   // state snapshot that changed after this decision was prepared.
@@ -935,7 +946,7 @@ async function submitEth420CandidateOrder(
     id: orderId, ticker: market.ticker, easternDate: candidateMarket.easternDate, side: decision.side,
     step: decision.underlyingStep, requestedContracts: contracts, limitPriceCents,
     effectiveWagerCents: decision.effectiveWagerCents, stateBeforeJson: JSON.stringify(state), expectedState: state, reservationAtMs,
-    marketOpenTimeMs: Number.isInteger(candidateMarket.openTimeMs) ? candidateMarket.openTimeMs : null, backFlip,
+    marketOpenTimeMs: Number.isInteger(candidateMarket.openTimeMs) ? candidateMarket.openTimeMs : null, backFlip, executionOwner,
   })) {
     note("executor_blocked", "reservation_fence_blocked");
     return false;

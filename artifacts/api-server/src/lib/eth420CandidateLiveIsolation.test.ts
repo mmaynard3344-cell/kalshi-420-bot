@@ -11,6 +11,7 @@ import {
   recordEth420CandidateExecutionSnapshot, pruneEth420CandidateExecutionSnapshots,
   readPersistedEth420CandidateState, reserveEth420CandidateLiveOrderIfStateMatches,
    resetEth420CandidateStepToZero, settleEth420CandidateLiveOrder,
+    getEth420CandidatePriorWindowGate, getEthExecutionTickerOwner, reserveEthMartingaleEntry,
     reserveEth420CandidateEmergencyReduction, hasUnresolvedEth420CandidateEmergencyReduction,
     _setEth420CandidateEmergencyFenceForTesting,
 } from "./tradeStore.js";
@@ -94,15 +95,72 @@ const fenceOrder = (easternDate: string, suffix: string, expectedState = canonic
   id: `KXETH15M-70JAN${suffix}:eth420-live-v1`, ticker: `KXETH15M-70JAN${suffix}`,
   easternDate, side: "no" as const, step: 0, requestedContracts: 30, limitPriceCents: 50,
   effectiveWagerCents: 1500, stateBeforeJson: JSON.stringify(expectedState), expectedState,
+  executionOwner: "eth420_jump" as const,
 });
 async function clearFenceDate(easternDate: string): Promise<void> {
+  await db.execute(sql`DELETE FROM eth_execution_ticker_owners
+    WHERE owner_order_id IN (SELECT id FROM eth420_candidate_live_orders WHERE eastern_date=${easternDate})`);
   await db.execute(sql`DELETE FROM eth420_candidate_live_orders WHERE eastern_date=${easternDate}`);
   await db.execute(sql`DELETE FROM eth420_candidate_daily_state WHERE eastern_date=${easternDate}`);
 }
 
+test("ETH execution ownership is permanent per ticker across candidate and regular reservations", async () => {
+  const ownershipTicker = "KXETH15M-70JAN121500-15-OWNER-FENCE";
+  const ownershipDate = "1970-01-12";
+  const ownershipState = canonicalFenceState(ownershipDate);
+  await db.execute(sql`DELETE FROM eth_execution_ticker_owners WHERE ticker=${ownershipTicker}`);
+  await db.execute(sql`DELETE FROM eth420_candidate_live_orders WHERE ticker=${ownershipTicker}`);
+  await db.execute(sql`DELETE FROM eth420_candidate_daily_state WHERE eastern_date=${ownershipDate}`);
+  try {
+    assert.equal(await reserveEth420CandidateLiveOrderIfStateMatches({
+      id: `${ownershipTicker}:eth420-live-v1`, ticker: ownershipTicker, easternDate: ownershipDate,
+      side: "no", step: 0, requestedContracts: 30, limitPriceCents: 50, effectiveWagerCents: 42000,
+      stateBeforeJson: JSON.stringify(ownershipState), expectedState: ownershipState,
+      marketOpenTimeMs: 1_000_000, executionOwner: "eth420_jump",
+    }), true, "a qualifying 420 Jump claims the ticker before its POST");
+    assert.equal(await getEthExecutionTickerOwner(ownershipTicker), "eth420_jump");
+    assert.equal(await reserveEthMartingaleEntry({
+      ticker: ownershipTicker, easternDate: ownershipDate, id: `eth-entry:owner-test:${ownershipTicker}`,
+      clientOrderId: "owner-test-regular", side: "no", martingaleStep: 0, noPriceCents: 50,
+      requestedContracts: 1, reservedFeeCents: 1,
+    }), "failed", "regular martingale cannot reserve an ETH420-owned ticker");
+    assert.equal(await getEthExecutionTickerOwner(ownershipTicker), "eth420_jump");
+  } finally {
+    await db.execute(sql`DELETE FROM eth_execution_ticker_owners WHERE ticker=${ownershipTicker}`);
+    await db.execute(sql`DELETE FROM eth420_candidate_live_orders WHERE ticker=${ownershipTicker}`);
+    await db.execute(sql`DELETE FROM eth420_candidate_daily_state WHERE eastern_date=${ownershipDate}`);
+  }
+});
+
+test("ETH420 prior-window gate holds unresolved candidate work and releases settled zero fills", async () => {
+  const gateTicker = "KXETH15M-70JAN130000-00-PRIOR-GATE";
+  const openTimeMs = 2_700_000;
+  await db.execute(sql`DELETE FROM eth420_candidate_live_orders WHERE ticker=${gateTicker}`);
+  try {
+    await db.execute(sql`
+      INSERT INTO eth420_candidate_live_orders
+        (id, ticker, eastern_date, market_open_time_ms, side, martingale_step, requested_contracts,
+         limit_price_cents, effective_wager_cents, state_before_json, status, created_at_ms, updated_at_ms)
+      VALUES (${`${gateTicker}:eth420-live-v1`}, ${gateTicker}, '1970-01-13', ${openTimeMs - 900000},
+        'no', 0, 30, 50, 1500, '{}', 'submission_unknown_recovery_required', 1, 1)`);
+    assert.equal(await getEth420CandidatePriorWindowGate(openTimeMs), "hold",
+      "the successor ticker is held while the immediately prior candidate order is unresolved");
+    await db.execute(sql`UPDATE eth420_candidate_live_orders
+      SET status='settled', filled_contracts=0, settlement_result='yes' WHERE ticker=${gateTicker}`);
+    assert.equal(await getEth420CandidatePriorWindowGate(openTimeMs), "clear",
+      "a durably settled zero fill releases the successor for its Back Flip or normal route");
+  } finally {
+    await db.execute(sql`DELETE FROM eth420_candidate_live_orders WHERE ticker=${gateTicker}`);
+  }
+});
+
 before(async () => {
   delete process.env["ETH_420_CANDIDATE_LIVE_ENABLED"];
   await initTradeStore();
+  // This suite intentionally uses an impossible 1970 fixture ticker prefix.
+  // Owner claims are permanent in application data, so clear claims orphaned
+  // by an interrupted earlier test run before reusing those fixture tickers.
+  await db.execute(sql`DELETE FROM eth_execution_ticker_owners WHERE ticker LIKE 'KXETH15M-70JAN%'`);
   await db.execute(sql`DELETE FROM eth420_candidate_live_orders WHERE id=${id}`);
   await db.execute(sql`DELETE FROM eth420_candidate_execution_snapshots WHERE candidate_order_id=${id}`);
   await db.execute(sql`DELETE FROM eth420_candidate_daily_state WHERE eastern_date=${settlementDate}`);
@@ -116,6 +174,7 @@ before(async () => {
   _setEth420CandidateEmergencyFenceForTesting(false);
 });
 after(async () => {
+  await db.execute(sql`DELETE FROM eth_execution_ticker_owners WHERE ticker LIKE 'KXETH15M-70JAN%'`);
   await db.execute(sql`DELETE FROM eth420_candidate_live_orders WHERE id=${id}`);
   await db.execute(sql`DELETE FROM eth420_candidate_execution_snapshots WHERE candidate_order_id=${id}`);
   await db.execute(sql`DELETE FROM eth420_candidate_daily_state WHERE eastern_date=${settlementDate}`);
@@ -234,10 +293,12 @@ test("an armed Back Flip exclusively owns B at the durable candidate reservation
       id: targetId, ticker: targetTicker, easternDate, side: "no" as const, step: 0,
       requestedContracts: 30, limitPriceCents: 50, effectiveWagerCents: 1500,
       stateBeforeJson: JSON.stringify(parked), expectedState: parked, marketOpenTimeMs: targetOpenTimeMs,
+      executionOwner: "eth420_jump" as const,
     };
     assert.equal(await reserveEth420CandidateLiveOrderIfStateMatches({ ...normal, backFlip: null }), false);
     assert.equal(await reserveEth420CandidateLiveOrderIfStateMatches({
       ...normal, side: "yes", requestedContracts: 50, effectiveWagerCents: 2500,
+      executionOwner: "eth420_back_flip",
       backFlip: {
         sourceCandidateOrderId: sourceId, targetTicker, targetOpenTimeMs, observedAtMs: 2,
         missedSideBidCents: 49, selectedSide: "yes", intendedWagerCents: 2500, requestedContracts: 50,
@@ -297,7 +358,7 @@ test("emergency reduction is candidate-only, durable before POST, idempotent, an
   assert.equal(await reserveEth420CandidateLiveOrderIfStateMatches({
     id: `${ticker}-NEXT-DAY-BLOCK:eth420-live-v1`, ticker: `${ticker}-NEXT-DAY-BLOCK`, easternDate: nextDate,
     side: "no", step: 0, requestedContracts: 30, limitPriceCents: 50, effectiveWagerCents: 1500,
-    stateBeforeJson: JSON.stringify(nextState), expectedState: nextState,
+    stateBeforeJson: JSON.stringify(nextState), expectedState: nextState, executionOwner: "eth420_jump",
   }), false, "an emergency reduction blocks entries across Eastern-day boundaries");
   const duplicate = await reserveEth420CandidateEmergencyReduction({
     idempotencyKey: reductionKey, candidateOrderId: "wrong", ticker: "wrong", candidateKalshiOrderId: "wrong",
@@ -517,12 +578,11 @@ test("candidate operator reset preserves side and P&L, audits once, and refuses 
   await db.execute(sql`DELETE FROM eth420_candidate_daily_state WHERE eastern_date=${resetDate}`);
 });
 
-test("authoritative candidate insufficient-balance rejections preserve the same NO step without a settlement blocker", async () => {
+test("ordinary candidate decisions yield without a candidate reservation", async () => {
   const rejectionDate = "1970-01-15";
   const state = {
     easternDate: rejectionDate, side: "no" as const, step: 5, realizedPnlCents: -28798, lastBlockResetAtMs: null,
   };
-  const acknowledgements: Array<{ id: string; status: string; reason?: string }> = [];
   const reservations: Array<{ id: string; expectedState: unknown }> = [];
   const store = {
     getEth420CandidateState: async () => state,
@@ -532,9 +592,6 @@ test("authoritative candidate insufficient-balance rejections preserve the same 
     recordEth420CandidateExecutionSnapshot: async () => true,
     reserveEth420CandidateLiveOrderIfStateMatches: async (params: { id: string; expectedState: unknown }) => {
       reservations.push(params); return true;
-    },
-    acknowledgeEth420CandidateLiveOrder: async (id: string, _orderId: string | null, status: string, reason?: string) => {
-      acknowledgements.push({ id, status, reason }); return true;
     },
   } as any;
   const market = {
@@ -547,30 +604,16 @@ test("authoritative candidate insufficient-balance rejections preserve the same 
   };
   const priorLive = process.env["ETH_420_CANDIDATE_LIVE_ENABLED"];
   process.env["ETH_420_CANDIDATE_LIVE_ENABLED"] = "true";
-  _setEth420CandidateBalanceReadForTesting((async () => ({ value: { balance: 48_000 }, stale: false })) as any);
-  _setEth420CandidateAuthFetchForTesting((async () => {
-    throw Object.assign(new Error("Kalshi rejected"), {
-      status: 400, body: { error: { code: "insufficient_balance" } },
-    });
-  }) as any);
   try {
     assert.equal(await evaluateAndSubmitEth420CandidateWhenExplicitlyEnabled(store, market, candidateMarket), false);
     assert.equal(await evaluateAndSubmitEth420CandidateWhenExplicitlyEnabled(store, {
       ...market, ticker: "KXETH15M-70JAN150015-15-BALANCE-REJECTION",
     }, { ...candidateMarket, ticker: "KXETH15M-70JAN150015-15-BALANCE-REJECTION" }), false);
   } finally {
-    _setEth420CandidateAuthFetchForTesting(null);
-    _setEth420CandidateBalanceReadForTesting(null);
     if (priorLive == null) delete process.env["ETH_420_CANDIDATE_LIVE_ENABLED"];
     else process.env["ETH_420_CANDIDATE_LIVE_ENABLED"] = priorLive;
   }
-  assert.equal(reservations.length, 2);
-  assert.ok(reservations.every(({ expectedState }) => expectedState === state), "each rejection carries the same sequence forward");
-  assert.deepEqual(acknowledgements.map(({ status, reason }) => ({ status, reason })), [
-    { status: "rejected_insufficient_balance", reason: "insufficient_balance" },
-    { status: "rejected_insufficient_balance", reason: "insufficient_balance" },
-  ]);
-  assert.equal(acknowledgements.some(({ status }) => status === "submission_unknown_recovery_required"), false);
+  assert.equal(reservations.length, 0);
   assert.deepEqual(state, {
     easternDate: rejectionDate, side: "no", step: 5, realizedPnlCents: -28798, lastBlockResetAtMs: null,
   });
@@ -1280,7 +1323,7 @@ test("atomic candidate entry fence fails closed when its database transaction ca
   assert.deepEqual((rows as any).rows, []);
 });
 
-test("candidate executor stops at a denied atomic reservation before balance or exchange submission", async () => {
+test("ordinary candidate evaluation never reaches balance or exchange submission", async () => {
   const fenceDate = "1970-01-12";
   const previousEnabled = process.env["ETH_420_CANDIDATE_LIVE_ENABLED"];
   let reservations = 0, exchangeCalls = 0;
@@ -1311,7 +1354,7 @@ test("candidate executor stops at a denied atomic reservation before balance or 
     if (previousEnabled == null) delete process.env["ETH_420_CANDIDATE_LIVE_ENABLED"];
     else process.env["ETH_420_CANDIDATE_LIVE_ENABLED"] = previousEnabled;
   }
-  assert.equal(reservations, 1);
+  assert.equal(reservations, 0);
   assert.equal(exchangeCalls, 0);
 });
 
