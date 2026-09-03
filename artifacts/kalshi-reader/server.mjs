@@ -2,10 +2,12 @@ import http from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const port = Number(process.env.PORT ?? 3000);
 const graceBase = (process.env.GRACE_API_BASE_URL ?? '').replace(/\/$/, '');
 const graceToken = process.env.GRACE_TRADE_API_TOKEN ?? '';
+const databaseUrl = process.env.DATABASE_URL ?? '';
 const root = join(fileURLToPath(new URL('.', import.meta.url)), 'dist', 'public');
 
 if (!graceBase) throw new Error('GRACE_API_BASE_URL must be set');
@@ -78,6 +80,71 @@ async function proxyRead(req, res, url) {
   }
 }
 
+let dbPool = null;
+function getDbPool() {
+  if (!databaseUrl) return null;
+  if (dbPool) return dbPool;
+  const requireFromDb = createRequire(new URL('../../lib/db/package.json', import.meta.url));
+  const { Pool } = requireFromDb('pg');
+  dbPool = new Pool({ connectionString: databaseUrl, max: 2, idleTimeoutMillis: 10_000, connectionTimeoutMillis: 3_000 });
+  return dbPool;
+}
+
+async function backFlipDiagnostics(req, res) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    send(res, 405, 'Method not allowed');
+    return;
+  }
+  const pool = getDbPool();
+  if (!pool) {
+    send(res, 503, JSON.stringify({ available: false, error: 'DATABASE_URL is not configured on Shawshank', rows: [] }), 'application/json; charset=utf-8');
+    return;
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN READ ONLY');
+    await client.query("SET LOCAL statement_timeout = '3000ms'");
+    const result = await client.query(`
+      SELECT
+        source_candidate_order_id,
+        source_ticker,
+        missed_side,
+        source_open_time_ms,
+        target_open_time_ms,
+        status,
+        armed_at_ms
+      FROM eth420_candidate_back_flip_overrides
+      ORDER BY armed_at_ms DESC
+      LIMIT 50
+    `);
+    await client.query('COMMIT');
+    const rows = result.rows.map((row) => ({
+      sourceCandidateOrderId: String(row.source_candidate_order_id ?? ''),
+      sourceTicker: String(row.source_ticker ?? ''),
+      missedSide: String(row.missed_side ?? ''),
+      sourceOpenTimeMs: Number(row.source_open_time_ms),
+      targetOpenTimeMs: Number(row.target_open_time_ms),
+      status: String(row.status ?? ''),
+      armedAtMs: Number(row.armed_at_ms),
+    }));
+    if (req.method === 'HEAD') {
+      send(res, 200, '', 'application/json; charset=utf-8');
+      return;
+    }
+    send(res, 200, JSON.stringify({ available: true, rows, count: rows.length }), 'application/json; charset=utf-8');
+  } catch (error) {
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch { /* best effort */ }
+    }
+    console.error('Back Flip diagnostic read failed', error);
+    send(res, 500, JSON.stringify({ available: false, error: 'Back Flip diagnostic read failed', rows: [] }), 'application/json; charset=utf-8');
+  } finally {
+    client?.release();
+  }
+}
+
 function serveStatic(req, res, url) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     send(res, 405, 'Method not allowed');
@@ -117,6 +184,10 @@ function serveStatic(req, res, url) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  if (url.pathname === '/api/diagnostics/back-flips') {
+    void backFlipDiagnostics(req, res);
+    return;
+  }
   if (url.pathname.startsWith('/api/')) {
     void proxyRead(req, res, url);
     return;
