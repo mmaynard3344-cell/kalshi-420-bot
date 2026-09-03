@@ -37,11 +37,12 @@ const CONTENT_TYPES = {
   '.woff2': 'font/woff2',
 };
 
-function send(res, status, body, contentType = 'text/plain; charset=utf-8') {
+function send(res, status, body, contentType = 'text/plain; charset=utf-8', extraHeaders = {}) {
   res.writeHead(status, {
     'content-type': contentType,
     'cache-control': 'no-store',
     'x-content-type-options': 'nosniff',
+    ...extraHeaders,
   });
   res.end(body);
 }
@@ -90,17 +91,9 @@ function getDbPool() {
   return dbPool;
 }
 
-async function backFlipDiagnostics(req, res) {
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    send(res, 405, 'Method not allowed');
-    return;
-  }
+async function loadBackFlipRows() {
   const pool = getDbPool();
-  if (!pool) {
-    send(res, 503, JSON.stringify({ available: false, error: 'DATABASE_URL is not configured on Shawshank', rows: [] }), 'application/json; charset=utf-8');
-    return;
-  }
-
+  if (!pool) throw new Error('DATABASE_URL is not configured on Shawshank');
   let client;
   try {
     client = await pool.connect();
@@ -120,7 +113,7 @@ async function backFlipDiagnostics(req, res) {
       LIMIT 50
     `);
     await client.query('COMMIT');
-    const rows = result.rows.map((row) => ({
+    return result.rows.map((row) => ({
       sourceCandidateOrderId: String(row.source_candidate_order_id ?? ''),
       sourceTicker: String(row.source_ticker ?? ''),
       missedSide: String(row.missed_side ?? ''),
@@ -129,19 +122,61 @@ async function backFlipDiagnostics(req, res) {
       status: String(row.status ?? ''),
       armedAtMs: Number(row.armed_at_ms),
     }));
-    if (req.method === 'HEAD') {
-      send(res, 200, '', 'application/json; charset=utf-8');
-      return;
-    }
-    send(res, 200, JSON.stringify({ available: true, rows, count: rows.length }), 'application/json; charset=utf-8');
   } catch (error) {
     if (client) {
       try { await client.query('ROLLBACK'); } catch { /* best effort */ }
     }
-    console.error('Back Flip diagnostic read failed', error);
-    send(res, 500, JSON.stringify({ available: false, error: 'Back Flip diagnostic read failed', rows: [] }), 'application/json; charset=utf-8');
+    throw error;
   } finally {
     client?.release();
+  }
+}
+
+function csvEscape(value) {
+  const text = String(value ?? '');
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+async function backFlipDiagnostics(req, res, asCsv = false) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    send(res, 405, 'Method not allowed');
+    return;
+  }
+  if (!databaseUrl) {
+    send(res, 503, asCsv ? 'DATABASE_URL is not configured on Shawshank\n' : JSON.stringify({ available: false, error: 'DATABASE_URL is not configured on Shawshank', rows: [] }), asCsv ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8');
+    return;
+  }
+
+  try {
+    const rows = await loadBackFlipRows();
+    if (req.method === 'HEAD') {
+      send(res, 200, '', asCsv ? 'text/csv; charset=utf-8' : 'application/json; charset=utf-8');
+      return;
+    }
+    if (asCsv) {
+      const header = ['source_candidate_order_id','source_ticker','missed_side','source_open_time_ms','target_open_time_ms','status','armed_at_ms'];
+      const lines = rows.map((row) => [
+        row.sourceCandidateOrderId,
+        row.sourceTicker,
+        row.missedSide,
+        row.sourceOpenTimeMs,
+        row.targetOpenTimeMs,
+        row.status,
+        row.armedAtMs,
+      ].map(csvEscape).join(','));
+      send(
+        res,
+        200,
+        `${header.join(',')}\n${lines.join('\n')}\n`,
+        'text/csv; charset=utf-8',
+        { 'content-disposition': 'attachment; filename="eth420-back-flip-diagnostics.csv"' },
+      );
+      return;
+    }
+    send(res, 200, JSON.stringify({ available: true, rows, count: rows.length }), 'application/json; charset=utf-8');
+  } catch (error) {
+    console.error('Back Flip diagnostic read failed', error);
+    send(res, 500, asCsv ? 'Back Flip diagnostic read failed\n' : JSON.stringify({ available: false, error: 'Back Flip diagnostic read failed', rows: [] }), asCsv ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8');
   }
 }
 
@@ -185,7 +220,11 @@ function serveStatic(req, res, url) {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   if (url.pathname === '/api/diagnostics/back-flips') {
-    void backFlipDiagnostics(req, res);
+    void backFlipDiagnostics(req, res, false);
+    return;
+  }
+  if (url.pathname === '/api/diagnostics/back-flips.csv') {
+    void backFlipDiagnostics(req, res, true);
     return;
   }
   if (url.pathname.startsWith('/api/')) {
