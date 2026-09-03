@@ -1,10 +1,6 @@
-// The trade token is injected at build time via the VITE_TRADE_API_TOKEN
-// secret. The old GET /api/trade/client-token endpoint was removed — it
-// handed the write-capable token to any unauthenticated caller.
+// The standalone operator UI never receives a Grace trade credential.
+// Its same-origin UI server proxies an explicit allowlist of GET-only
+// observability endpoints and injects the credential server-side.
 export async function getTradeToken(): Promise<string> {
-  const token = (import.meta.env.VITE_TRADE_API_TOKEN as string | undefined) ?? '';
-  if (!token) {
-    console.warn('[tradeToken] VITE_TRADE_API_TOKEN is not set — trade API calls will fail auth');
-  }
-  return token;
+  return '';
 }
