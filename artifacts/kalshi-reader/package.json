@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
-    "build": "node scripts/apply-daily-pnl-summary.mjs && node scripts/apply-recent-eth-orders.mjs && node scripts/apply-recent-eth-settlement.mjs && node scripts/apply-current-open-trade.mjs && node scripts/apply-fill-limit-10000.mjs && vite build --config vite.config.ts",
+    "build": "node scripts/apply-daily-pnl-summary.mjs && node scripts/apply-recent-eth-orders.mjs && node scripts/apply-recent-eth-settlement.mjs && node scripts/apply-current-open-trade.mjs && node scripts/apply-fill-limit-10000.mjs && node scripts/apply-actual-today-pnl.mjs && vite build --config vite.config.ts",
     "serve": "node server.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
