@@ -21,6 +21,14 @@ function resolveCommitSha() {
 }
 
 async function buildAll() {
+  // Emergency three-road router hotfix. The patch script performs exact,
+  // fail-closed source replacements in the fresh build workspace, then the
+  // TypeScript compiler verifies the patched source before esbuild can emit a
+  // deployable artifact. Any source drift or type error aborts the build.
+  const routerPatchScript = path.resolve(artifactDir, "../../scripts/apply_eth_three_road_router.py");
+  execSync(`python3 "${routerPatchScript}"`, { stdio: "inherit" });
+  execSync("pnpm exec tsc -p tsconfig.json --noEmit", { cwd: artifactDir, stdio: "inherit" });
+
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
