@@ -1,0 +1,404 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Kalshi Market Reader API - proxies Kalshi trading API data
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: markets
+    description: Kalshi market operations
+  - name: events
+    description: Kalshi event operations
+  - name: summary
+    description: Dashboard summary data
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /markets:
+    get:
+      operationId: listMarkets
+      tags: [markets]
+      summary: List markets
+      description: Returns a paginated list of Kalshi prediction markets
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: number
+          description: Number of markets to return
+        - name: cursor
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Pagination cursor
+        - name: event_ticker
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Filter by event ticker
+        - name: series_ticker
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Filter by series ticker
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: "Market status: open, closed, settled"
+        - name: tickers
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Comma-separated list of market tickers
+      responses:
+        "200":
+          description: List of markets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketsResponse"
+
+  /markets/{ticker}:
+    get:
+      operationId: getMarket
+      tags: [markets]
+      summary: Get market by ticker
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Market details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Market"
+        "404":
+          description: Market not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /markets/{ticker}/orderbook:
+    get:
+      operationId: getMarketOrderbook
+      tags: [markets]
+      summary: Get market orderbook
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Market orderbook
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderbookResponse"
+
+  /events:
+    get:
+      operationId: listEvents
+      tags: [events]
+      summary: List events
+      description: Returns a paginated list of Kalshi events
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: number
+          description: Number of events to return
+        - name: cursor
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Pagination cursor
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: "Event status: open, closed, settled"
+        - name: series_ticker
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Filter by series ticker
+        - name: with_nested_markets
+          in: query
+          schema:
+            type: boolean
+          description: Include nested markets in response
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventsResponse"
+
+  /events/{event_ticker}:
+    get:
+      operationId: getEvent
+      tags: [events]
+      summary: Get event by ticker
+      parameters:
+        - name: event_ticker
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Event details with markets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventWithMarkets"
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /summary:
+    get:
+      operationId: getSummary
+      tags: [summary]
+      summary: Get dashboard summary
+      description: Returns aggregated stats for the dashboard
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /series:
+    get:
+      operationId: listSeries
+      tags: [summary]
+      summary: List market series
+      description: Returns list of available market series/categories
+      responses:
+        "200":
+          description: List of series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeriesListResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    Market:
+      type: object
+      required: [ticker, event_ticker, title, status]
+      properties:
+        ticker:
+          type: string
+        event_ticker:
+          type: string
+        series_ticker:
+          type: ["string", "null"]
+        title:
+          type: string
+        subtitle:
+          type: ["string", "null"]
+        status:
+          type: string
+        result:
+          type: ["string", "null"]
+        yes_bid:
+          type: ["number", "null"]
+        yes_ask:
+          type: ["number", "null"]
+        no_bid:
+          type: ["number", "null"]
+        no_ask:
+          type: ["number", "null"]
+        last_price:
+          type: ["number", "null"]
+        previous_price:
+          type: ["number", "null"]
+        volume:
+          type: ["number", "null"]
+        volume_24h:
+          type: ["number", "null"]
+        open_interest:
+          type: ["number", "null"]
+        liquidity:
+          type: ["number", "null"]
+        close_time:
+          type: ["string", "null"]
+        expiration_time:
+          type: ["string", "null"]
+        open_time:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
+        risk_limit_cents:
+          type: ["number", "null"]
+        rules_primary:
+          type: ["string", "null"]
+        rules_secondary:
+          type: ["string", "null"]
+
+    MarketsResponse:
+      type: object
+      required: [markets]
+      properties:
+        markets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Market"
+        cursor:
+          type: ["string", "null"]
+
+    KalshiEvent:
+      type: object
+      required: [event_ticker, series_ticker, title, status]
+      properties:
+        event_ticker:
+          type: string
+        series_ticker:
+          type: string
+        title:
+          type: string
+        sub_title:
+          type: ["string", "null"]
+        status:
+          type: string
+        category:
+          type: ["string", "null"]
+        mutually_exclusive:
+          type: boolean
+        strike_date:
+          type: ["string", "null"]
+
+    EventWithMarkets:
+      type: object
+      required: [event]
+      properties:
+        event:
+          $ref: "#/components/schemas/KalshiEvent"
+        markets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Market"
+
+    EventsResponse:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/KalshiEvent"
+        cursor:
+          type: ["string", "null"]
+
+    OrderLevel:
+      type: object
+      required: [price, quantity]
+      properties:
+        price:
+          type: number
+        quantity:
+          type: number
+
+    OrderbookResponse:
+      type: object
+      required: [ticker]
+      properties:
+        ticker:
+          type: string
+        yes:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderLevel"
+        no:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderLevel"
+
+    DashboardSummary:
+      type: object
+      required: [total_open_markets, total_events, top_volume_markets, trending_markets]
+      properties:
+        total_open_markets:
+          type: number
+        total_events:
+          type: number
+        top_volume_markets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Market"
+        trending_markets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Market"
+
+    Series:
+      type: object
+      required: [ticker, title]
+      properties:
+        ticker:
+          type: string
+        title:
+          type: string
+        category:
+          type: ["string", "null"]
+        tags:
+          type: array
+          items:
+            type: string
+
+    SeriesListResponse:
+      type: object
+      required: [series]
+      properties:
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/Series"

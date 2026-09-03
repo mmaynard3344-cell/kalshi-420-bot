@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Kalshi Market Reader"
+version = "1.0.0"
+id = "artifacts/kalshi-reader"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21010
+
+[services.development]
+run = "pnpm --filter @workspace/kalshi-reader run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/kalshi-reader", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/kalshi-reader/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21010"
+BASE_PATH = "/"

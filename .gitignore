@@ -1,0 +1,62 @@
+# Secrets and local environment configuration
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.jks
+*.keystore
+secrets/
+keys/
+credentials/
+
+# Dependencies and package-manager state
+node_modules/
+.pnpm-store/
+.npm/
+
+# Build, test, and tool output
+dist/
+build/
+coverage/
+out-tsc/
+tmp/
+.cache/
+*.tsbuildinfo
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime-written state, local databases, and logs
+data/
+runtime/
+artifacts/api-server/data/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.ndjson
+
+# Research inputs, exports, and generated analysis
+analysis/research-data/
+analysis/out/
+analysis/prod_export.json
+research-data/
+research-output/
+exports/
+
+# Local/editor/Replit state
+.local/
+.replit
+/.replit-artifact/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
