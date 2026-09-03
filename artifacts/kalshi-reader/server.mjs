@@ -18,6 +18,7 @@ const ALLOWED_READ_PATHS = new Set([
   '/api/trade/martingale',
   '/api/trade/analytics/eth420-candidate-history',
   '/api/trade/analytics/eth420-live-market',
+  '/api/trade/analytics/boundary-discovery',
 ]);
 
 const CONTENT_TYPES = {
