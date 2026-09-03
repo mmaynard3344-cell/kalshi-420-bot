@@ -1,6 +1,8 @@
 from pathlib import Path
 
-candidate_path = Path("artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts")
+ROOT = Path(__file__).resolve().parents[1]
+
+candidate_path = ROOT / "artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts"
 candidate = candidate_path.read_text()
 
 old_candidate_tail = '''  const prepared = await prepareEth420CandidateDecision(store, candidateMarket);
@@ -48,7 +50,7 @@ if candidate.count(old_candidate_tail) != 1:
     raise SystemExit(f"candidate tail replacement count={candidate.count(old_candidate_tail)}")
 candidate_path.write_text(candidate.replace(old_candidate_tail, new_candidate_tail))
 
-auto_path = Path("artifacts/api-server/src/lib/autoTrader.ts")
+auto_path = ROOT / "artifacts/api-server/src/lib/autoTrader.ts"
 auto = auto_path.read_text()
 
 old_eval = '''  // New ETH martingale positions are deliberately not routed through the
