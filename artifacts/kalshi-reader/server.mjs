@@ -18,6 +18,8 @@ const ALLOWED_READ_PATHS = new Set([
   '/api/trade/status',
   '/api/trade/positions',
   '/api/trade/martingale',
+  '/api/trade/orders',
+  '/api/trade/fills',
   '/api/trade/analytics/eth420-candidate-history',
   '/api/trade/analytics/eth420-live-market',
   '/api/trade/analytics/boundary-discovery',
@@ -45,6 +47,20 @@ function send(res, status, body, contentType = 'text/plain; charset=utf-8', extr
     ...extraHeaders,
   });
   res.end(body);
+}
+
+async function graceJson(path) {
+  const upstream = await fetch(`${graceBase}${path}`, {
+    method: 'GET',
+    headers: {
+      'x-trade-token': graceToken,
+      'accept': 'application/json',
+    },
+    redirect: 'manual',
+  });
+  const text = await upstream.text();
+  if (!upstream.ok) throw new Error(`Grace ${path} returned ${upstream.status}: ${text.slice(0, 300)}`);
+  return JSON.parse(text);
 }
 
 async function proxyRead(req, res, url) {
@@ -78,6 +94,48 @@ async function proxyRead(req, res, url) {
   } catch (error) {
     console.error('Grace read proxy failed', error);
     send(res, 502, JSON.stringify({ error: 'Grace API unavailable' }), 'application/json; charset=utf-8');
+  }
+}
+
+async function exchangeTickerDiagnostics(req, res, url) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    send(res, 405, 'Method not allowed');
+    return;
+  }
+  const ticker = String(url.searchParams.get('ticker') ?? '').trim();
+  if (!/^KXETH15M-[A-Z0-9-]+$/.test(ticker)) {
+    send(res, 400, JSON.stringify({ error: 'A valid KXETH15M ticker is required' }), 'application/json; charset=utf-8');
+    return;
+  }
+  try {
+    const [ordersPayload, fillsPayload] = await Promise.all([
+      graceJson('/api/trade/orders?limit=100'),
+      graceJson('/api/trade/fills?limit=1000'),
+    ]);
+    const allOrders = Array.isArray(ordersPayload?.orders) ? ordersPayload.orders : [];
+    const allFills = Array.isArray(fillsPayload?.fills) ? fillsPayload.fills : [];
+    const orders = allOrders.filter((row) => row && typeof row === 'object' && row.ticker === ticker);
+    const fills = allFills.filter((row) => row && typeof row === 'object' && row.ticker === ticker);
+    const clientOrderIds = [...new Set(orders.map((row) => row.client_order_id ?? row.clientOrderId).filter(Boolean).map(String))];
+    const orderIds = [...new Set(orders.map((row) => row.order_id ?? row.orderId).filter(Boolean).map(String))];
+    const response = {
+      ticker,
+      orderCount: orders.length,
+      fillCount: fills.length,
+      distinctClientOrderIds: clientOrderIds,
+      distinctOrderIds: orderIds,
+      duplicateSubmissionEvidence: orderIds.length > 1 || clientOrderIds.length > 1,
+      orders,
+      fills,
+    };
+    if (req.method === 'HEAD') {
+      send(res, 200, '', 'application/json; charset=utf-8');
+      return;
+    }
+    send(res, 200, JSON.stringify(response, null, 2), 'application/json; charset=utf-8');
+  } catch (error) {
+    console.error('Exchange ticker diagnostic read failed', error);
+    send(res, 502, JSON.stringify({ error: 'Exchange ticker diagnostic read failed' }), 'application/json; charset=utf-8');
   }
 }
 
@@ -219,6 +277,10 @@ function serveStatic(req, res, url) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  if (url.pathname === '/api/diagnostics/exchange-ticker') {
+    void exchangeTickerDiagnostics(req, res, url);
+    return;
+  }
   if (url.pathname === '/api/diagnostics/back-flips') {
     void backFlipDiagnostics(req, res, false);
     return;
