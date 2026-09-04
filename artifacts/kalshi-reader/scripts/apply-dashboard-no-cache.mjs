@@ -25,4 +25,8 @@ fs.writeFileSync(serverPath, server);
 const dashboardPath = new URL('../public/eth420-dashboard.html', import.meta.url);
 let html = fs.readFileSync(dashboardPath, 'utf8');
 html = html.replace('<script defer src="/pnl-runtime.js"></script>', '<script defer src="/pnl-runtime.js?v=ops-audit-v3"></script>');
+if (!html.includes('/operations-core.js?v=ops-core-v1')) {
+  if (!html.includes('</head>')) throw new Error('dashboard no-cache: closing head not found');
+  html = html.replace('</head>', '<script defer src="/operations-core.js?v=ops-core-v1"></script>\n</head>');
+}
 fs.writeFileSync(dashboardPath, html);
