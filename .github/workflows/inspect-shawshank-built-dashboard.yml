@@ -19,11 +19,16 @@ jobs:
         run: |
           test -f artifacts/kalshi-reader/dist/public/eth420-dashboard.html
           test -f artifacts/kalshi-reader/dist/public/operations-core.js
+          test -f artifacts/kalshi-reader/dist/public/pnl-runtime.js
           grep -q 'operations-core' artifacts/kalshi-reader/dist/public/eth420-dashboard.html
-          grep -q 'data-unified-operations-runtime="v3"' artifacts/kalshi-reader/dist/public/eth420-dashboard.html
+          grep -q 'pnl-runtime' artifacts/kalshi-reader/dist/public/eth420-dashboard.html
+          ! grep -q '<script id=' artifacts/kalshi-reader/dist/public/eth420-dashboard.html
+          ! grep -q 'data-unified-operations-runtime' artifacts/kalshi-reader/dist/public/eth420-dashboard.html
+          test "$(grep -o '<script[^>]*>' artifacts/kalshi-reader/dist/public/eth420-dashboard.html | wc -l)" -eq 2
           node --check artifacts/kalshi-reader/dist/public/operations-core.js
-          echo '--- script tags ---'
-          grep -o '<script[^>]*>' artifacts/kalshi-reader/dist/public/eth420-dashboard.html | tail -20
+          node --check artifacts/kalshi-reader/dist/public/pnl-runtime.js
+          echo '--- final script tags ---'
+          grep -o '<script[^>]*>' artifacts/kalshi-reader/dist/public/eth420-dashboard.html
       - uses: actions/upload-artifact@v4
         with:
           name: shawshank-built-dashboard
