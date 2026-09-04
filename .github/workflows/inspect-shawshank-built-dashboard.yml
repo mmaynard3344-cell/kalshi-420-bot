@@ -1,0 +1,33 @@
+name: Inspect Shawshank built dashboard
+on:
+  push:
+    branches:
+      - ui/grace-api-base
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @workspace/kalshi-reader build
+      - name: Verify generated dashboard
+        run: |
+          test -f artifacts/kalshi-reader/dist/public/eth420-dashboard.html
+          test -f artifacts/kalshi-reader/dist/public/operations-core.js
+          grep -q 'operations-core' artifacts/kalshi-reader/dist/public/eth420-dashboard.html
+          grep -q 'data-unified-operations-runtime="v3"' artifacts/kalshi-reader/dist/public/eth420-dashboard.html
+          node --check artifacts/kalshi-reader/dist/public/operations-core.js
+          echo '--- script tags ---'
+          grep -o '<script[^>]*>' artifacts/kalshi-reader/dist/public/eth420-dashboard.html | tail -20
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shawshank-built-dashboard
+          path: |
+            artifacts/kalshi-reader/dist/public/eth420-dashboard.html
+            artifacts/kalshi-reader/dist/public/operations-core.js
+            artifacts/kalshi-reader/dist/public/pnl-runtime.js
