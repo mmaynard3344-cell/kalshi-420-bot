@@ -19,15 +19,15 @@ function resolveCommitSha() {
 }
 
 async function buildAll() {
-  // Emergency three-road router hotfix. The patch script uses exact source
-  // replacements and aborts if the expected production source has drifted.
-  // Keep the normal production esbuild as the compile gate; the repository-wide
-  // tsc command currently includes unrelated historical test/project-reference
-  // errors and is therefore not suitable as a Railway deployment gate.
+  // Three-road router plus the regular-zero-fill Back Flip handoff. Every patch
+  // uses exact source replacements and aborts if the expected production source
+  // has drifted. The normal production esbuild remains the compile gate.
   const routerPatchScript = path.resolve(artifactDir, "../../scripts/apply_eth_three_road_router.py");
   execSync(`python3 "${routerPatchScript}"`, { stdio: "inherit" });
-  const regularZeroFillBackFlipPatch = path.resolve(artifactDir, "../../scripts/apply_regular_zero_fill_backflip.py");
-  execSync(`python3 "${regularZeroFillBackFlipPatch}"`, { stdio: "inherit" });
+  const regularZeroFillArmPatch = path.resolve(artifactDir, "../../scripts/apply_regular_zero_fill_backflip_v2.py");
+  execSync(`python3 "${regularZeroFillArmPatch}"`, { stdio: "inherit" });
+  const regularReconcileBeforeRouterPatch = path.resolve(artifactDir, "../../scripts/apply_regular_reconcile_before_router.py");
+  execSync(`python3 "${regularReconcileBeforeRouterPatch}"`, { stdio: "inherit" });
 
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
