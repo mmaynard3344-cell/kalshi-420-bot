@@ -32,4 +32,6 @@ if (!pnl.includes(refreshNew)) {
   pnl = pnl.replace(refreshOld, refreshNew);
 }
 
+pnl = pnl.replace("fetch('/api/trade/orders?limit=100', {cache:'no-store'})", "fetch('/api/trade/orders?limit=1000', {cache:'no-store'})");
+
 fs.writeFileSync(pnlPath, pnl);
