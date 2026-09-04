@@ -30,6 +30,8 @@ async function buildAll() {
   execSync(`python3 "${verifiedRegularZeroFillArmPatch}"`, { stdio: "inherit" });
   const regularReconcileBeforeRouterPatch = path.resolve(artifactDir, "../../scripts/apply_regular_reconcile_before_router.py");
   execSync(`python3 "${regularReconcileBeforeRouterPatch}"`, { stdio: "inherit" });
+  const durableThreeRoadOwnerPatch = path.resolve(artifactDir, "../../scripts/apply_eth_three_road_durable_owner.py");
+  execSync(`python3 "${durableThreeRoadOwnerPatch}"`, { stdio: "inherit" });
 
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
