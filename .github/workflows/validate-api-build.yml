@@ -15,5 +15,5 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm install --filter @workspace/api-server... --no-frozen-lockfile
       - run: pnpm --filter @workspace/api-server run build
