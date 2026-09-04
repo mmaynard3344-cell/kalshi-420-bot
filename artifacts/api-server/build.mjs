@@ -26,6 +26,8 @@ async function buildAll() {
   // errors and is therefore not suitable as a Railway deployment gate.
   const routerPatchScript = path.resolve(artifactDir, "../../scripts/apply_eth_three_road_router.py");
   execSync(`python3 "${routerPatchScript}"`, { stdio: "inherit" });
+  const regularZeroFillBackFlipPatch = path.resolve(artifactDir, "../../scripts/apply_regular_zero_fill_backflip.py");
+  execSync(`python3 "${regularZeroFillBackFlipPatch}"`, { stdio: "inherit" });
 
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
