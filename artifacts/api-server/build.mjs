@@ -26,6 +26,8 @@ async function buildAll() {
   execSync(`python3 "${routerPatchScript}"`, { stdio: "inherit" });
   const regularZeroFillArmPatch = path.resolve(artifactDir, "../../scripts/apply_regular_zero_fill_backflip_v2.py");
   execSync(`python3 "${regularZeroFillArmPatch}"`, { stdio: "inherit" });
+  const verifiedRegularZeroFillArmPatch = path.resolve(artifactDir, "../../scripts/apply_regular_zero_fill_verified_backflip.py");
+  execSync(`python3 "${verifiedRegularZeroFillArmPatch}"`, { stdio: "inherit" });
   const regularReconcileBeforeRouterPatch = path.resolve(artifactDir, "../../scripts/apply_regular_reconcile_before_router.py");
   execSync(`python3 "${regularReconcileBeforeRouterPatch}"`, { stdio: "inherit" });
 
