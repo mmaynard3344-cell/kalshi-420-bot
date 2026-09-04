@@ -3,6 +3,11 @@ import fs from 'node:fs';
 const dashboardPath = new URL('../public/eth420-dashboard.html', import.meta.url);
 let html = fs.readFileSync(dashboardPath, 'utf8');
 
+// These two values come from /trade/martingale's durable Regular next-state,
+// not necessarily from the special order currently owning the live window.
+html = html.replace('<div class="eyebrow">Current side</div><div class="metric" id="opSide">', '<div class="eyebrow">Regular next side</div><div class="metric" id="opSide">');
+html = html.replace('<div class="eyebrow">Step / next wager</div><div class="metric" id="opStepWager">', '<div class="eyebrow">Regular step / next wager</div><div class="metric" id="opStepWager">');
+
 // The original candidate-history renderer may continue to power the P&L/charts
 // tab, but it must never overwrite authoritative Operations fields.
 const removals = [
