@@ -7,9 +7,9 @@
   <style>
     :root{color-scheme:light dark;--bg:#0c0d0e;--card:#141619;--muted:#8f969f;--text:#f4f6f8;--line:#2a2e33;--accent:#f4f6f8;--good:#35b66f;--bad:#e05b5b;--warn:#d9a441;--soft:#1a1d21}
     @media(prefers-color-scheme:light){:root{--bg:#f6f7f8;--card:#fff;--muted:#66707a;--text:#15181b;--line:#d9dde1;--accent:#15181b;--soft:#f0f2f4}}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button{font:inherit}.shell{max-width:1220px;margin:0 auto;min-height:100vh;border-left:1px solid var(--line);border-right:1px solid var(--line)}header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:12px}.mark{width:40px;height:40px;background:var(--accent);color:var(--bg);display:grid;place-items:center;font-weight:800}.eyebrow,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.eyebrow{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}h1,h2,h3,p{margin:0}h1{font-size:18px}main{padding:20px}.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--line);padding-bottom:10px}.tab{border:1px solid var(--line);background:transparent;color:var(--muted);padding:9px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;cursor:pointer}.tab.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}.panel{display:none}.panel.active{display:block}.grid{display:grid;gap:12px}.grid4{grid-template-columns:repeat(4,minmax(0,1fr))}.grid3{grid-template-columns:repeat(3,minmax(0,1fr))}.grid2{grid-template-columns:repeat(2,minmax(0,1fr))}.card{border:1px solid var(--line);background:var(--card);padding:16px}.metric{font:600 24px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:7px}.sub{font-size:12px;color:var(--muted);margin-top:7px;line-height:1.45}.good{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}.section{margin-top:16px}.section-head{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:10px}.section-head h2{font-size:17px}.banner{border:1px solid var(--line);background:var(--soft);padding:14px;margin-bottom:14px;font-size:13px;line-height:1.5}.table-wrap{overflow:auto;border:1px solid var(--line)}table{width:100%;border-collapse:collapse;min-width:760px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{font-size:10px;text-transform:uppercase;color:var(--muted);background:var(--soft)}td.num,th.num{text-align:right}.chart{height:250px;border:1px solid var(--line);background:var(--card);padding:12px}.chart svg{width:100%;height:100%;overflow:visible}.chart-title{font-size:13px;font-weight:650;margin-bottom:8px}.legend{font-size:11px;color:var(--muted);margin-top:6px}.waterfall{display:grid;grid-template-columns:2.64024fr 1.14476fr .5fr;min-height:56px;border:1px solid var(--line);overflow:hidden}.waterfall>div{display:flex;align-items:center;justify-content:center;padding:6px;text-align:center;font:10px ui-monospace,SFMono-Regular,Menlo,monospace;border-right:1px solid var(--line)}.waterfall .current{background:color-mix(in srgb,var(--good) 18%,transparent)}.waterfall .maynard{background:color-mix(in srgb,var(--warn) 18%,transparent)}.waterfall .teal{background:color-mix(in srgb,var(--muted) 18%,transparent)}details{border:1px solid var(--line);background:var(--card);padding:12px}summary{cursor:pointer;color:var(--muted);font:11px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.08em}.raw{white-space:pre-wrap;word-break:break-word;font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);max-height:420px;overflow:auto;margin-top:12px}.status{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}.status strong{color:var(--text)}
-    @media(max-width:850px){.grid4,.grid3{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:1fr}header{align-items:flex-start;flex-direction:column}.metric{font-size:20px}}
-    @media(max-width:520px){main{padding:14px}.grid4,.grid3{grid-template-columns:1fr}.tabs{display:grid;grid-template-columns:1fr 1fr}.tab{width:100%}.waterfall{grid-template-columns:1fr}.waterfall>div{border-right:0;border-bottom:1px solid var(--line)}}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button{font:inherit}.shell{max-width:1220px;margin:0 auto;min-height:100vh;border-left:1px solid var(--line);border-right:1px solid var(--line)}header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:12px}.mark{width:40px;height:40px;background:var(--accent);color:var(--bg);display:grid;place-items:center;font-weight:800}.eyebrow,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.eyebrow{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}h1,h2,h3,p{margin:0}h1{font-size:18px}main{padding:20px}.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--line);padding-bottom:10px}.tab{border:1px solid var(--line);background:transparent;color:var(--muted);padding:9px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;cursor:pointer}.tab.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}.panel{display:none}.panel.active{display:block}.grid{display:grid;gap:12px}.grid4{grid-template-columns:repeat(4,minmax(0,1fr))}.grid3{grid-template-columns:repeat(3,minmax(0,1fr))}.grid2{grid-template-columns:repeat(2,minmax(0,1fr))}.card{border:1px solid var(--line);background:var(--card);padding:16px}.metric{font:600 24px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:7px}.sub{font-size:12px;color:var(--muted);margin-top:7px;line-height:1.45}.good{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}.section{margin-top:16px}.section-head{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:10px}.section-head h2{font-size:17px}.banner{border:1px solid var(--line);background:var(--soft);padding:14px;margin-bottom:14px;font-size:13px;line-height:1.5}.table-wrap{overflow:auto;border:1px solid var(--line)}table{width:100%;border-collapse:collapse;min-width:760px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{font-size:10px;text-transform:uppercase;color:var(--muted);background:var(--soft)}td.num,th.num{text-align:right}.chart{height:250px;border:1px solid var(--line);background:var(--card);padding:12px}.chart svg{width:100%;height:100%;overflow:visible}.chart-title{font-size:13px;font-weight:650;margin-bottom:8px}.legend{font-size:11px;color:var(--muted);margin-top:6px}.waterfall{display:grid;grid-template-columns:2.64024fr 1.14476fr .5fr;min-height:56px;border:1px solid var(--line);overflow:hidden}.waterfall>div{display:flex;align-items:center;justify-content:center;padding:6px;text-align:center;font:10px ui-monospace,SFMono-Regular,Menlo,monospace;border-right:1px solid var(--line)}.waterfall .current{background:color-mix(in srgb,var(--good) 18%,transparent)}.waterfall .maynard{background:color-mix(in srgb,var(--warn) 18%,transparent)}.waterfall .teal{background:color-mix(in srgb,var(--muted) 18%,transparent)}details{border:1px solid var(--line);background:var(--card);padding:12px}summary{cursor:pointer;color:var(--muted);font:11px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.08em}.raw{white-space:pre-wrap;word-break:break-word;font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);max-height:420px;overflow:auto;margin-top:12px}.status{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}.status strong{color:var(--text)}.market-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.market-ticker{font:600 15px ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}.quote-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}.quote{border:1px solid var(--line);padding:10px}.quote b{display:block;font:600 20px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:4px}.badge{display:inline-flex;padding:3px 7px;border:1px solid var(--line);font:10px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.06em}.badge.good{border-color:color-mix(in srgb,var(--good) 55%,var(--line))}.badge.warn{border-color:color-mix(in srgb,var(--warn) 55%,var(--line))}.position-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px}.kv{border-top:1px solid var(--line);padding-top:8px}.kv .v{font:600 14px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:4px}.empty{padding:18px;text-align:center;color:var(--muted);font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+    @media(max-width:850px){.grid4,.grid3{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:1fr}.quote-grid,.position-grid{grid-template-columns:repeat(2,minmax(0,1fr))}header{align-items:flex-start;flex-direction:column}.metric{font-size:20px}}
+    @media(max-width:520px){main{padding:14px}.grid4,.grid3{grid-template-columns:1fr}.tabs{display:grid;grid-template-columns:1fr 1fr}.tab{width:100%}.waterfall{grid-template-columns:1fr}.waterfall>div{border-right:0;border-bottom:1px solid var(--line)}.quote-grid,.position-grid{grid-template-columns:1fr 1fr}}
   </style>
 </head>
 <body>
@@ -28,15 +28,51 @@
     </nav>
 
     <section id="operations" class="panel active">
-      <div class="banner">Operational display only. This page has no trading controls and uses the existing read-only ETH 420 candidate-history interface.</div>
+      <div class="banner">Operational display only. Live market, position and order information below is read-only; this page has no trading controls.</div>
       <div class="grid grid4">
         <div class="card"><div class="eyebrow">Current side</div><div class="metric" id="opSide">—</div></div>
         <div class="card"><div class="eyebrow">Ladder step</div><div class="metric" id="opStep">—</div></div>
         <div class="card"><div class="eyebrow">Next wager</div><div class="metric" id="opWager">—</div></div>
         <div class="card"><div class="eyebrow">Today P&amp;L</div><div class="metric" id="opPnl">—</div></div>
       </div>
+
       <div class="section grid grid2">
-        <div class="card"><div class="eyebrow">Latest order</div><div class="metric" style="font-size:16px" id="latestOrder">Unavailable</div><div class="sub" id="latestOrderSub">Waiting for ledger.</div></div>
+        <div class="card">
+          <div class="market-head"><div><div class="eyebrow">Current ETH 15-minute market</div><div class="market-ticker" id="marketTicker">Waiting for live market…</div></div><span class="badge" id="marketFreshness">Unavailable</span></div>
+          <div class="sub" id="marketWindow">Open/close timing unavailable</div>
+          <div class="quote-grid">
+            <div class="quote"><div class="eyebrow">YES bid</div><b id="yesBid">—</b></div>
+            <div class="quote"><div class="eyebrow">YES ask</div><b id="yesAsk">—</b></div>
+            <div class="quote"><div class="eyebrow">NO bid</div><b id="noBid">—</b></div>
+            <div class="quote"><div class="eyebrow">NO ask</div><b id="noAsk">—</b></div>
+          </div>
+          <div class="position-grid">
+            <div class="kv"><div class="eyebrow">Floor strike</div><div class="v" id="floorStrike">—</div></div>
+            <div class="kv"><div class="eyebrow">Adjacent move</div><div class="v" id="adjacentMove">—</div></div>
+            <div class="kv"><div class="eyebrow">YES spread</div><div class="v" id="yesSpread">—</div></div>
+            <div class="kv"><div class="eyebrow">NO spread</div><div class="v" id="noSpread">—</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="market-head"><div><div class="eyebrow">Our current ETH 420 position</div><div class="market-ticker" id="positionTitle">No position confirmed</div></div><span class="badge" id="positionStatus">None</span></div>
+          <div class="position-grid">
+            <div class="kv"><div class="eyebrow">Side / step</div><div class="v" id="positionSideStep">—</div></div>
+            <div class="kv"><div class="eyebrow">Intended wager</div><div class="v" id="positionWager">—</div></div>
+            <div class="kv"><div class="eyebrow">Requested</div><div class="v" id="positionRequested">—</div></div>
+            <div class="kv"><div class="eyebrow">Filled / resting</div><div class="v" id="positionFilled">—</div></div>
+          </div>
+          <div class="sub" id="positionDetail">Durable position data will appear here when available.</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><div><div class="eyebrow">Exchange read-only order view</div><h2>Open / resting orders</h2></div><div class="status" id="openOrderCount">0 open orders</div></div>
+        <div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Side</th><th class="num">Price</th><th class="num">Filled</th><th class="num">Remaining</th><th>Status</th><th>Created</th></tr></thead><tbody id="openOrderRows"><tr><td colspan="7" class="empty">Waiting for exchange order snapshot…</td></tr></tbody></table></div>
+      </div>
+
+      <div class="section grid grid2">
+        <div class="card"><div class="eyebrow">Latest candidate order</div><div class="metric" style="font-size:16px" id="latestOrder">Unavailable</div><div class="sub" id="latestOrderSub">Waiting for ledger.</div></div>
         <div class="card"><div class="eyebrow">Ledger status</div><div class="metric" style="font-size:16px" id="ledgerState">Unavailable</div><div class="sub" id="ledgerSub">Read-only status.</div></div>
       </div>
     </section>
@@ -115,7 +151,10 @@
   const dateLabel = (key) => new Intl.DateTimeFormat('en-US',{timeZone:'UTC',month:'short',day:'numeric',year:'numeric'}).format(new Date(`${key}T00:00:00Z`));
   const easternDateKey = (ms) => new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ms));
   const easternClock = (ms) => new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit',hour12:true}).format(new Date(ms));
+  const fullEasternTime = (value) => { const ms=typeof value==='number'?value:Date.parse(value); return Number.isFinite(ms)?new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true}).format(new Date(ms)):'Unavailable'; };
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+  const first = (obj, names) => { for (const name of names) if (obj && obj[name] != null) return obj[name]; return null; };
+  const centsText = (value) => value == null || !Number.isFinite(Number(value)) ? '—' : `${Number(value)}¢`;
 
   document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === btn));
@@ -144,6 +183,38 @@
     const bw=Math.max(3,Math.min(28,630/points.length)); points.forEach((p,i)=>{const center=35+i*(630/Math.max(1,points.length)); const py=210-((p.value-min)/range)*190; const top=Math.min(py,zero), h=Math.max(1,Math.abs(zero-py)); const opacity=p.value>=0?.78:.48; svg.insertAdjacentHTML('beforeend',`<rect x="${center-bw/2}" y="${top}" width="${bw}" height="${h}" fill="currentColor" opacity="${opacity}"><title>${esc(p.label)} · ${money(p.value)}</title></rect>`)});
   }
 
+  function renderLiveMarket(live){
+    const availability=live?.availability?.status||'unavailable'; const market=live?.market||null; const evidence=availability==='fresh'?live?.evidence:null;
+    $('marketFreshness').textContent=availability.toUpperCase(); $('marketFreshness').className=`badge ${availability==='fresh'?'good':availability==='stale'?'warn':''}`;
+    $('marketTicker').textContent=market?.ticker||'Live market unavailable';
+    $('marketWindow').textContent=market ? `${fullEasternTime(market.openTime)} – ${fullEasternTime(market.closeTime)} ET${live?.availability?.quoteAgeMs!=null?` · quote age ${Math.round(Number(live.availability.quoteAgeMs))} ms`:''}` : (live?.availability?.reason?.replaceAll('_',' ')||'Open/close timing unavailable');
+    $('yesBid').textContent=centsText(evidence?.yesBid); $('yesAsk').textContent=centsText(evidence?.yesAsk); $('noBid').textContent=centsText(evidence?.noBid); $('noAsk').textContent=centsText(evidence?.noAsk);
+    $('floorStrike').textContent=evidence?.floorStrike==null?'—':Number(evidence.floorStrike).toLocaleString('en-US',{maximumFractionDigits:2});
+    $('adjacentMove').textContent=evidence?.adjacentMove==null?'—':`${(Number(evidence.adjacentMove)*100).toFixed(4)}%`; $('yesSpread').textContent=centsText(evidence?.yesSpreadCents); $('noSpread').textContent=centsText(evidence?.noSpreadCents);
+
+    const cp=live?.candidatePosition; const pos=cp?.availability==='available'?cp?.position:null;
+    if(pos){
+      $('positionTitle').textContent=pos.ticker; $('positionStatus').textContent=String(pos.lifecycleStatus||'position').replaceAll('_',' ').toUpperCase(); $('positionStatus').className='badge good';
+      $('positionSideStep').textContent=`${String(pos.side||'').toUpperCase()} · Step ${pos.step??'—'}`; $('positionWager').textContent=pos.intendedWagerCents==null?'—':`$${(Number(pos.intendedWagerCents)/100).toFixed(2)}`; $('positionRequested').textContent=pos.requestedContracts??'—'; $('positionFilled').textContent=`${pos.filledContracts??'—'} / ${pos.restingContracts??'—'}`;
+      const fill=pos.averageFillPriceCents==null?'fill price unavailable':`${pos.averageFillPriceCents}¢ avg fill`; const pnl=pos.realizedPnlDeltaCents==null?'P&L pending':money(Number(pos.realizedPnlDeltaCents)); $('positionDetail').textContent=`${fill} · ${pnl}${pos.settlementResult?` · settlement ${String(pos.settlementResult).toUpperCase()}`:''}`;
+    } else {
+      $('positionTitle').textContent='No current ETH 420 position'; $('positionStatus').textContent=cp?.availability==='unavailable'?'Unavailable':'None'; $('positionStatus').className='badge'; $('positionSideStep').textContent='—'; $('positionWager').textContent='—'; $('positionRequested').textContent='—'; $('positionFilled').textContent='— / —'; $('positionDetail').textContent=cp?.reason?.replaceAll('_',' ')||'No active candidate position is currently reported.';
+    }
+  }
+
+  function renderOpenOrders(payload){
+    const raw=Array.isArray(payload)?payload:Array.isArray(payload?.orders)?payload.orders:[];
+    const open=raw.filter(o=>{
+      const status=String(first(o,['status','order_status','state'])??'').toLowerCase(); const remaining=Number(first(o,['remaining_count','remaining_count_fp','remainingContracts','remaining_contracts','remaining'])??0);
+      return ['open','resting','pending','submitted','active','partially_filled','partially-filled'].includes(status) || remaining>0;
+    });
+    $('openOrderCount').textContent=`${open.length} open order${open.length===1?'':'s'}`;
+    $('openOrderRows').innerHTML=open.length?open.map(o=>{
+      const ticker=first(o,['ticker','market_ticker'])??'—'; const side=String(first(o,['side','action'])??'—').toUpperCase(); const price=first(o,['yes_price','no_price','price','price_cents','limit_price']); const filled=first(o,['filled_count','filled_count_fp','filledContracts','filled_contracts','filled'])??'—'; const remaining=first(o,['remaining_count','remaining_count_fp','remainingContracts','remaining_contracts','remaining'])??'—'; const status=String(first(o,['status','order_status','state'])??'—').replaceAll('_',' '); const created=first(o,['created_time','created_at','createdAt','created_at_ms','createdAtMs']); const createdText=created==null?'—':fullEasternTime(typeof created==='number'&&created<1e12?created*1000:created);
+      return `<tr><td>${esc(ticker)}</td><td>${esc(side)}</td><td class="num">${price==null?'—':centsText(price)}</td><td class="num">${esc(filled)}</td><td class="num">${esc(remaining)}</td><td>${esc(status)}</td><td>${esc(createdText)}</td></tr>`;
+    }).join(''):'<tr><td colspan="7" class="empty">No open or resting exchange orders.</td></tr>';
+  }
+
   function render(data){
     const state=data?.state||null, daily=[...(data?.dailyPnl?.rows||[])].sort((a,b)=>a.easternDate.localeCompare(b.easternDate)), orders=[...(data?.orders||[])].sort((a,b)=>Number(b.createdAtMs)-Number(a.createdAtMs));
     const latest=orders[0]||null, todayKey=state?.easternDate||daily.at(-1)?.easternDate||null, today=daily.find(r=>r.easternDate===todayKey)||null;
@@ -169,12 +240,21 @@
     $('adminOrders').textContent=data?.ordersAvailability?.available===false?'NO':'YES'; $('adminPnl').textContent=data?.dailyPnl?.available===false?'NO':'YES'; $('adminUnresolved').textContent=data?.operationalStatus?.unresolvedLifecycleCount??'—'; $('rawData').textContent=JSON.stringify(data,null,2);
   }
 
+  async function readJson(path){ const res=await fetch(path,{cache:'no-store'}); if(!res.ok) throw new Error(`${path} HTTP ${res.status}`); return res.json(); }
   async function refresh(){
-    const status=$('refreshStatus'); status.textContent='Refreshing read-only ledger…';
-    try{const res=await fetch('/api/trade/analytics/eth420-candidate-history?limit=500',{cache:'no-store'}); if(!res.ok)throw new Error(`HTTP ${res.status}`); const data=await res.json(); render(data); status.innerHTML=`<strong>Live read-only data</strong> · refreshed ${new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date())}`;}
-    catch(err){status.innerHTML=`<span class="warn">Ledger unavailable</span> · ${esc(err?.message||err)}`;}
+    const status=$('refreshStatus'); status.textContent='Refreshing read-only data…';
+    const [historyResult,marketResult,ordersResult]=await Promise.allSettled([
+      readJson('/api/trade/analytics/eth420-candidate-history?limit=500'),
+      readJson('/api/trade/analytics/eth420-live-market'),
+      readJson('/api/trade/orders?limit=100'),
+    ]);
+    if(historyResult.status==='fulfilled') render(historyResult.value);
+    if(marketResult.status==='fulfilled') renderLiveMarket(marketResult.value); else renderLiveMarket(null);
+    if(ordersResult.status==='fulfilled') renderOpenOrders(ordersResult.value); else { $('openOrderCount').textContent='Orders unavailable'; $('openOrderRows').innerHTML='<tr><td colspan="7" class="empty">Exchange order snapshot unavailable.</td></tr>'; }
+    const failures=[historyResult,marketResult,ordersResult].filter(x=>x.status==='rejected').length;
+    status.innerHTML=failures===0?`<strong>Live read-only data</strong> · refreshed ${new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date())}`:`<span class="warn">Partial read-only data</span> · ${failures} source${failures===1?'':'s'} unavailable`;
   }
-  refresh(); setInterval(refresh,30000);
+  refresh(); setInterval(refresh,15000);
 })();
 </script>
 </body>
