@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ETH 420 Dashboard</title>
+  <style>
+    :root{color-scheme:light dark;--bg:#0c0d0e;--card:#141619;--muted:#8f969f;--text:#f4f6f8;--line:#2a2e33;--accent:#f4f6f8;--good:#35b66f;--bad:#e05b5b;--warn:#d9a441;--soft:#1a1d21}
+    @media(prefers-color-scheme:light){:root{--bg:#f6f7f8;--card:#fff;--muted:#66707a;--text:#15181b;--line:#d9dde1;--accent:#15181b;--soft:#f0f2f4}}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button{font:inherit}.shell{max-width:1220px;margin:0 auto;min-height:100vh;border-left:1px solid var(--line);border-right:1px solid var(--line)}header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:12px}.mark{width:40px;height:40px;background:var(--accent);color:var(--bg);display:grid;place-items:center;font-weight:800}.eyebrow,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.eyebrow{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}h1,h2,h3,p{margin:0}h1{font-size:18px}main{padding:20px}.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--line);padding-bottom:10px}.tab{border:1px solid var(--line);background:transparent;color:var(--muted);padding:9px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;cursor:pointer}.tab.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}.panel{display:none}.panel.active{display:block}.grid{display:grid;gap:12px}.grid4{grid-template-columns:repeat(4,minmax(0,1fr))}.grid3{grid-template-columns:repeat(3,minmax(0,1fr))}.grid2{grid-template-columns:repeat(2,minmax(0,1fr))}.card{border:1px solid var(--line);background:var(--card);padding:16px}.metric{font:600 24px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:7px}.sub{font-size:12px;color:var(--muted);margin-top:7px;line-height:1.45}.good{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}.section{margin-top:16px}.section-head{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:10px}.section-head h2{font-size:17px}.banner{border:1px solid var(--line);background:var(--soft);padding:14px;margin-bottom:14px;font-size:13px;line-height:1.5}.table-wrap{overflow:auto;border:1px solid var(--line)}table{width:100%;border-collapse:collapse;min-width:760px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{font-size:10px;text-transform:uppercase;color:var(--muted);background:var(--soft)}td.num,th.num{text-align:right}.chart{height:250px;border:1px solid var(--line);background:var(--card);padding:12px}.chart svg{width:100%;height:100%;overflow:visible}.chart-title{font-size:13px;font-weight:650;margin-bottom:8px}.legend{font-size:11px;color:var(--muted);margin-top:6px}.waterfall{display:grid;grid-template-columns:2.64024fr 1.14476fr .5fr;min-height:56px;border:1px solid var(--line);overflow:hidden}.waterfall>div{display:flex;align-items:center;justify-content:center;padding:6px;text-align:center;font:10px ui-monospace,SFMono-Regular,Menlo,monospace;border-right:1px solid var(--line)}.waterfall .current{background:color-mix(in srgb,var(--good) 18%,transparent)}.waterfall .maynard{background:color-mix(in srgb,var(--warn) 18%,transparent)}.waterfall .teal{background:color-mix(in srgb,var(--muted) 18%,transparent)}details{border:1px solid var(--line);background:var(--card);padding:12px}summary{cursor:pointer;color:var(--muted);font:11px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.08em}.raw{white-space:pre-wrap;word-break:break-word;font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);max-height:420px;overflow:auto;margin-top:12px}.status{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}.status strong{color:var(--text)}
+    @media(max-width:850px){.grid4,.grid3{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:1fr}header{align-items:flex-start;flex-direction:column}.metric{font-size:20px}}
+    @media(max-width:520px){main{padding:14px}.grid4,.grid3{grid-template-columns:1fr}.tabs{display:grid;grid-template-columns:1fr 1fr}.tab{width:100%}.waterfall{grid-template-columns:1fr}.waterfall>div{border-right:0;border-bottom:1px solid var(--line)}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="brand"><div class="mark">420</div><div><div class="eyebrow">Read-only presentation</div><h1>ETH 420 Dashboard</h1></div></div>
+    <div class="status" id="refreshStatus">Waiting for candidate ledger…</div>
+  </header>
+  <main>
+    <nav class="tabs" aria-label="Dashboard views">
+      <button class="tab active" data-tab="operations">Operations</button>
+      <button class="tab" data-tab="pnl">P&amp;L</button>
+      <button class="tab" data-tab="charts">Charts &amp; Statistics</button>
+      <button class="tab" data-tab="balance">Balance Sheet</button>
+      <button class="tab" data-tab="admin">Admin / Debug</button>
+    </nav>
+
+    <section id="operations" class="panel active">
+      <div class="banner">Operational display only. This page has no trading controls and uses the existing read-only ETH 420 candidate-history interface.</div>
+      <div class="grid grid4">
+        <div class="card"><div class="eyebrow">Current side</div><div class="metric" id="opSide">—</div></div>
+        <div class="card"><div class="eyebrow">Ladder step</div><div class="metric" id="opStep">—</div></div>
+        <div class="card"><div class="eyebrow">Next wager</div><div class="metric" id="opWager">—</div></div>
+        <div class="card"><div class="eyebrow">Today P&amp;L</div><div class="metric" id="opPnl">—</div></div>
+      </div>
+      <div class="section grid grid2">
+        <div class="card"><div class="eyebrow">Latest order</div><div class="metric" style="font-size:16px" id="latestOrder">Unavailable</div><div class="sub" id="latestOrderSub">Waiting for ledger.</div></div>
+        <div class="card"><div class="eyebrow">Ledger status</div><div class="metric" style="font-size:16px" id="ledgerState">Unavailable</div><div class="sub" id="ledgerSub">Read-only status.</div></div>
+      </div>
+    </section>
+
+    <section id="pnl" class="panel">
+      <div class="grid grid4">
+        <div class="card"><div class="eyebrow">Today</div><div class="metric" id="pnlToday">—</div></div>
+        <div class="card"><div class="eyebrow">This week</div><div class="metric" id="pnlWeek">—</div></div>
+        <div class="card"><div class="eyebrow">This month</div><div class="metric" id="pnlMonth">—</div></div>
+        <div class="card"><div class="eyebrow">Available history</div><div class="metric" id="pnlAll">—</div><div class="sub">Only days returned by the existing frontend-accessible ledger are included.</div></div>
+      </div>
+      <div class="section">
+        <div class="section-head"><div><div class="eyebrow">Daily performance</div><h2>Daily P&amp;L summary</h2></div><div class="status" id="dayCount">0 days</div></div>
+        <div class="table-wrap"><table><thead><tr><th>ET day</th><th class="num">Settled</th><th class="num">Wins</th><th class="num">Losses</th><th class="num">Bets</th><th class="num">Fees</th><th class="num">Net P&amp;L</th></tr></thead><tbody id="dailyRows"></tbody></table></div>
+      </div>
+      <div class="section">
+        <div class="section-head"><div><div class="eyebrow">Read-only candidate ledger</div><h2>Daily transaction log</h2></div><div class="status" id="orderCount">0 records</div></div>
+        <div class="table-wrap"><table><thead><tr><th>ET day / time</th><th>Ticker</th><th>Step</th><th>Side</th><th class="num">Requested / filled</th><th class="num">Wager</th><th>Status</th><th class="num">Realized P&amp;L</th></tr></thead><tbody id="orderRows"></tbody></table></div>
+      </div>
+    </section>
+
+    <section id="charts" class="panel">
+      <div class="grid grid3">
+        <div class="card"><div class="eyebrow">Win rate</div><div class="metric" id="statWinRate">—</div><div class="sub">Settled winning orders / settled wins + losses.</div></div>
+        <div class="card"><div class="eyebrow">Average daily P&amp;L</div><div class="metric" id="statAvgDay">—</div></div>
+        <div class="card"><div class="eyebrow">Best / worst day</div><div class="metric" style="font-size:17px" id="statBestWorst">—</div></div>
+      </div>
+      <div class="section grid grid2">
+        <div><div class="chart-title">Cumulative P&amp;L · available history</div><div class="chart"><svg id="cumChart" viewBox="0 0 700 230" preserveAspectRatio="none"></svg></div><div class="legend">Client-side chart from existing daily P&amp;L rows.</div></div>
+        <div><div class="chart-title">Daily P&amp;L</div><div class="chart"><svg id="dailyChart" viewBox="0 0 700 230" preserveAspectRatio="none"></svg></div><div class="legend">Each bar is one Eastern Time day returned by the ledger.</div></div>
+      </div>
+      <div class="section grid grid2">
+        <div><div class="chart-title">Weekly P&amp;L</div><div class="chart"><svg id="weeklyChart" viewBox="0 0 700 230" preserveAspectRatio="none"></svg></div></div>
+        <div><div class="chart-title">Monthly P&amp;L</div><div class="chart"><svg id="monthlyChart" viewBox="0 0 700 230" preserveAspectRatio="none"></svg></div></div>
+      </div>
+    </section>
+
+    <section id="balance" class="panel">
+      <div class="banner"><strong>Locked reconciled baseline:</strong> September 1, 2026 closing statement, after settlement of the 11:45 PM–12:00 AM ETH window. These figures are presentation-only and are not rewritten by live trading data.</div>
+      <div class="grid grid4">
+        <div class="card"><div class="eyebrow">Sep. 1 closing equity</div><div class="metric">$2,640.24</div></div>
+        <div class="card"><div class="eyebrow">Maynard priority claim</div><div class="metric">$3,785.00</div></div>
+        <div class="card"><div class="eyebrow">Maynard unrecovered</div><div class="metric">$1,144.76</div></div>
+        <div class="card"><div class="eyebrow">Full restoration threshold</div><div class="metric">$4,285.00</div></div>
+      </div>
+      <div class="section grid grid2">
+        <div class="card"><div class="eyebrow">Capital &amp; equity bridge</div><div class="sub" style="font-size:13px;color:var(--text);line-height:1.9">Agreed Aug. 9 opening equity <strong>$1,000.00</strong><br>Later Maynard deposits, net <strong>+$1,470.00</strong><br>Implied cumulative Shawshank P&amp;L <strong>+$170.24</strong><br>Sep. 1 closing equity <strong>$2,640.24</strong></div></div>
+        <div class="card"><div class="eyebrow">Maynard priority account</div><div class="sub" style="font-size:13px;color:var(--text);line-height:1.9">Capital contributed <strong>$2,000.00</strong><br>Reimbursable operating expenses through 8/31 <strong>$1,785.00</strong><br>Total priority claim <strong>$3,785.00</strong><br>Still unrecovered <strong>$1,144.76</strong></div></div>
+      </div>
+      <div class="section card"><div class="eyebrow">Repayment waterfall</div><div class="waterfall" style="margin-top:12px"><div class="current">$2,640.24<br>Sep. 1 equity</div><div class="maynard">+$1,144.76<br>Maynard restored at $3,785</div><div class="teal">+$500<br>Both restored at $4,285</div></div><div class="sub">Equity above $4,285 becomes true excess/distributable Shawshank profit.</div></div>
+      <div class="section grid grid2">
+        <div class="card"><div class="eyebrow">Teal capital</div><div class="metric">$500.00</div><div class="sub">Restored after Maynard is fully restored.</div></div>
+        <div class="card"><div class="eyebrow">Red · Sep. 1 informational accrual</div><div class="metric">$116.97</div><div class="sub">10% of approximately $1,169.73 realized trading P&amp;L through the final Sep. 1 window. Informational only; not deducted from Sep. 1 closing equity.</div></div>
+      </div>
+    </section>
+
+    <section id="admin" class="panel">
+      <div class="banner">Read-only diagnostics. Nothing on this page submits, cancels, settles, reconciles, or changes an order.</div>
+      <div class="grid grid3">
+        <div class="card"><div class="eyebrow">Orders available</div><div class="metric" id="adminOrders">—</div></div>
+        <div class="card"><div class="eyebrow">Daily P&amp;L available</div><div class="metric" id="adminPnl">—</div></div>
+        <div class="card"><div class="eyebrow">Unresolved lifecycle count</div><div class="metric" id="adminUnresolved">—</div></div>
+      </div>
+      <details class="section"><summary>Raw candidate response</summary><div class="raw" id="rawData">Waiting for ledger…</div></details>
+    </section>
+  </main>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const money = (cents, plus=true) => {
+    if (cents == null || !Number.isFinite(Number(cents))) return 'Unavailable';
+    const n = Number(cents); return `${plus && n > 0 ? '+' : n < 0 ? '-' : ''}$${(Math.abs(n)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  };
+  const signedClass = (el, cents) => { el.classList.remove('good','bad'); if (cents > 0) el.classList.add('good'); if (cents < 0) el.classList.add('bad'); };
+  const dateLabel = (key) => new Intl.DateTimeFormat('en-US',{timeZone:'UTC',month:'short',day:'numeric',year:'numeric'}).format(new Date(`${key}T00:00:00Z`));
+  const easternDateKey = (ms) => new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ms));
+  const easternClock = (ms) => new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit',hour12:true}).format(new Date(ms));
+  const esc = (value) => String(value ?? '').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+
+  document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === btn));
+    document.querySelectorAll('.panel').forEach(x => x.classList.toggle('active', x.id === btn.dataset.tab));
+  }));
+
+  function startOfWeekKey(dateKey){
+    const d=new Date(`${dateKey}T12:00:00Z`); const day=d.getUTCDay(); const diff=(day+6)%7; d.setUTCDate(d.getUTCDate()-diff); return d.toISOString().slice(0,10);
+  }
+  function aggregate(rows, keyFn){
+    const map=new Map(); rows.forEach(r=>{const k=keyFn(r.easternDate); map.set(k,(map.get(k)||0)+Number(r.netRealizedPnlCents||0));});
+    return [...map.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([label,value])=>({label,value}));
+  }
+  function lineChart(svg, points){
+    svg.innerHTML=''; if(!points.length)return;
+    const values=points.map(p=>p.value), min=Math.min(0,...values), max=Math.max(0,...values), range=Math.max(1,max-min);
+    const x=i=>points.length===1?350:20+i*(660/(points.length-1)); const y=v=>210-((v-min)/range)*190;
+    const zero=y(0); svg.insertAdjacentHTML('beforeend',`<line x1="15" y1="${zero}" x2="685" y2="${zero}" stroke="currentColor" opacity=".18"/>`);
+    const pts=points.map((p,i)=>`${x(i)},${y(p.value)}`).join(' '); svg.insertAdjacentHTML('beforeend',`<polyline fill="none" stroke="currentColor" stroke-width="2" points="${pts}"/>`);
+    points.forEach((p,i)=>svg.insertAdjacentHTML('beforeend',`<circle cx="${x(i)}" cy="${y(p.value)}" r="2.5" fill="currentColor"><title>${esc(p.label)} · ${money(p.value)}</title></circle>`));
+  }
+  function barChart(svg, points){
+    svg.innerHTML=''; if(!points.length)return;
+    const values=points.map(p=>p.value), min=Math.min(0,...values), max=Math.max(0,...values), range=Math.max(1,max-min), zero=210-((0-min)/range)*190;
+    svg.insertAdjacentHTML('beforeend',`<line x1="15" y1="${zero}" x2="685" y2="${zero}" stroke="currentColor" opacity=".18"/>`);
+    const bw=Math.max(3,Math.min(28,630/points.length)); points.forEach((p,i)=>{const center=35+i*(630/Math.max(1,points.length)); const py=210-((p.value-min)/range)*190; const top=Math.min(py,zero), h=Math.max(1,Math.abs(zero-py)); const opacity=p.value>=0?.78:.48; svg.insertAdjacentHTML('beforeend',`<rect x="${center-bw/2}" y="${top}" width="${bw}" height="${h}" fill="currentColor" opacity="${opacity}"><title>${esc(p.label)} · ${money(p.value)}</title></rect>`)});
+  }
+
+  function render(data){
+    const state=data?.state||null, daily=[...(data?.dailyPnl?.rows||[])].sort((a,b)=>a.easternDate.localeCompare(b.easternDate)), orders=[...(data?.orders||[])].sort((a,b)=>Number(b.createdAtMs)-Number(a.createdAtMs));
+    const latest=orders[0]||null, todayKey=state?.easternDate||daily.at(-1)?.easternDate||null, today=daily.find(r=>r.easternDate===todayKey)||null;
+    $('opSide').textContent=state?.side?.toUpperCase()||'—'; $('opStep').textContent=state?`Step ${state.step}`:'—'; $('opWager').textContent=data?.operationalStatus?.nextNormalWagerCents==null?'—':`$${(Number(data.operationalStatus.nextNormalWagerCents)/100).toFixed(0)}`;
+    const todayCents=Number(today?.netRealizedPnlCents ?? state?.realizedPnlCents ?? 0); $('opPnl').textContent=money(todayCents); signedClass($('opPnl'),todayCents);
+    if(latest){$('latestOrder').textContent=`${String(latest.status).replaceAll('_',' ').toUpperCase()} · ${String(latest.side).toUpperCase()} · Step ${latest.step}`; $('latestOrderSub').textContent=`${latest.ticker} · $${(Number(latest.effectiveWagerCents)/100).toFixed(2)} · ${latest.filledContracts ?? '—'} filled · ${latest.realizedPnlDeltaCents==null?'P&L pending':money(Number(latest.realizedPnlDeltaCents))}`;}
+    $('ledgerState').textContent=data?.ordersAvailability?.available===false?'History unavailable':'Read-only ledger available'; $('ledgerSub').textContent=`${orders.length} order records · ${daily.length} daily rows returned`;
+
+    const nowKey=todayKey; const weekKey=nowKey?startOfWeekKey(nowKey):null; const monthKey=nowKey?nowKey.slice(0,7):null;
+    const weekCents=daily.filter(r=>weekKey&&r.easternDate>=weekKey&&r.easternDate<=nowKey).reduce((s,r)=>s+Number(r.netRealizedPnlCents||0),0);
+    const monthCents=daily.filter(r=>monthKey&&r.easternDate.startsWith(monthKey)).reduce((s,r)=>s+Number(r.netRealizedPnlCents||0),0); const allCents=daily.reduce((s,r)=>s+Number(r.netRealizedPnlCents||0),0);
+    [['pnlToday',todayCents],['pnlWeek',weekCents],['pnlMonth',monthCents],['pnlAll',allCents]].forEach(([id,v])=>{$(id).textContent=money(v);signedClass($(id),v)});
+    $('dayCount').textContent=`${daily.length} day${daily.length===1?'':'s'}`;
+    $('dailyRows').innerHTML=[...daily].reverse().map(r=>`<tr><td>${dateLabel(r.easternDate)}</td><td class="num">${r.settledOrderCount??0}</td><td class="num">${r.winningOrderCount??0}</td><td class="num">${r.losingOrderCount??0}</td><td class="num">${money(Number(r.totalBetsCents||0),false)}</td><td class="num">${money(Number(r.totalFeesCents||0),false)}</td><td class="num ${Number(r.netRealizedPnlCents||0)>0?'good':Number(r.netRealizedPnlCents||0)<0?'bad':''}">${money(Number(r.netRealizedPnlCents||0))}</td></tr>`).join('')||'<tr><td colspan="7">No daily P&L rows available.</td></tr>';
+    $('orderCount').textContent=`${orders.length} record${orders.length===1?'':'s'}`;
+    $('orderRows').innerHTML=orders.map(o=>`<tr><td>${dateLabel(easternDateKey(Number(o.createdAtMs)))} · ${easternClock(Number(o.createdAtMs))}</td><td>${esc(o.ticker)}</td><td>Step ${o.step}</td><td>${String(o.side).toUpperCase()}</td><td class="num">${o.requestedContracts} / ${o.filledContracts??'—'}</td><td class="num">$${(Number(o.effectiveWagerCents)/100).toFixed(2)}</td><td>${esc(String(o.status).replaceAll('_',' '))}${o.settlementResult?` · ${esc(o.settlementResult)}`:''}</td><td class="num ${Number(o.realizedPnlDeltaCents||0)>0?'good':Number(o.realizedPnlDeltaCents||0)<0?'bad':''}">${o.realizedPnlDeltaCents==null?'Pending':money(Number(o.realizedPnlDeltaCents))}</td></tr>`).join('')||'<tr><td colspan="8">No candidate orders available.</td></tr>';
+
+    const wins=daily.reduce((s,r)=>s+Number(r.winningOrderCount||0),0), losses=daily.reduce((s,r)=>s+Number(r.losingOrderCount||0),0), denom=wins+losses; $('statWinRate').textContent=denom?`${(wins/denom*100).toFixed(1)}%`:'—'; $('statAvgDay').textContent=daily.length?money(Math.round(allCents/daily.length)):'—'; signedClass($('statAvgDay'),daily.length?allCents/daily.length:0);
+    if(daily.length){const sorted=[...daily].sort((a,b)=>Number(a.netRealizedPnlCents)-Number(b.netRealizedPnlCents)); $('statBestWorst').textContent=`${money(Number(sorted.at(-1).netRealizedPnlCents))} / ${money(Number(sorted[0].netRealizedPnlCents))}`;}
+    let running=0; const cumulative=daily.map(r=>({label:r.easternDate,value:(running+=Number(r.netRealizedPnlCents||0))})); const dayPts=daily.map(r=>({label:r.easternDate,value:Number(r.netRealizedPnlCents||0)}));
+    lineChart($('cumChart'),cumulative); barChart($('dailyChart'),dayPts); barChart($('weeklyChart'),aggregate(daily,startOfWeekKey)); barChart($('monthlyChart'),aggregate(daily,k=>k.slice(0,7)));
+
+    $('adminOrders').textContent=data?.ordersAvailability?.available===false?'NO':'YES'; $('adminPnl').textContent=data?.dailyPnl?.available===false?'NO':'YES'; $('adminUnresolved').textContent=data?.operationalStatus?.unresolvedLifecycleCount??'—'; $('rawData').textContent=JSON.stringify(data,null,2);
+  }
+
+  async function refresh(){
+    const status=$('refreshStatus'); status.textContent='Refreshing read-only ledger…';
+    try{const res=await fetch('/api/trade/analytics/eth420-candidate-history?limit=500',{cache:'no-store'}); if(!res.ok)throw new Error(`HTTP ${res.status}`); const data=await res.json(); render(data); status.innerHTML=`<strong>Live read-only data</strong> · refreshed ${new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date())}`;}
+    catch(err){status.innerHTML=`<span class="warn">Ledger unavailable</span> · ${esc(err?.message||err)}`;}
+  }
+  refresh(); setInterval(refresh,30000);
+})();
+</script>
+</body>
+</html>
