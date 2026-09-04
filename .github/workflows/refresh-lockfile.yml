@@ -1,0 +1,31 @@
+name: refresh-lockfile
+on:
+  push:
+    branches:
+      - fix/railway-lockfile
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/railway-lockfile
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --lockfile-only --no-frozen-lockfile
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo "Lockfile already current"
+          else
+            git commit -m "Refresh pnpm lockfile"
+            git push
+          fi
