@@ -13,8 +13,9 @@ store_insert = r'''/**
  * that candidate zero-fills already use.
  *
  * Returns null when storage is unavailable (caller must fail closed), "pending"
- * while the immediately-prior regular order could still become a zero-fill,
- * "armed" once the override exists, and "none" when no Back Flip is due.
+ * while the immediately-prior regular order has not yet reached authoritative
+ * zero-fill settlement, "armed" once the override exists, and "none" when no
+ * Back Flip is due.
  */
 export async function ensureEth420BackFlipFromPriorRegular(
   targetOpenTimeMs: number,
@@ -48,13 +49,14 @@ export async function ensureEth420BackFlipFromPriorRegular(
       if (filled != null && filled > 0) return "none" as const;
       if (outcome === "rejected" || outcome === "expired") return "none" as const;
 
-      // zero_fill_verified already proves: market terminal, complete empty fill
-      // history, and zero/absent position. zero_fill additionally requires the
-      // official settlement transition to be durable before it can arm.
+      // Match the candidate Back Flip fence: do not arm from cancellation alone.
+      // The regular order must have zero filled contracts AND an official YES/NO
+      // settlement durably recorded by the regular lifecycle reconciler.
       const settlement = String(prior["settlement_result"] ?? "").toLowerCase();
-      const verifiedZeroFill = outcome === "zero_fill_verified";
-      const settledZeroFill = outcome === "zero_fill" && (settlement === "yes" || settlement === "no");
-      if (!verifiedZeroFill && !settledZeroFill) return "pending" as const;
+      const authoritativeZeroFill = (outcome === "zero_fill" || outcome === "zero_fill_verified")
+        && (settlement === "yes" || settlement === "no")
+        && Number(prior["filled_contracts"] ?? 0) === 0;
+      if (!authoritativeZeroFill) return "pending" as const;
       if (!prior["kalshi_order_id"] || (prior["side"] !== "yes" && prior["side"] !== "no")) return "pending" as const;
 
       const sourceId = `regular:${String(prior["id"])}`;
