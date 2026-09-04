@@ -3,7 +3,7 @@ import fs from 'node:fs';
 const path = new URL('../public/eth420-dashboard.html', import.meta.url);
 let html = fs.readFileSync(path, 'utf8');
 
-const marker = 'data-unified-operations-runtime="v1"';
+const marker = 'data-unified-operations-runtime="v2"';
 if (html.includes(marker)) process.exit(0);
 
 html = html.replace(
@@ -14,7 +14,7 @@ html = html.replace('Our current ETH 420 position', 'Current ETH order / positio
 html = html.replace('Latest candidate order', 'Latest ETH order');
 
 const runtime = String.raw`
-<script data-unified-operations-runtime="v1">
+<script data-unified-operations-runtime="v2">
 (()=>{
   const $=id=>document.getElementById(id);
   const first=(o,n)=>{for(const k of n)if(o&&o[k]!=null)return o[k];return null};
@@ -36,9 +36,23 @@ const runtime = String.raw`
   const backFlipTickers=p=>{const s=new Set;const rows=Array.isArray(p)?p:Array.isArray(p?.rows)?p.rows:Array.isArray(p?.backFlips)?p.backFlips:[];for(const r of rows){const t=first(r,['targetTicker','target_ticker','ticker']);if(t)s.add(String(t))}return s};
   const routeOf=(o,bf)=>{const c=orderClient(o);if(c.startsWith('eth-yes-')||c.startsWith('eth-no-'))return'Regular';if(c.endsWith(':eth420-live-v1'))return bf.has(orderTicker(o))?'Back Flip':'420 Jump';return'ETH Order'};
   const committedFor=(o,fills)=>{const oid=String(first(o,['order_id','id'])??'');if(!oid)return null;let total=0,seen=false;for(const f of fills){const foid=String(first(f,['order_id','orderId'])??'');if(foid!==oid)continue;const count=num(first(f,['count','count_fp','fill_count','contracts']));if(count==null)continue;const side=sideOf(o);let p=first(f,side==='YES'?['yes_price','yes_price_dollars']:['no_price','no_price_dollars']);if(p==null)p=first(f,['price','price_cents']);let pn=Number(p);if(!Number.isFinite(pn))continue;if(pn<=1)pn*=100;total+=count*pn/100;seen=true}return seen?total:null};
+  const martingaleState=p=>p?.state??p?.martingale?.state??p?.dashboard?.state??p?.martingale??p??null;
+  const renderMartingaleState=p=>{
+    const s=martingaleState(p);if(!s)return;
+    const side=String(first(s,['side','currentSide','current_side'])??'').toUpperCase();
+    const rawStep=num(first(s,['martingaleStep','martingale_step','step']));
+    if(side==='YES'||side==='NO')$('opSide').textContent=side;
+    if(rawStep!=null&&Number.isFinite(rawStep)){
+      const internal=Math.max(0,Math.min(2,Math.trunc(rawStep)));
+      const human=internal+1;
+      const wager=[15,30,60][internal];
+      $('opStepWager').textContent='Step '+human+' · '+fmtMoney(wager);
+    }
+  };
   async function j(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw Error(String(r.status));return r.json()}
   async function refreshUnifiedOps(){
-    const [or,mk,fl,bf]=await Promise.allSettled([j('/api/trade/orders?limit=100'),j('/api/trade/analytics/eth420-live-market'),j('/api/trade/fills?limit=1000'),j('/api/diagnostics/back-flips')]);
+    const [or,mk,fl,bf,mg]=await Promise.allSettled([j('/api/trade/orders?limit=100'),j('/api/trade/analytics/eth420-live-market'),j('/api/trade/fills?limit=1000'),j('/api/diagnostics/back-flips'),j('/api/trade/martingale')]);
+    if(mg.status==='fulfilled')renderMartingaleState(mg.value);
     if(or.status!=='fulfilled')return;
     const orders=rowsOf(or.value).filter(o=>/^KXETH15M-/.test(orderTicker(o))).sort((a,b)=>orderTime(b)-orderTime(a));
     const fills=fl.status==='fulfilled'?fillsOf(fl.value):[];
