@@ -2,86 +2,79 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const first = (o, keys) => { for (const k of keys) if (o && o[k] != null) return o[k]; return null; };
-  const moneyCents = (cents) => cents == null || !Number.isFinite(Number(cents)) ? '—' : '$' + (Number(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const cents = (v) => v == null || !Number.isFinite(Number(v)) ? '—' : Math.round(Number(v)) + '¢';
+  const num = (v) => v == null ? null : (Number.isFinite(Number(v)) ? Number(v) : null);
+  const moneyCents = (c) => c == null ? '—' : '$' + (Number(c) / 100).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const moneyDollars = (d) => d == null ? '—' : '$' + Number(d).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const priceCents = (v) => { const n = num(v); if (n == null) return null; return n <= 1 ? n * 100 : n; };
+  const cents = (v) => { const n = num(v); return n == null ? '—' : Math.round(n) + '¢'; };
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (s) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
   const fullTime = (v) => {
     if (v == null) return '—';
-    const ms = typeof v === 'number' ? v : Date.parse(v);
-    if (!Number.isFinite(ms)) return '—';
-    return new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).format(new Date(ms));
+    const n = Number(v); const ms = Number.isFinite(n) ? (n < 1e12 ? n * 1000 : n) : Date.parse(v);
+    return Number.isFinite(ms) ? new Intl.DateTimeFormat('en-US', {timeZone:'America/New_York', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', second:'2-digit', hour12:true}).format(new Date(ms)) : '—';
   };
-  async function j(path) {
-    const r = await fetch(path, { cache: 'no-store' });
-    if (!r.ok) throw new Error(path + ' HTTP ' + r.status);
-    return r.json();
-  }
+  async function j(path) { const r = await fetch(path, {cache:'no-store'}); if (!r.ok) throw new Error(path + ' HTTP ' + r.status); return r.json(); }
+
+  const orderRows = (p) => Array.isArray(p) ? p : Array.isArray(p?.orders) ? p.orders : [];
+  const fillRows = (p) => Array.isArray(p) ? p : Array.isArray(p?.fills) ? p.fills : [];
+  const orderTicker = (o) => String(first(o, ['ticker','market_ticker']) ?? '');
+  const clientId = (o) => String(first(o, ['client_order_id','clientOrderId']) ?? '');
+  const orderId = (o) => String(first(o, ['order_id','orderId','id']) ?? '');
+  const orderTime = (o) => {
+    const v = first(o, ['created_time','created_at','createdAt','created_at_ms','createdAtMs']);
+    if (v == null) return 0; const n = Number(v); if (Number.isFinite(n)) return n < 1e12 ? n * 1000 : n;
+    const d = Date.parse(v); return Number.isFinite(d) ? d : 0;
+  };
+  const sideOf = (o) => {
+    const c = clientId(o); if (c.startsWith('eth-yes-')) return 'YES'; if (c.startsWith('eth-no-')) return 'NO';
+    const s = String(first(o, ['side','order_side']) ?? '').toLowerCase();
+    if (s === 'yes' || s === 'bid') return 'YES'; if (s === 'no' || s === 'ask') return 'NO'; return '—';
+  };
+  const reqOf = (o) => num(first(o, ['initial_count_fp','initial_count','count','requested_count','requestedContracts','requested_contracts']));
+  const fillOf = (o) => num(first(o, ['fill_count_fp','fill_count','filled_count_fp','filled_count','filledContracts','filled_contracts','filled'])) ?? 0;
+  const remOf = (o) => { const r = num(first(o, ['remaining_count_fp','remaining_count','remainingContracts','remaining_contracts','remaining'])); if (r != null) return r; const q=reqOf(o),f=fillOf(o); return q==null ? null : Math.max(0,q-f); };
+  const statusOf = (o) => String(first(o, ['status','order_status','state']) ?? 'unknown').replaceAll('_',' ').toUpperCase();
+  const orderPrice = (o) => { const s=sideOf(o); const keys=s==='YES'?['yes_price_dollars','yes_price']:s==='NO'?['no_price_dollars','no_price']:[]; return priceCents(first(o,[...keys,'price_cents','price','limit_price'])); };
+  const isOpen = (o) => { const s=statusOf(o).toLowerCase(), r=remOf(o); return (r != null && r > 0) || ['open','resting','pending','submitted','active','partially filled','partially-filled'].includes(s); };
+  const fillOrderId = (f) => String(first(f, ['order_id','orderId']) ?? '');
+  const settlementMap = (fills) => { const m=new Map(); for (const f of fills) { const t=String(first(f,['ticker','market_ticker'])??''); const r=String(first(f,['market_result','result'])??'').toLowerCase(); if(t&&(r==='yes'||r==='no'))m.set(t,r.toUpperCase()); } return m; };
+  const actualPrincipal = (o, fills) => { const oid=orderId(o); if(!oid)return null; let total=0,seen=false; const side=sideOf(o); for(const f of fills){if(fillOrderId(f)!==oid)continue; const count=num(first(f,['count_fp','count','contracts'])); const p=priceCents(first(f,side==='YES'?['yes_price_dollars','yes_price']:['no_price_dollars','no_price'])); if(count!=null&&count>0&&p!=null){total += count*p/100;seen=true;}} return seen?total:null; };
+  const maxPrincipal = (o) => { const q=reqOf(o),p=orderPrice(o); return q==null||p==null?null:q*p/100; };
+  const backFlipWindows = (p) => { const rows=Array.isArray(p)?p:Array.isArray(p?.rows)?p.rows:[]; return rows.map(r=>num(first(r,['targetOpenTimeMs','target_open_time_ms']))).filter(Number.isFinite); };
+  const routeOf = (o, bfWindows, bfAvailable) => { const c=clientId(o); if(c.startsWith('eth-yes-')||c.startsWith('eth-no-'))return'Regular'; if(c.endsWith(':eth420-live-v1')){if(!bfAvailable)return'420 Special'; const t=orderTime(o); return bfWindows.some(w=>t>=w&&t<w+900000)?'Back Flip':'420 Jump';} return'ETH Order'; };
+
   function renderBalance(b) {
-    const cashCents = first(b, ['aggregate_balance_cents']);
-    const balanceDollars = first(b, ['balance_dollars']);
-    const cash = cashCents != null ? Number(cashCents) : balanceDollars != null ? Math.round(Number(balanceDollars) * 100) : null;
-    const portfolioRaw = first(b, ['portfolio_value']);
-    const portfolio = portfolioRaw == null ? null : Number(portfolioRaw);
-    const equity = cash == null || portfolio == null ? null : cash + portfolio;
-    if ($('kalshiCash')) $('kalshiCash').textContent = moneyCents(cash);
-    if ($('kalshiPortfolio')) $('kalshiPortfolio').textContent = moneyCents(portfolio);
-    if ($('kalshiEquity')) $('kalshiEquity').textContent = moneyCents(equity);
-    if ($('balanceFreshness')) {
-      $('balanceFreshness').textContent = b?.stale ? 'STALE' : 'LIVE';
-      $('balanceFreshness').className = 'badge ' + (b?.stale ? 'warn' : 'good');
-    }
-    if ($('balanceDetail')) $('balanceDetail').textContent = 'Authenticated read-only account snapshot · equity = cash + open position value.';
+    const cash = num(first(b,['aggregate_balance_cents'])) ?? (()=>{const d=num(first(b,['balance_dollars']));return d==null?null:Math.round(d*100)})();
+    const portfolio = num(first(b,['portfolio_value'])); const equity = cash==null||portfolio==null?null:cash+portfolio;
+    if($('kalshiCash'))$('kalshiCash').textContent=moneyCents(cash); if($('kalshiPortfolio'))$('kalshiPortfolio').textContent=moneyCents(portfolio); if($('kalshiEquity'))$('kalshiEquity').textContent=moneyCents(equity);
+    if($('balanceFreshness')){$('balanceFreshness').textContent=b?.stale?'STALE':'LIVE';$('balanceFreshness').className='badge '+(b?.stale?'warn':'good');}
+    if($('balanceDetail'))$('balanceDetail').textContent='Authenticated read-only account snapshot · equity = cash + open position value.';
   }
   function renderMartingale(p) {
-    const s = p?.state ?? p?.martingale?.state ?? p?.dashboard?.state ?? p?.martingale ?? p ?? null;
-    if (!s) return;
-    const side = String(first(s, ['next_side', 'side', 'currentSide', 'current_side']) ?? '').toUpperCase();
-    const rawStep = Number(first(s, ['martingale_step', 'martingaleStep', 'step']));
-    const principalCents = Number(first(s, ['next_principal_cents', 'nextPrincipalCents']));
-    if ($('opSide') && (side === 'YES' || side === 'NO')) $('opSide').textContent = side;
-    if ($('opStepWager') && Number.isFinite(rawStep)) {
-      const step = Math.max(0, Math.trunc(rawStep)) + 1;
-      $('opStepWager').textContent = 'Step ' + step + (Number.isFinite(principalCents) ? ' · ' + moneyCents(principalCents) : '');
-    }
+    const s=p?.state??p?.martingale?.state??p?.dashboard?.state??p?.martingale??p??null; if(!s)return;
+    const side=String(first(s,['next_side','side','currentSide','current_side'])??'').toUpperCase(); const step=num(first(s,['martingale_step','martingaleStep','step'])); const principal=num(first(s,['next_principal_cents','nextPrincipalCents']));
+    if($('opSide')&&(side==='YES'||side==='NO'))$('opSide').textContent=side;
+    if($('opStepWager')&&step!=null)$('opStepWager').textContent='Step '+(Math.max(0,Math.trunc(step))+1)+(principal==null?'':' · '+moneyCents(principal));
   }
   function renderMarket(l) {
-    const availability = String(l?.availability?.status ?? 'unavailable');
-    const market = l?.market ?? null;
-    const evidence = availability === 'fresh' ? l?.evidence ?? null : null;
-    if ($('marketFreshness')) {
-      $('marketFreshness').textContent = availability.toUpperCase();
-      $('marketFreshness').className = 'badge ' + (availability === 'fresh' ? 'good' : availability === 'stale' ? 'warn' : '');
-    }
-    if ($('marketTicker')) $('marketTicker').textContent = market?.ticker ?? 'Live market unavailable';
-    if ($('marketWindow')) $('marketWindow').textContent = market ? fullTime(market.openTime) + ' – ' + fullTime(market.closeTime) + ' ET' + (l?.availability?.quoteAgeMs != null ? ' · quote age ' + Math.round(Number(l.availability.quoteAgeMs)) + ' ms' : '') : String(l?.availability?.reason ?? 'Unavailable').replaceAll('_', ' ');
-    if ($('yesBid')) $('yesBid').textContent = cents(evidence?.yesBid);
-    if ($('yesAsk')) $('yesAsk').textContent = cents(evidence?.yesAsk);
-    if ($('noBid')) $('noBid').textContent = cents(evidence?.noBid);
-    if ($('noAsk')) $('noAsk').textContent = cents(evidence?.noAsk);
-    if ($('floorStrike')) $('floorStrike').textContent = evidence?.floorStrike == null ? '—' : Number(evidence.floorStrike).toLocaleString();
-    if ($('adjacentMove')) $('adjacentMove').textContent = evidence?.adjacentMove == null ? '—' : (Number(evidence.adjacentMove) * 100).toFixed(4) + '%';
-    if ($('yesSpread')) $('yesSpread').textContent = cents(evidence?.yesSpreadCents);
-    if ($('noSpread')) $('noSpread').textContent = cents(evidence?.noSpreadCents);
+    const a=String(l?.availability?.status??'unavailable'),m=l?.market??null,e=a==='fresh'?l?.evidence??null:null;
+    if($('marketFreshness')){$('marketFreshness').textContent=a.toUpperCase();$('marketFreshness').className='badge '+(a==='fresh'?'good':a==='stale'?'warn':'');}
+    if($('marketTicker'))$('marketTicker').textContent=m?.ticker??'Live market unavailable'; if($('marketWindow'))$('marketWindow').textContent=m?fullTime(m.openTime)+' – '+fullTime(m.closeTime)+' ET'+(l?.availability?.quoteAgeMs!=null?' · quote age '+Math.round(Number(l.availability.quoteAgeMs))+' ms':''):String(l?.availability?.reason??'Unavailable').replaceAll('_',' ');
+    if($('yesBid'))$('yesBid').textContent=cents(e?.yesBid); if($('yesAsk'))$('yesAsk').textContent=cents(e?.yesAsk); if($('noBid'))$('noBid').textContent=cents(e?.noBid); if($('noAsk'))$('noAsk').textContent=cents(e?.noAsk);
+    if($('floorStrike'))$('floorStrike').textContent=e?.floorStrike==null?'—':Number(e.floorStrike).toLocaleString(); if($('adjacentMove'))$('adjacentMove').textContent=e?.adjacentMove==null?'—':(Number(e.adjacentMove)*100).toFixed(4)+'%'; if($('yesSpread'))$('yesSpread').textContent=cents(e?.yesSpreadCents); if($('noSpread'))$('noSpread').textContent=cents(e?.noSpreadCents);
   }
-  let busy = false;
-  async function refresh() {
-    if (busy) return;
-    busy = true;
-    try {
-      const [balance, martingale, market] = await Promise.allSettled([
-        j('/api/trade/balance'),
-        j('/api/trade/martingale'),
-        j('/api/trade/analytics/eth420-live-market'),
-      ]);
-      if (balance.status === 'fulfilled') renderBalance(balance.value);
-      if (martingale.status === 'fulfilled') renderMartingale(martingale.value);
-      if (market.status === 'fulfilled') renderMarket(market.value);
-      const failures = [balance, martingale, market].filter((x) => x.status === 'rejected').length;
-      const status = $('refreshStatus');
-      if (status) status.innerHTML = failures ? '<span class="warn">Operations partial</span> · ' + failures + ' core feed' + (failures === 1 ? '' : 's') + ' unavailable' : '<strong>Operations live</strong> · core feeds healthy';
-    } finally {
-      busy = false;
-    }
+  function renderOrders(orders,fills,market,bf,bfAvailable){
+    const eth=orders.filter(o=>/^KXETH15M-/.test(orderTicker(o))).sort((a,b)=>orderTime(b)-orderTime(a)); const open=eth.filter(isOpen); const results=settlementMap(fills); const bfWindows=backFlipWindows(bf);
+    if($('openOrderCount'))$('openOrderCount').textContent=open.length+' open order'+(open.length===1?'':'s');
+    if($('openOrderRows'))$('openOrderRows').innerHTML=open.length?open.map(o=>'<tr><td>'+esc(orderTicker(o))+'</td><td>'+esc(sideOf(o))+'</td><td class="num">'+(orderPrice(o)==null?'—':Math.round(orderPrice(o))+'¢')+'</td><td class="num">'+fillOf(o)+'</td><td class="num">'+(remOf(o)??'—')+'</td><td>'+esc(statusOf(o))+'</td><td>'+esc(fullTime(orderTime(o)))+'</td></tr>').join(''):'<tr><td colspan="7" class="empty">No open or resting exchange orders.</td></tr>';
+    const ticker=String(market?.market?.ticker??''); const currentRows=ticker?eth.filter(o=>orderTicker(o)===ticker):[]; const current=currentRows.find(o=>fillOf(o)>0)??currentRows.find(isOpen)??currentRows[0]??null; const latest=eth[0]??null;
+    if(current){const route=routeOf(current,bfWindows,bfAvailable),st=statusOf(current),actual=actualPrincipal(current,fills),principal=actual??maxPrincipal(current); $('positionTitle').textContent=ticker; $('positionStatus').textContent=currentRows.length>1?'MULTIPLE ORDERS':st; $('positionStatus').className='badge '+(currentRows.length>1?'warn':/cancel|reject|fail|error/i.test(st)?'warn':'good'); $('positionSideStep').textContent=route+' · '+sideOf(current); $('positionWager').textContent=moneyDollars(principal); $('positionRequested').textContent=reqOf(current)??'—'; $('positionFilled').textContent=fillOf(current)+' / '+(remOf(current)??'—'); const settle=results.get(ticker); $('positionDetail').textContent=(orderPrice(current)==null?'Price unavailable':Math.round(orderPrice(current))+'¢ order price')+' · '+(actual!=null?'actual filled principal':'maximum order principal')+(settle?' · settlement '+settle:'');}
+    else{$('positionTitle').textContent=ticker?'No order yet for current window':'Current market unavailable';$('positionStatus').textContent='NONE';$('positionStatus').className='badge';$('positionSideStep').textContent='—';$('positionWager').textContent='—';$('positionRequested').textContent='—';$('positionFilled').textContent='— / —';$('positionDetail').textContent=ticker?'No exchange order recorded for the current ticker.':'Live market ticker unavailable.';}
+    if(latest){const route=routeOf(latest,bfWindows,bfAvailable),settle=results.get(orderTicker(latest));$('latestOrder').textContent=route+' · '+sideOf(latest)+' · '+statusOf(latest);$('latestOrderSub').textContent=orderTicker(latest)+' · '+(reqOf(latest)??'—')+' requested · '+fillOf(latest)+' filled · '+(settle?'settlement '+settle:'settlement pending')+' · '+fullTime(orderTime(latest));}
+    else{$('latestOrder').textContent='No ETH orders returned';$('latestOrderSub').textContent='Exchange order feed returned no KXETH15M orders.';}
   }
-  refresh();
-  window.setInterval(refresh, 5000);
+
+  let busy=false;
+  async function refresh(){if(busy)return;busy=true;try{const [b,mk,mg,o,f,bf]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),j('/api/trade/martingale'),j('/api/trade/orders?limit=100'),j('/api/trade/fills?limit=1000'),j('/api/diagnostics/back-flips')]); if(b.status==='fulfilled')renderBalance(b.value); if(mg.status==='fulfilled')renderMartingale(mg.value); if(mk.status==='fulfilled')renderMarket(mk.value); if(o.status==='fulfilled')renderOrders(orderRows(o.value),f.status==='fulfilled'?fillRows(f.value):[],mk.status==='fulfilled'?mk.value:null,bf.status==='fulfilled'?bf.value:[],bf.status==='fulfilled'); const core=[b,mk,mg,o]; const failures=core.filter(x=>x.status==='rejected').length; if($('refreshStatus'))$('refreshStatus').innerHTML=failures?'<span class="warn">Operations partial</span> · '+failures+' core feed'+(failures===1?'':'s')+' unavailable':'<strong>Operations live</strong> · core feeds healthy';}finally{busy=false;}}
+  refresh(); window.setInterval(refresh,5000);
 })();
