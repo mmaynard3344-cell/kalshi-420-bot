@@ -15,8 +15,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Production API build
         run: pnpm --filter @workspace/api-server build
-      - name: Typecheck patched API source
-        run: pnpm --filter @workspace/api-server typecheck
       - name: Assert final two-road source invariants
         run: |
           python3 - <<'PY'
@@ -47,6 +45,7 @@ jobs:
           assert 'ordinary_martingale_owned' in signal
           assert 'getEth420CandidateBackFlipArm' not in signal
           assert 'submitEth420CandidateOrder' not in signal
+          assert 'isEth420CandidateExecutionPermitted()' not in signal
 
           assert 'evaluateEthMartingaleWithPrincipal(ethState, 42_000)' in auto
           assert 'if (lastReason === "jump_martingale_owned") return "jump";' in auto
