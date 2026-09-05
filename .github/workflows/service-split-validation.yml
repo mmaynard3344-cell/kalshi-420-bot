@@ -51,13 +51,8 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
       - name: Run service isolation tests
-        run: >-
-          pnpm exec tsx --test
-          artifacts/api-server/src/lib/strategies/ethServiceIsolation.test.ts
-          artifacts/api-server/src/lib/strategies/ethBigBetLifecycle.test.ts
-          artifacts/api-server/src/lib/strategies/ethBigBetExecutor.test.ts
-          artifacts/api-server/src/lib/strategies/ethAccountCapitalGuard.test.ts
-          artifacts/api-server/src/lib/strategies/ethServiceACutover.test.ts
+        working-directory: artifacts/api-server
+        run: node scripts/run-service-split-tests.mjs
       - name: Run existing six-step candidate harness
         working-directory: artifacts/api-server
         run: node scripts/run-eth420-six-step-candidate-test.mjs
