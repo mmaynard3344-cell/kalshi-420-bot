@@ -34,6 +34,8 @@ async function buildAll() {
   execSync(`python3 "${durableThreeRoadOwnerPatch}"`, { stdio: "inherit" });
   const oneShotBackFlipPatch = path.resolve(artifactDir, "../../scripts/apply_backflip_market_ioc_once.py");
   execSync(`python3 "${oneShotBackFlipPatch}"`, { stdio: "inherit" });
+  const neutralLt50BackFlipPatch = path.resolve(artifactDir, "../../scripts/apply_backflip_lt50_neutral_martingale.py");
+  execSync(`python3 "${neutralLt50BackFlipPatch}"`, { stdio: "inherit" });
 
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
