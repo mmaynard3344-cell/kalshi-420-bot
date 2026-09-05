@@ -1,0 +1,39 @@
+name: inspect-midnight-carry
+on:
+  push:
+    branches: [fix/continuous-martingale-midnight]
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build referenced TypeScript libraries
+        run: pnpm exec tsc -b lib/db/tsconfig.json lib/api-zod/tsconfig.json
+      - name: Apply production patch chain by building API
+        run: pnpm --filter @workspace/api-server build
+      - name: Inspect midnight reset seams
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for p in [
+            'artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts',
+            'artifacts/api-server/src/lib/tradeStore.ts',
+          ]:
+              text=Path(p).read_text()
+              print('\n###',p)
+              needles=['isNewDay','easternDate !==','eastern_date','martingaleStep','martingale_step','side =', 'side:', 'realizedPnlCents', 'realized_pnl_cents']
+              lines=text.splitlines()
+              hits=[i for i,l in enumerate(lines) if any(n in l for n in needles)]
+              shown=set()
+              for i in hits:
+                  a=max(0,i-8); b=min(len(lines),i+18)
+                  if any(j in shown for j in range(a,b)): continue
+                  shown.update(range(a,b))
+                  for j in range(a,b): print(f'{j+1}: {lines[j]}')
+          PY
