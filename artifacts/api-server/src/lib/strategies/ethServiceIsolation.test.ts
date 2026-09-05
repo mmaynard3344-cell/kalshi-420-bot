@@ -6,6 +6,11 @@ import {
   serviceOwnsMartingale,
   serviceOwnsReversal,
 } from "./ethServiceRole.js";
+import {
+  ETH_MARTINGALE_ORDER_TAG,
+  ETH_MARTINGALE_WAGERS_CENTS,
+  evaluateEthMartingaleSignal,
+} from "./ethMartingaleSignal.js";
 import { ETH_JUMP_ORDER_TAG, ETH_JUMP_WAGER_CENTS, evaluateEthJumpSignal } from "./ethJumpSignal.js";
 import {
   ETH_REVERSAL_ORDER_TAG,
@@ -28,6 +33,21 @@ test("service roles have exclusive strategy ownership", () => {
   assert.equal(serviceOwnsReversal(reversal), true);
   assert.equal(parseEthServiceRole(""), null);
   assert.equal(parseEthServiceRole("both"), null);
+});
+
+test("Service A owns only its six-rung martingale wager", () => {
+  assert.deepEqual(ETH_MARTINGALE_WAGERS_CENTS, [1500, 3000, 6000, 12000, 24000, 32000]);
+  const decision = evaluateEthMartingaleSignal({ side: "no", step: 4 });
+  assert.deepEqual(decision, {
+    strategy: "martingale",
+    orderTag: ETH_MARTINGALE_ORDER_TAG,
+    side: "no",
+    step: 4,
+    wagerCents: 24000,
+  });
+  assert.notEqual(decision.wagerCents, ETH_JUMP_WAGER_CENTS);
+  assert.notEqual(ETH_MARTINGALE_ORDER_TAG, ETH_JUMP_ORDER_TAG);
+  assert.notEqual(ETH_MARTINGALE_ORDER_TAG, ETH_REVERSAL_ORDER_TAG);
 });
 
 test("jump signal is fixed-size and p95 inclusive / p99 exclusive", () => {
