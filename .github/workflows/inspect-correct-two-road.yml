@@ -1,0 +1,37 @@
+name: inspect-correct-two-road
+on:
+  push:
+    branches: [fix/correct-two-road-six-step]
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect known-good production patch chain and exact ETH seams
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for p in [
+            'artifacts/api-server/build.mjs',
+            'artifacts/api-server/src/lib/autoTrader.ts',
+            'artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts',
+            'artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts',
+            'artifacts/api-server/src/lib/tradeStore.ts',
+          ]:
+              print('\n###', p)
+              lines=Path(p).read_text().splitlines()
+              needles=[
+                'apply_eth_three_road_router', 'apply_regular_zero_fill', 'apply_backflip',
+                'ETH_PRINCIPALS_CENTS', 'ETH_DAILY_LOSS_STOP_CENTS', 'lossNextStep',
+                'evaluateEth420Candidate(', 'evaluateAndSubmitEth420CandidateWhenExplicitlyEnabled',
+                'ordinary_martingale_owned', 'sweetSpotTell', 'advanceEthMartingaleLadderForZeroFill',
+                'settleEthMartingaleOrder', 'nextStep = won', 'runEthPreflightAndPlacement',
+              ]
+              hits=[i for i,l in enumerate(lines) if any(n in l for n in needles)]
+              shown=set()
+              for i in hits:
+                  a=max(0,i-10); b=min(len(lines),i+26)
+                  if any(x in shown for x in range(a,b)): continue
+                  shown.update(range(a,b))
+                  for j in range(a,b): print(f'{j+1}: {lines[j]}')
+          PY
