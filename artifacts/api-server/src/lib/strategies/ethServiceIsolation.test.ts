@@ -54,7 +54,7 @@ test("Service A owns only its six-rung martingale wager", () => {
 test("role-gated dispatch cannot evaluate another service", () => {
   const allInputs = {
     martingaleState: { side: "no" as const, step: 2 },
-    jump: { currentMove: 0.06, p95: 0.05, p99: 0.09 },
+    jump: { currentMove: 0.06, p95: 0.05, p99: 0.09, carriedSide: "no" as const },
     reversal: { consecutiveNoOutcomes: 3, currentMove: 0.06, p95: 0.05, p99: 0.09 },
   };
   const a = dispatchEthServiceSignal({ role: "martingale", ...allInputs });
@@ -65,16 +65,18 @@ test("role-gated dispatch cannot evaluate another service", () => {
   assert.equal(c?.role, "reversal");
   assert.equal(a?.role === "martingale" ? a.decision.wagerCents : null, 6000);
   assert.equal(b?.role === "jump" ? b.decision.fires : null, true);
+  assert.equal(b?.role === "jump" ? b.decision.side : null, "no");
   assert.equal(c?.role === "reversal" ? c.decision.wagerCents : null, 50000);
 });
 
-test("jump signal is fixed-size and p95 inclusive / p99 exclusive", () => {
+test("jump signal is fixed-size, preserves A side read-only, and p95 inclusive / p99 exclusive", () => {
   assert.equal(ETH_JUMP_WAGER_CENTS, 42_000);
   assert.notEqual(ETH_JUMP_ORDER_TAG, ETH_REVERSAL_ORDER_TAG);
-  assert.deepEqual(evaluateEthJumpSignal({ currentMove: 0.05, p95: 0.05, p99: 0.09 }), {
-    fires: true, band: "p95_to_p99",
+  assert.deepEqual(evaluateEthJumpSignal({ currentMove: 0.05, p95: 0.05, p99: 0.09, carriedSide: "yes" }), {
+    fires: true, band: "p95_to_p99", side: "yes",
   });
-  assert.equal(evaluateEthJumpSignal({ currentMove: 0.09, p95: 0.05, p99: 0.09 }).fires, false);
+  assert.equal(evaluateEthJumpSignal({ currentMove: 0.05, p95: 0.05, p99: 0.09 }).fires, false);
+  assert.equal(evaluateEthJumpSignal({ currentMove: 0.09, p95: 0.05, p99: 0.09, carriedSide: "no" }).fires, false);
 });
 
 test("reversal requires 3+ NO outcomes and uses an independent $500 wager", () => {
