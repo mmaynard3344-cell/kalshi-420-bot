@@ -1166,6 +1166,52 @@ async function buildEth420TelemetryPayload(
 }
 
 /**
+ * State-independent statistical evidence shared by isolated ETH services.
+ * This reads only the rolling strike telemetry/bootstrap facts; it never reads,
+ * advances, resets, or settles Service A martingale state.
+ */
+export async function prepareEth420StatisticalEvidence(
+  store: Pick<Eth420CandidateTelemetryStore, "listEth420CandidateTelemetry">,
+  market: Eth420CandidateMarket,
+): Promise<{
+  currentMove: number | null;
+  p95: number | null;
+  p99: number | null;
+  validObservationCount: number;
+} | null> {
+  if (!/^KXETH15M-/.test(market.ticker)
+    || !Number.isInteger(market.openTimeMs)
+    || market.openTimeMs! % (15 * 60_000) !== 0) return null;
+  const history = await store.listEth420CandidateTelemetry(
+    market.observedAtMs - ETH_420_HISTORY_DAYS * 86_400_000,
+  );
+  const facts = factsForEth420RollingWindow(
+    mergeEth420HistoryFacts(eth420BootstrapFacts, history),
+    market.openTimeMs,
+  );
+  const priorFact = facts.filter((fact) => fact.openTimeMs < market.openTimeMs!).at(-1) ?? null;
+  const prior = priorFact && {
+    ticker: priorFact.ticker,
+    easternDate: market.easternDate,
+    observedAtMs: priorFact.openTimeMs,
+    floorStrike: priorFact.floorStrike,
+    openTimeMs: priorFact.openTimeMs,
+  };
+  const moves = eth420MovesFromFacts(facts)
+    .filter((entry) => entry.currentOpenTimeMs >= market.openTimeMs! - ETH_420_HISTORY_DAYS * 86_400_000)
+    .map((entry) => entry.move)
+    .filter((move): move is number => Number.isFinite(move) && move >= 0)
+    .sort((a, b) => a - b);
+  const currentMove = calculateEth420Move(market.floorStrike, prior, market.openTimeMs);
+  return {
+    currentMove,
+    p95: moves.length >= ETH_420_MIN_HISTORY ? percentile(moves, .95) : null,
+    p99: moves.length >= ETH_420_MIN_HISTORY ? percentile(moves, .99) : null,
+    validObservationCount: moves.length,
+  };
+}
+
+/**
  * The single state/history evidence path shared by passive observation and a
  * future explicitly enabled executor. It performs no persistence or execution.
  */
