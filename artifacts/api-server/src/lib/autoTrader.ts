@@ -694,6 +694,7 @@ import {
   isEth420CandidateExecutionPermitted,
   observeEth420Candidate,
 } from "./strategies/eth420SixStepCandidate.js";
+import { runEthJumpServiceWhenExplicitlyEnabled } from "./strategies/ethJumpLiveRunner.js";
 export type { WindowLogEntry } from "./windowLog";
 export { getWindowLog } from "./windowLog";
 
@@ -967,6 +968,22 @@ async function evaluate(
       status: state.status,
     });
     await evaluateEth420Candidate(state, _timing);
+  const jumpOpenTimeMs = state.openTime == null ? null : Date.parse(state.openTime);
+  await runEthJumpServiceWhenExplicitlyEnabled({
+    store: tradeStore,
+    market: {
+      ticker: state.ticker,
+      easternDate: jumpOpenTimeMs != null && Number.isFinite(jumpOpenTimeMs)
+        ? easternDay(new Date(jumpOpenTimeMs)) : easternDay(new Date()),
+      observedAtMs: Date.now(),
+      floorStrike: state.floorStrike ?? null,
+      openTimeMs: jumpOpenTimeMs,
+    },
+    exchangeIndex: state.exchangeIndex ?? null,
+    // Dormant wiring only. A later separately reviewed capital snapshot
+    // provider is required before the hard B execution fence can change.
+    capital: null,
+  });
   }
   // The retired BTC/SOL/DOGE entry evaluator below is intentionally kept only
   // as historical source material. This unconditional production fence has no
