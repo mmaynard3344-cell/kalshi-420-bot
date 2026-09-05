@@ -25,10 +25,11 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Apply narrow Service A cutover if needed
+      - name: Apply narrow Service A cutover and ownership-test update if needed
         shell: python
         run: |
           from pathlib import Path
+
           p = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts')
           s = p.read_text()
           old = 'const effectiveWagerCents = sweetSpotTell ? Math.max(normalWagerCents, ETH_420_OVERRIDE_CENTS) : normalWagerCents;'
@@ -40,14 +41,47 @@ jobs:
               p.write_text(s)
           elif new not in s:
               raise SystemExit('Expected Service A sizing seam not found')
+
+          t = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.test.ts')
+          x = t.read_text()
+          x = x.replace(
+              'test("sweet spot includes p95, excludes p99, filters NaN, and overrides only the wager", () => {',
+              'test("sweet spot includes p95, excludes p99, filters NaN, and leaves Service A on its normal wager", () => {',
+              1,
+          )
+          x = x.replace(
+              'assert.equal(atP95.side, "no"); assert.equal(atP95.effectiveWagerCents, 42000);',
+              'assert.equal(atP95.side, "no"); assert.equal(atP95.effectiveWagerCents, atP95.normalWagerCents); assert.equal(atP95.overrideIncreasedWager, false);',
+              1,
+          )
+          x = x.replace(
+              'assert.equal(downJump.side, "yes"); assert.equal(downJump.effectiveWagerCents, 42000);',
+              'assert.equal(downJump.side, "yes"); assert.equal(downJump.effectiveWagerCents, downJump.normalWagerCents); assert.equal(downJump.overrideIncreasedWager, false);',
+              1,
+          )
+          x = x.replace(
+              'test("qualifying jump keeps the step-0 carried side while using $420", () => {',
+              'test("qualifying jump keeps the step-0 carried side while Service A remains on its normal rung", () => {',
+              1,
+          )
+          x = x.replace(
+              'assert.equal(decision.effectiveWagerCents, 42000);',
+              'assert.equal(decision.effectiveWagerCents, decision.normalWagerCents);\n  assert.equal(decision.overrideIncreasedWager, false);',
+              1,
+          )
+          t.write_text(x)
       - name: Assert cutover invariant
         shell: python
         run: |
           from pathlib import Path
           s = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts').read_text()
+          t = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.test.ts').read_text()
           assert 'const effectiveWagerCents = normalWagerCents;' in s
           assert 'sweetSpotTell ? Math.max(normalWagerCents, ETH_420_OVERRIDE_CENTS)' not in s
           assert 'jump_signal_observed_service_b_owned' in s
+          assert 'assert.equal(atP95.effectiveWagerCents, 42000);' not in t
+          assert 'assert.equal(downJump.effectiveWagerCents, 42000);' not in t
+          assert 'test("qualifying jump keeps the step-0 carried side while using $420"' not in t
       - name: Typecheck
         run: pnpm run typecheck
       - name: Run service isolation tests
@@ -64,6 +98,6 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts
+          git add artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.test.ts
           git commit -m 'Separate Service A ladder sizing from jump signal'
           git push origin HEAD:service-split-a-b-c
