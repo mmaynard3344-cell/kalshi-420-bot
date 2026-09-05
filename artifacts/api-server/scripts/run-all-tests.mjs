@@ -26,6 +26,7 @@ const testFiles = [
   "src/lib/strategies/ethBigBetLifecycle.test.ts",
   "src/lib/strategies/ethBigBetExecutor.test.ts",
   "src/lib/strategies/ethAccountCapitalGuard.test.ts",
+  "src/lib/strategies/ethServiceACutover.test.ts",
 ];
 
 const compiledTests = [];
