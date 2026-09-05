@@ -53,7 +53,7 @@ test("an unresolved earlier market does not block a new B/C market", async () =>
   const { store, reservations } = memoryStore(["KXETH15M-OLD:eth-jump-v1"]);
   const result = await submitEthBigBetIntent({
     intent, store,
-    exchange: { async submit(input) { return { exchangeOrderId: `wire:${input.clientOrderId}` }; } },
+    exchange: { async submit(input) { return { kind: "accepted" as const, exchangeOrderId: `wire:${input.clientOrderId}` }; } },
     nowMs: 123,
   });
   assert.equal(result, "submitted");
@@ -87,8 +87,22 @@ test("flat sizing produces 840 jump contracts and 1000 reversal contracts at 50 
     const { store } = memoryStore();
     await submitEthBigBetIntent({
       intent, store,
-      exchange: { async submit(input) { seen.push(input.contracts); return { exchangeOrderId: "ok" }; } },
+      exchange: { async submit(input) { seen.push(input.contracts); return { kind: "accepted" as const, exchangeOrderId: "ok" }; } },
     });
   }
   assert.deepEqual(seen, [840, 1000]);
+});
+
+test("a thrown POST is retained as submission_unknown, never assumed rejected", async () => {
+  const intent: EthBigBetOrderIntent = {
+    strategy: "jump", orderTag: "eth-jump-v1", ticker: "KXETH15M-UNKNOWN",
+    side: "no", wagerCents: 42_000, limitPriceCents: 50, marketOpenTimeMs: 1_800_000,
+  };
+  const { store, acknowledgements } = memoryStore();
+  const result = await submitEthBigBetIntent({
+    intent, store,
+    exchange: { async submit() { throw new Error("network response lost"); } },
+  });
+  assert.equal(result, "submission_unknown");
+  assert.deepEqual(acknowledgements, [{ orderId: ethBigBetOrderId(intent), status: "submission_unknown" }]);
 });
