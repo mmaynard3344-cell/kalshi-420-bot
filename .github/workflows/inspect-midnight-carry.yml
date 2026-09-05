@@ -15,25 +15,34 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build referenced TypeScript libraries
         run: pnpm exec tsc -b lib/db/tsconfig.json lib/api-zod/tsconfig.json
-      - name: Apply production patch chain by building API
+      - name: Apply production patch chain
         run: pnpm --filter @workspace/api-server build
-      - name: Inspect midnight reset seams
+      - name: Capture only midnight/state seams
         run: |
-          python3 - <<'PY'
+          python3 - <<'PY' > /tmp/midnight-seams.txt
           from pathlib import Path
-          for p in [
-            'artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts',
-            'artifacts/api-server/src/lib/tradeStore.ts',
-          ]:
-              text=Path(p).read_text()
-              print('\n###',p)
-              needles=['isNewDay','easternDate !==','eastern_date','martingaleStep','martingale_step','side =', 'side:', 'realizedPnlCents', 'realized_pnl_cents']
-              lines=text.splitlines()
-              hits=[i for i,l in enumerate(lines) if any(n in l for n in needles)]
-              shown=set()
+          paths=[
+            Path('artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts'),
+            Path('artifacts/api-server/src/lib/tradeStore.ts'),
+          ]
+          terms=('isNewDay','easternDate !==','eastern_date','martingale_step','realized_pnl_cents','reserveEthMartingale','getEthMartingaleState','saveEthMartingaleState')
+          for p in paths:
+              lines=p.read_text().splitlines()
+              print(f'### {p}')
+              hits=[]
+              for i,l in enumerate(lines):
+                  if any(t in l for t in terms): hits.append(i)
+              ranges=[]
               for i in hits:
-                  a=max(0,i-8); b=min(len(lines),i+18)
-                  if any(j in shown for j in range(a,b)): continue
-                  shown.update(range(a,b))
+                  a=max(0,i-5); b=min(len(lines),i+12)
+                  if ranges and a <= ranges[-1][1]: ranges[-1]=(ranges[-1][0],max(ranges[-1][1],b))
+                  else: ranges.append((a,b))
+              for a,b in ranges:
                   for j in range(a,b): print(f'{j+1}: {lines[j]}')
+                  print('---')
           PY
+          cat /tmp/midnight-seams.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: midnight-seams
+          path: /tmp/midnight-seams.txt
