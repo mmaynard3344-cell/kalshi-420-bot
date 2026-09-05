@@ -1,32 +1,54 @@
-name: inspect-two-road
+name: validate-two-road
 on:
   push:
     branches: [fix/two-road-six-step-jump]
 jobs:
-  inspect:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply production source patches and inspect routing
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck API
+        run: pnpm --filter @workspace/api-server typecheck
+      - name: Production API build
+        run: pnpm --filter @workspace/api-server build
+      - name: Assert final two-road source invariants
         run: |
-          python3 scripts/apply_eth_three_road_router.py
-          python3 scripts/apply_regular_zero_fill_backflip_v2.py
-          python3 scripts/apply_regular_zero_fill_verified_backflip.py
-          python3 scripts/apply_regular_reconcile_before_router.py
-          python3 scripts/apply_eth_three_road_durable_owner.py
-          python3 scripts/apply_backflip_market_ioc_once.py
-          python3 scripts/apply_backflip_lt50_neutral_martingale.py
           python3 - <<'PY'
           from pathlib import Path
-          for p in ['artifacts/api-server/src/lib/autoTrader.ts','artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts','artifacts/api-server/src/lib/tradeStore.ts','artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts']:
-              lines=Path(p).read_text().splitlines()
-              print('\n###',p)
-              needles=['evaluateEth420Candidate(', 'ordinary_martingale_owned', 'runEthPreflightAndPlacement', 'prepareEth420CandidateDecision', 'sweetSpotTell', 'backFlip', 'ETH_PRINCIPALS_CENTS', 'nextStep = won', 'lossNextStep']
-              hits=[i for i,l in enumerate(lines) if any(n in l for n in needles)]
-              shown=set()
-              for i in hits:
-                  a=max(0,i-12); b=min(len(lines),i+35)
-                  if any(x in shown for x in range(a,b)): continue
-                  shown.update(range(a,b))
-                  for j in range(a,b): print(f'{j+1}: {lines[j]}')
+          regular = Path('artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts').read_text()
+          store = Path('artifacts/api-server/src/lib/tradeStore.ts').read_text()
+          candidate = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts').read_text()
+          auto = Path('artifacts/api-server/src/lib/autoTrader.ts').read_text()
+
+          assert 'ETH_PRINCIPALS_CENTS = [1500, 3000, 6000, 12000, 24000, 32000]' in regular
+          assert 'ETH_DAILY_LOSS_STOP_CENTS = -120_000' in regular
+          assert 'Math.min(5, step)' in regular
+          assert 'lossNextStep: row.martingaleStep >= 5 ? 0 : row.martingaleStep + 1' in regular
+          assert 'evaluateEthMartingaleWithPrincipal' in regular
+          assert store.count('const nextStep = won ? 0 : orderStep >= 5 ? 0 : orderStep + 1;') == 1
+
+          z0 = store.index('export async function advanceEthMartingaleLadderForZeroFill')
+          z1 = store.index('/** Fill-evidence repair queue', z0)
+          z = store[z0:z1]
+          assert 'A zero fill is not a martingale result' in z
+          assert 'eth420_candidate_back_flip_overrides' not in z
+          assert 'martingale_step=${nextStep}' not in z
+
+          c0 = candidate.index('export async function evaluateAndSubmitEth420CandidateWhenExplicitlyEnabled')
+          c1 = candidate.index('async function submitEth420CandidateOrder', c0)
+          signal = candidate[c0:c1]
+          assert 'jump_martingale_owned' in signal
+          assert 'ordinary_martingale_owned' in signal
+          assert 'getEth420CandidateBackFlipArm' not in signal
+          assert 'submitEth420CandidateOrder' not in signal
+
+          assert 'evaluateEthMartingaleWithPrincipal(ethState, 42_000)' in auto
+          assert 'if (lastReason === "jump_martingale_owned") return "jump";' in auto
+          print('two-road invariants passed')
           PY
