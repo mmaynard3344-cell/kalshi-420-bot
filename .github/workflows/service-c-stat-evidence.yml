@@ -1,0 +1,126 @@
+name: service-c-stat-evidence
+
+on:
+  push:
+    branches: [service-split-a-b-c]
+    paths:
+      - .github/workflows/service-c-stat-evidence.yml
+
+permissions:
+  contents: write
+
+jobs:
+  expose-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: service-split-a-b-c
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Add state-independent statistical evidence seam
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts')
+          s = p.read_text()
+          marker = 'export async function prepareEth420StatisticalEvidence('
+          if marker not in s:
+              anchor = '''/**
+           * The single state/history evidence path shared by passive observation and a
+           * future explicitly enabled executor. It performs no persistence or execution.
+           */
+          export async function prepareEth420CandidateDecision'''
+              if anchor not in s:
+                  raise SystemExit('statistical evidence insertion anchor not found')
+              addition = '''/**
+           * State-independent statistical evidence shared by isolated ETH services.
+           * This reads only the rolling strike telemetry/bootstrap facts; it never reads,
+           * advances, resets, or settles Service A martingale state.
+           */
+          export async function prepareEth420StatisticalEvidence(
+            store: Pick<Eth420CandidateTelemetryStore, "listEth420CandidateTelemetry">,
+            market: Eth420CandidateMarket,
+          ): Promise<{
+            currentMove: number | null;
+            p95: number | null;
+            p99: number | null;
+            validObservationCount: number;
+          } | null> {
+            if (!/^KXETH15M-/.test(market.ticker)
+              || !Number.isInteger(market.openTimeMs)
+              || market.openTimeMs! % (15 * 60_000) !== 0) return null;
+            const history = await store.listEth420CandidateTelemetry(
+              market.observedAtMs - ETH_420_HISTORY_DAYS * 86_400_000,
+            );
+            const facts = factsForEth420RollingWindow(
+              mergeEth420HistoryFacts(eth420BootstrapFacts, history),
+              market.openTimeMs,
+            );
+            const priorFact = facts.filter((fact) => fact.openTimeMs < market.openTimeMs!).at(-1) ?? null;
+            const prior = priorFact && {
+              ticker: priorFact.ticker,
+              easternDate: market.easternDate,
+              observedAtMs: priorFact.openTimeMs,
+              floorStrike: priorFact.floorStrike,
+              openTimeMs: priorFact.openTimeMs,
+            };
+            const moves = eth420MovesFromFacts(facts)
+              .filter((entry) => entry.currentOpenTimeMs >= market.openTimeMs! - ETH_420_HISTORY_DAYS * 86_400_000)
+              .map((entry) => entry.move)
+              .filter((move): move is number => Number.isFinite(move) && move >= 0)
+              .sort((a, b) => a - b);
+            const currentMove = calculateEth420Move(market.floorStrike, prior, market.openTimeMs);
+            return {
+              currentMove,
+              p95: moves.length >= ETH_420_MIN_HISTORY ? percentile(moves, .95) : null,
+              p99: moves.length >= ETH_420_MIN_HISTORY ? percentile(moves, .99) : null,
+              validObservationCount: moves.length,
+            };
+          }
+
+          '''
+              s = s.replace(anchor, addition + anchor, 1)
+              p.write_text(s)
+      - name: Assert Service C independence invariants
+        shell: python
+        run: |
+          from pathlib import Path
+          candidate = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts').read_text()
+          reversal = Path('artifacts/api-server/src/lib/strategies/ethReversalServiceRuntime.ts').read_text()
+          runner = Path('artifacts/api-server/src/lib/strategies/ethReversalLiveRunner.ts').read_text()
+          start = candidate.index('export async function prepareEth420StatisticalEvidence(')
+          end = candidate.index('/**\n * The single state/history evidence path', start)
+          seam = candidate[start:end]
+          assert 'getEth420CandidateState' not in seam
+          assert 'recordEth420' not in seam
+          assert 'prepareEth420StatisticalEvidence' in reversal
+          assert 'prepared.state' not in reversal
+          assert 'ETH_REVERSAL_SERVICE_EXECUTION_APPROVED = false' in runner
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Run service isolation tests
+        working-directory: artifacts/api-server
+        run: node scripts/run-service-split-tests.mjs
+      - name: Run existing six-step candidate harness
+        working-directory: artifacts/api-server
+        run: node scripts/run-eth420-six-step-candidate-test.mjs
+      - name: Commit verified statistical evidence seam
+        run: |
+          if git diff --quiet; then
+            echo 'No statistical evidence diff to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts
+          git commit -m 'Expose state-independent ETH statistical evidence'
+          git push origin HEAD:service-split-a-b-c
