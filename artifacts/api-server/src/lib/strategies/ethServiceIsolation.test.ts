@@ -6,6 +6,7 @@ import {
   serviceOwnsMartingale,
   serviceOwnsReversal,
 } from "./ethServiceRole.js";
+import { dispatchEthServiceSignal } from "./ethServiceDispatch.js";
 import {
   ETH_MARTINGALE_ORDER_TAG,
   ETH_MARTINGALE_WAGERS_CENTS,
@@ -48,6 +49,23 @@ test("Service A owns only its six-rung martingale wager", () => {
   assert.notEqual(decision.wagerCents, ETH_JUMP_WAGER_CENTS);
   assert.notEqual(ETH_MARTINGALE_ORDER_TAG, ETH_JUMP_ORDER_TAG);
   assert.notEqual(ETH_MARTINGALE_ORDER_TAG, ETH_REVERSAL_ORDER_TAG);
+});
+
+test("role-gated dispatch cannot evaluate another service", () => {
+  const allInputs = {
+    martingaleState: { side: "no" as const, step: 2 },
+    jump: { currentMove: 0.06, p95: 0.05, p99: 0.09 },
+    reversal: { consecutiveNoOutcomes: 3, currentMove: 0.06, p95: 0.05, p99: 0.09 },
+  };
+  const a = dispatchEthServiceSignal({ role: "martingale", ...allInputs });
+  const b = dispatchEthServiceSignal({ role: "jump", ...allInputs });
+  const c = dispatchEthServiceSignal({ role: "reversal", ...allInputs });
+  assert.equal(a?.role, "martingale");
+  assert.equal(b?.role, "jump");
+  assert.equal(c?.role, "reversal");
+  assert.equal(a?.role === "martingale" ? a.decision.wagerCents : null, 6000);
+  assert.equal(b?.role === "jump" ? b.decision.fires : null, true);
+  assert.equal(c?.role === "reversal" ? c.decision.wagerCents : null, 50000);
 });
 
 test("jump signal is fixed-size and p95 inclusive / p99 exclusive", () => {
