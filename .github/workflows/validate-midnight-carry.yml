@@ -20,8 +20,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Production API build
         run: pnpm --filter @workspace/api-server run build
-      - name: API typecheck after production patches
-        run: pnpm --filter @workspace/api-server run typecheck
+      - name: Full workspace typecheck after production patches
+        run: pnpm run typecheck
       - name: Assert midnight carry invariants
         run: |
           python3 - <<'PY'
