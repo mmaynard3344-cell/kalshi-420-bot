@@ -30,6 +30,8 @@ const testFiles = [
   "src/lib/strategies/ethJumpServiceRuntime.test.ts",
   "src/lib/strategies/ethBigBetStore.test.ts",
   "src/lib/strategies/ethJumpLiveRunner.test.ts",
+  "src/lib/strategies/ethReversalServiceRuntime.test.ts",
+  "src/lib/strategies/ethReversalLiveRunner.test.ts",
 ];
 
 const compiledTests = [];
