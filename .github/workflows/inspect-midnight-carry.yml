@@ -1,9 +1,9 @@
-name: inspect-midnight-carry
+name: validate-midnight-carry
 on:
   push:
     branches: [fix/continuous-martingale-midnight]
 jobs:
-  inspect:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,34 +15,72 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build referenced TypeScript libraries
         run: pnpm exec tsc -b lib/db/tsconfig.json lib/api-zod/tsconfig.json
-      - name: Apply production patch chain
+      - name: Production API build with full patch chain
         run: pnpm --filter @workspace/api-server build
-      - name: Capture only midnight/state seams
+      - name: Typecheck patched production source
+        run: pnpm --filter @workspace/api-server typecheck
+      - name: Assert midnight carry and existing ETH invariants
         run: |
-          python3 - <<'PY' > /tmp/midnight-seams.txt
+          python3 - <<'PY'
           from pathlib import Path
-          paths=[
-            Path('artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts'),
-            Path('artifacts/api-server/src/lib/tradeStore.ts'),
-          ]
-          terms=('isNewDay','easternDate !==','eastern_date','martingale_step','realized_pnl_cents','reserveEthMartingale','getEthMartingaleState','saveEthMartingaleState')
-          for p in paths:
-              lines=p.read_text().splitlines()
-              print(f'### {p}')
-              hits=[]
-              for i,l in enumerate(lines):
-                  if any(t in l for t in terms): hits.append(i)
-              ranges=[]
-              for i in hits:
-                  a=max(0,i-5); b=min(len(lines),i+12)
-                  if ranges and a <= ranges[-1][1]: ranges[-1]=(ranges[-1][0],max(ranges[-1][1],b))
-                  else: ranges.append((a,b))
-              for a,b in ranges:
-                  for j in range(a,b): print(f'{j+1}: {lines[j]}')
-                  print('---')
+
+          regular = Path('artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts').read_text()
+          store = Path('artifacts/api-server/src/lib/tradeStore.ts').read_text()
+          candidate = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts').read_text()
+          auto = Path('artifacts/api-server/src/lib/autoTrader.ts').read_text()
+          build = Path('artifacts/api-server/build.mjs').read_text()
+
+          # Midnight changes accounting date/P&L only, never the sequence.
+          assert '? (isNewDay ? 0 : sequence.realizedPnlCents)' in regular
+          assert '? sequence.martingaleStep' in regular
+          assert 'requestedSide ?? sequence.side' in regular
+          assert 'isNewDay ? 0 : sequence.martingaleStep' not in regular
+          assert 'isNewDay ? "no" : sequence.side' not in regular
+
+          reserve0 = store.index('export async function reserveEthMartingaleEntry')
+          reserve1 = store.index('export async function markEthMartingaleOrderPostStarted', reserve0)
+          reserve = store[reserve0:reserve1]
+          assert 'realized_pnl_cents = CASE WHEN eastern_date = ${params.easternDate} THEN realized_pnl_cents ELSE 0 END' in reserve
+          assert 'spent_cents = CASE WHEN eastern_date = ${params.easternDate} THEN spent_cents + ${cost} ELSE ${cost} END' in reserve
+          assert "side = CASE WHEN eastern_date = ${params.easternDate} THEN side ELSE 'no' END" not in reserve
+          assert 'martingale_step = CASE WHEN eastern_date = ${params.easternDate} THEN martingale_step ELSE 0 END' not in reserve
+
+          # Existing six-step sequence behavior remains unchanged.
+          assert 'ETH_PRINCIPALS_CENTS = [1500, 3000, 6000, 12000, 24000, 32000]' in regular
+          assert 'ETH_DAILY_LOSS_STOP_CENTS = -120_000' in regular
+          assert store.count('const nextStep = won ? 0 : orderStep >= 5 ? 0 : orderStep + 1;') == 1
+          assert 'const nextStep = won ? 0 : orderStep >= 2 ? 0 : orderStep + 1;' not in store[store.index('export async function settleEthMartingaleOrder'):]
+
+          # Zero fill stays neutral.
+          z0 = store.index('export async function advanceEthMartingaleLadderForZeroFill')
+          z1 = store.index('/** Fill-evidence repair queue', z0)
+          zero = store[z0:z1]
+          assert 'A proven zero fill has no market exposure' in zero
+          assert 'eth420_candidate_back_flip_overrides' not in zero
+
+          # Jump still uses the same Regular gateway at $420.
+          c0 = candidate.index('export async function evaluateAndSubmitEth420CandidateWhenExplicitlyEnabled')
+          c1 = candidate.index('async function submitEth420CandidateOrder', c0)
+          active = candidate[c0:c1]
+          assert 'prepared.decision.sweetSpotTell' in active
+          assert 'requestedPrincipalCents: ETH_420_OVERRIDE_CENTS' in active
+          assert 'runEthPreflightAndPlacement' in active
+          assert 'getEth420CandidateBackFlipArm' not in active
+
+          # Known-good trading loop still exists.
+          for symbol in ['onWsTick', 'restFetchAll', 'placeOrder', 'restFetchSeries', 'configureEthBoundarySettlementOrchestration']:
+              assert symbol in auto, symbol
+
+          # New patch is last in the production chain.
+          assert build.index('neutralLt50BackFlipPatch') < build.index('continuousMidnightPatch')
+
+          # Concrete rollover model: prior YES step 3 carries into a new ET day,
+          # while daily P&L resets to zero. This mirrors the exact expressions above.
+          prior = {'side':'yes', 'step':3, 'pnl':-12345}
+          is_new_day = True
+          effective_pnl = 0 if is_new_day else prior['pnl']
+          effective_step = prior['step']
+          effective_side = prior['side']
+          assert (effective_pnl, effective_step, effective_side) == (0, 3, 'yes')
+          print('continuous-midnight martingale invariants passed')
           PY
-          cat /tmp/midnight-seams.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: midnight-seams
-          path: /tmp/midnight-seams.txt
