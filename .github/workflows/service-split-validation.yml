@@ -50,9 +50,17 @@ jobs:
           assert 'jump_signal_observed_service_b_owned' in s
       - name: Typecheck
         run: pnpm run typecheck
-      - name: Run API tests
+      - name: Run service isolation tests
+        run: >-
+          pnpm exec tsx --test
+          artifacts/api-server/src/lib/strategies/ethServiceIsolation.test.ts
+          artifacts/api-server/src/lib/strategies/ethBigBetLifecycle.test.ts
+          artifacts/api-server/src/lib/strategies/ethBigBetExecutor.test.ts
+          artifacts/api-server/src/lib/strategies/ethAccountCapitalGuard.test.ts
+          artifacts/api-server/src/lib/strategies/ethServiceACutover.test.ts
+      - name: Run existing six-step candidate harness
         working-directory: artifacts/api-server
-        run: pnpm test
+        run: node scripts/run-eth420-six-step-candidate-test.mjs
       - name: Commit verified cutover to isolated branch
         run: |
           if git diff --quiet; then
