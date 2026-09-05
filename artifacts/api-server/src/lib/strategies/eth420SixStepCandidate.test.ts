@@ -184,16 +184,16 @@ test("invalid first post-settlement B evidence is durably marked fallback before
   assert.equal(reserved[0].backFlip, null);
   assert.equal(reserved[0].side, liveState.side);
 });
-test("sweet spot includes p95, excludes p99, filters NaN, and overrides only the wager", () => {
+test("sweet spot includes p95, excludes p99, filters NaN, and leaves Service A on its normal wager", () => {
   const pool = [...Array.from({ length: 49 }, (_, i) => i / 1000), Number.NaN, .05];
   const atP95 = evaluateEth420Candidate(input({ trailingMoves: pool, floorStrike: 104.9 }));
   assert.equal(atP95.validObservationCount, 50); assert.equal(atP95.sweetSpotTell, true);
-  assert.equal(atP95.side, "no"); assert.equal(atP95.effectiveWagerCents, 42000);
+  assert.equal(atP95.side, "no"); assert.equal(atP95.effectiveWagerCents, atP95.normalWagerCents); assert.equal(atP95.overrideIncreasedWager, false);
   const downJump = evaluateEth420Candidate(input({
     state: state({ side: "yes", step: 3 }), trailingMoves: pool, floorStrike: 95.1,
   }));
   assert.equal(downJump.sweetSpotTell, true);
-  assert.equal(downJump.side, "yes"); assert.equal(downJump.effectiveWagerCents, 42000);
+  assert.equal(downJump.side, "yes"); assert.equal(downJump.effectiveWagerCents, downJump.normalWagerCents); assert.equal(downJump.overrideIncreasedWager, false);
   const atP99 = evaluateEth420Candidate(input({ trailingMoves: pool, floorStrike: 105 }));
   assert.equal(atP99.sweetSpotTell, false); assert.equal(atP99.finalReason, "top_1_percent_excluded");
   assert.equal(evaluateEth420Candidate(input({ state: state({ step: 5 }) })).effectiveWagerCents, 32000);
@@ -208,7 +208,7 @@ test("non-qualifying windows retain the carried sequence side and normal ladder 
   assert.equal(decision.side, "yes");
   assert.equal(decision.effectiveWagerCents, 12000);
 });
-test("qualifying jump keeps the step-0 carried side while using $420", () => {
+test("qualifying jump keeps the step-0 carried side while Service A remains on its normal rung", () => {
   const qualifyingPool = [...Array.from({ length: 46 }, () => .001), .005, .0055, .006, .006];
   const decision = evaluateEth420Candidate(input({
     ticker: "KXETH15M-26SEP011230-30",
@@ -224,7 +224,8 @@ test("qualifying jump keeps the step-0 carried side while using $420", () => {
   }));
   assert.equal(decision.sweetSpotTell, true);
   assert.equal(decision.side, "yes");
-  assert.equal(decision.effectiveWagerCents, 42000);
+  assert.equal(decision.effectiveWagerCents, decision.normalWagerCents);
+  assert.equal(decision.overrideIncreasedWager, false);
 });
 test("insufficient and non-adjacent strike evidence fail closed to no jump", () => {
   assert.equal(evaluateEth420Candidate(input({ trailingMoves: [0.1], floorStrike: null })).effectiveWagerCents, 1500);

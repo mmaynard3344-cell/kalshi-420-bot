@@ -1226,14 +1226,12 @@ export function evaluateEth420Candidate(input: Eth420EvaluationInput): Eth420Dec
   const atOrAboveP95 = currentMove != null && p95 != null ? currentMove >= p95 : null;
   const belowP99 = currentMove != null && p99 != null ? currentMove < p99 : null;
   const withinStatisticalJumpBand = atOrAboveP95 === true && belowP99 === true;
-  // A qualifying p95-to-p99 move is a sizing signal only. Its direction must
-  // never override the durable sequence side, including when the carried state
-  // is step 0. This keeps a jump order on the same side the candidate would
-  // otherwise have placed.
+  // Service A observes the p95-to-p99 band for telemetry only. Service B owns
+  // the standalone $420 jump order; A must never change its ladder wager here.
   const sweetSpotTell = withinStatisticalJumpBand;
   const resultingBand = p95 == null || p99 == null || currentMove == null ? "unavailable"
     : withinStatisticalJumpBand ? "p95_to_p99" : atOrAboveP95 ? "at_or_above_p99" : "below_p95";
-  const effectiveWagerCents = sweetSpotTell ? Math.max(normalWagerCents, ETH_420_OVERRIDE_CENTS) : normalWagerCents;
+  const effectiveWagerCents = normalWagerCents;
   const prospectiveWorstCasePnlCents = input.state.realizedPnlCents - effectiveWagerCents - Math.max(0, Math.trunc(input.estimatedFeeCents));
   const prospectiveLossAllowed = prospectiveWorstCasePnlCents >= ETH_420_DAILY_LOSS_LIMIT_CENTS;
   const blockResetApplied = !prospectiveLossAllowed;
@@ -1242,7 +1240,7 @@ export function evaluateEth420Candidate(input: Eth420EvaluationInput): Eth420Dec
     : input.state;
   const signalReason = pool.length < ETH_420_MIN_HISTORY ? "insufficient_history_no_jump"
     : currentMove == null ? "invalid_or_non_adjacent_floor_strike_no_jump"
-      : sweetSpotTell ? "sweet_spot_jump" : atOrAboveP95 ? "top_1_percent_excluded" : "normal_ladder";
+      : sweetSpotTell ? "jump_signal_observed_service_b_owned" : atOrAboveP95 ? "top_1_percent_excluded" : "normal_ladder";
   return {
     label: ETH_420_CANDIDATE_LABEL, ticker: input.ticker, side: input.state.side, underlyingStep: step,
     normalWagerCents, effectiveWagerCents, validObservationCount: pool.length, p95, p99, currentMove,
