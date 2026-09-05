@@ -19,9 +19,9 @@ function resolveCommitSha() {
 }
 
 async function buildAll() {
-  // Three-road router plus the regular-zero-fill Back Flip handoff. Every patch
-  // uses exact source replacements and aborts if the expected production source
-  // has drifted. The normal production esbuild remains the compile gate.
+  // Historical source patches are still applied in their established order.
+  // The final two-road patch intentionally supersedes the retired Back Flip
+  // execution path and makes Regular the single authoritative six-step state.
   const routerPatchScript = path.resolve(artifactDir, "../../scripts/apply_eth_three_road_router.py");
   execSync(`python3 "${routerPatchScript}"`, { stdio: "inherit" });
   const regularZeroFillArmPatch = path.resolve(artifactDir, "../../scripts/apply_regular_zero_fill_backflip_v2.py");
@@ -36,6 +36,8 @@ async function buildAll() {
   execSync(`python3 "${oneShotBackFlipPatch}"`, { stdio: "inherit" });
   const neutralLt50BackFlipPatch = path.resolve(artifactDir, "../../scripts/apply_backflip_lt50_neutral_martingale.py");
   execSync(`python3 "${neutralLt50BackFlipPatch}"`, { stdio: "inherit" });
+  const twoRoadSixStepJumpPatch = path.resolve(artifactDir, "../../scripts/apply_two_road_six_step_jump.py");
+  execSync(`python3 "${twoRoadSixStepJumpPatch}"`, { stdio: "inherit" });
 
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
@@ -94,7 +96,6 @@ async function buildAll() {
       "firebase-admin",
       "@parcel/watcher",
       "@sentry/profiling-node",
-      "@tree-sitter/*",
       "aws-sdk",
       "classic-level",
       "dd-trace",
