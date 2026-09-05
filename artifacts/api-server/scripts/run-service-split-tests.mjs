@@ -15,6 +15,7 @@ const testFiles = [
   "src/lib/strategies/ethServiceACutover.test.ts",
   "src/lib/strategies/ethJumpServiceRuntime.test.ts",
   "src/lib/strategies/ethBigBetStore.test.ts",
+  "src/lib/strategies/ethJumpLiveRunner.test.ts",
 ];
 
 const compiled = [];
