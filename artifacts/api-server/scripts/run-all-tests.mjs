@@ -22,6 +22,9 @@ const testFiles = [
   "src/lib/ethBoundarySettlementOrchestrator.test.ts",
   "src/lib/eth420BoundarySettlementOrchestrator.test.ts",
   "src/lib/eth420RunawayResearch.test.ts",
+  "src/lib/strategies/ethServiceIsolation.test.ts",
+  "src/lib/strategies/ethBigBetLifecycle.test.ts",
+  "src/lib/strategies/ethBigBetExecutor.test.ts",
 ];
 
 const compiledTests = [];
