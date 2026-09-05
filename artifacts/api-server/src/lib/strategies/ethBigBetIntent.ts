@@ -16,13 +16,18 @@ export function buildEthJumpOrderIntent(input: {
 }): EthBigBetOrderIntent | null {
   if (!/^KXETH15M-/.test(input.ticker) || !Number.isInteger(input.marketOpenTimeMs)
     || (input.carriedSide !== "yes" && input.carriedSide !== "no")) return null;
-  const signal = evaluateEthJumpSignal({ currentMove: input.currentMove, p95: input.p95, p99: input.p99 });
+  const signal = evaluateEthJumpSignal({
+    currentMove: input.currentMove,
+    p95: input.p95,
+    p99: input.p99,
+    carriedSide: input.carriedSide,
+  });
   if (!signal.fires) return null;
   return {
     strategy: "jump",
     orderTag: ETH_JUMP_ORDER_TAG,
     ticker: input.ticker,
-    side: input.carriedSide,
+    side: signal.side ?? input.carriedSide,
     wagerCents: ETH_JUMP_WAGER_CENTS,
     limitPriceCents: ETH_BIG_BET_LIMIT_PRICE_CENTS,
     marketOpenTimeMs: input.marketOpenTimeMs,
