@@ -1,4 +1,3 @@
-import { getWindowLog } from "../windowLog.js";
 import type { Eth420CandidateMarket } from "./eth420SixStepCandidate.js";
 import { evaluateEthAccountCapital, type EthAccountCapitalInput } from "./ethAccountCapitalGuard.js";
 import { createEthBigBetKalshiSubmitter } from "./ethBigBetKalshiExchange.js";
@@ -45,6 +44,9 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
   | "rejected"
 > {
   if (!isEthReversalServiceExecutionPermitted()) return "disabled";
+  // Load the durable window-result reader only after every execution gate is
+  // open. A disabled C service must remain inert even without DATABASE_URL.
+  const { getWindowLog } = await import("../windowLog.js");
   const intent = await prepareEthReversalServiceIntent({
     store: input.store,
     market: input.market,
