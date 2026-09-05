@@ -6,7 +6,7 @@ import {
 } from "./eth420SixStepCandidate.js";
 
 function input(overrides: Partial<Eth420EvaluationInput> = {}): Eth420EvaluationInput {
-  const currentOpen = 2_000_000_000_000;
+  const currentOpen = 1_999_999_800_000;
   const priorOpen = currentOpen - 15 * 60_000;
   const trailingMoves = Array.from({ length: 100 }, (_, i) => 0.001 + i * 0.00001);
   return {
