@@ -1,0 +1,66 @@
+name: service-split-validation
+
+on:
+  push:
+    branches: [service-split-a-b-c]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cutover-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: service-split-a-b-c
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply narrow Service A cutover if needed
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts')
+          s = p.read_text()
+          old = 'const effectiveWagerCents = sweetSpotTell ? Math.max(normalWagerCents, ETH_420_OVERRIDE_CENTS) : normalWagerCents;'
+          new = 'const effectiveWagerCents = normalWagerCents;'
+          if old in s:
+              s = s.replace(old, new, 1)
+              s = s.replace('// A qualifying p95-to-p99 move is a sizing signal only. Its direction must\n  // never override the durable sequence side, including when the carried state\n  // is step 0. This keeps a jump order on the same side the candidate would\n  // otherwise have placed.', '// Service A observes the p95-to-p99 band for telemetry only. Service B owns\n  // the standalone $420 jump order; A must never change its ladder wager here.')
+              s = s.replace(': sweetSpotTell ? "sweet_spot_jump" : atOrAboveP95 ?', ': sweetSpotTell ? "jump_signal_observed_service_b_owned" : atOrAboveP95 ?', 1)
+              p.write_text(s)
+          elif new not in s:
+              raise SystemExit('Expected Service A sizing seam not found')
+      - name: Assert cutover invariant
+        shell: python
+        run: |
+          from pathlib import Path
+          s = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts').read_text()
+          assert 'const effectiveWagerCents = normalWagerCents;' in s
+          assert 'sweetSpotTell ? Math.max(normalWagerCents, ETH_420_OVERRIDE_CENTS)' not in s
+          assert 'jump_signal_observed_service_b_owned' in s
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Run API tests
+        working-directory: artifacts/api-server
+        run: pnpm test
+      - name: Commit verified cutover to isolated branch
+        run: |
+          if git diff --quiet; then
+            echo 'No cutover diff to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts
+          git commit -m 'Separate Service A ladder sizing from jump signal'
+          git push origin HEAD:service-split-a-b-c
