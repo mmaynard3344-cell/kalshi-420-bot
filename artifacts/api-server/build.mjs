@@ -22,6 +22,8 @@ async function buildAll() {
   // Historical source patches are still applied in their established order.
   // The final two-road patch intentionally supersedes the retired Back Flip
   // execution path and makes Regular the single authoritative six-step state.
+  // The midnight patch then changes only the day-boundary accounting reset;
+  // martingale side/rung remain continuous across Eastern midnight.
   const routerPatchScript = path.resolve(artifactDir, "../../scripts/apply_eth_three_road_router.py");
   execSync(`python3 "${routerPatchScript}"`, { stdio: "inherit" });
   const regularZeroFillArmPatch = path.resolve(artifactDir, "../../scripts/apply_regular_zero_fill_backflip_v2.py");
@@ -38,6 +40,8 @@ async function buildAll() {
   execSync(`python3 "${neutralLt50BackFlipPatch}"`, { stdio: "inherit" });
   const twoRoadSixStepJumpPatch = path.resolve(artifactDir, "../../scripts/apply_two_road_six_step_jump.py");
   execSync(`python3 "${twoRoadSixStepJumpPatch}"`, { stdio: "inherit" });
+  const midnightAccountingOnlyPatch = path.resolve(artifactDir, "../../scripts/apply_midnight_accounting_only.py");
+  execSync(`python3 "${midnightAccountingOnlyPatch}"`, { stdio: "inherit" });
 
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
