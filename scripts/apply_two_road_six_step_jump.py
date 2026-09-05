@@ -57,12 +57,8 @@ regular_path.write_text(regular)
 # 2) Durable Regular settlement is six-step. A zero fill is no martingale result.
 store_path = ROOT / "artifacts/api-server/src/lib/tradeStore.ts"
 store = store_path.read_text()
-# There are exactly two live Regular loss-transition seams: filled settlement and
-# zero-fill settlement. The zero-fill seam is removed separately below.
 if store.count('const nextStep = won ? 0 : orderStep >= 2 ? 0 : orderStep + 1;') != 2:
     raise SystemExit("unexpected Regular nextStep seam count")
-# Filled settlement: update the later occurrence by first changing both, then the
-# zero-fill block is replaced wholesale below.
 store = store.replace(
     'const nextStep = won ? 0 : orderStep >= 2 ? 0 : orderStep + 1;',
     'const nextStep = won ? 0 : orderStep >= 5 ? 0 : orderStep + 1;',
@@ -91,17 +87,14 @@ new_signal_fn = '''export async function evaluateAndSubmitEth420CandidateWhenExp
   const note = (stage: "reservation" | "exchange_submission" | "executor_blocked", reason: string) => {
     try { onLifecycleEvent?.(stage, reason); } catch { /* diagnostics cannot change execution */ }
   };
-  if (!isEth420CandidateExecutionPermitted()) {
-    note("executor_blocked", "execution_not_permitted");
-    return false;
-  }
   if (!/^KXETH15M-/.test(market.ticker) || market.status?.toLowerCase() !== "open"
     || market.exchangeIndex == null || !Number.isInteger(market.exchangeIndex)) {
     note("executor_blocked", "market_metadata_unusable");
     return false;
   }
-  // Back Flip is retired. Candidate logic is now read-only signal detection;
+  // Back Flip is retired. Candidate logic is now read-only Jump signal detection;
   // the Regular gateway owns every exchange order and every martingale state transition.
+  // This signal no longer depends on the retired candidate-execution enable flag.
   const prepared = await prepareEth420CandidateDecision(store, candidateMarket);
   if (!prepared) {
     note("executor_blocked", "candidate_decision_unavailable");
@@ -181,8 +174,6 @@ new_helper = '''async function evaluateEth420Candidate(
   };
   observeEth420Candidate(tradeStore, candidateMarket)
     .catch((err) => logger.warn({ err, ticker: state.ticker }, "ETH 420 candidate observation failed"));
-
-  if (!isEth420CandidateExecutionPermitted() && timing.boundaryOpenTimeMs == null) return "regular";
 
   let lastReason: string | null = null;
   await evaluateAndSubmitEth420CandidateWhenExplicitlyEnabled(
