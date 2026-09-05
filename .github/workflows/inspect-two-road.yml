@@ -13,10 +13,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Typecheck API
-        run: pnpm --filter @workspace/api-server typecheck
       - name: Production API build
         run: pnpm --filter @workspace/api-server build
+      - name: Typecheck patched API source
+        run: pnpm --filter @workspace/api-server typecheck
       - name: Assert final two-road source invariants
         run: |
           python3 - <<'PY'
