@@ -6,16 +6,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  cutover-and-validate:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: service-split-a-b-c
-          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
           version: 10.26.1
@@ -25,52 +24,7 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Apply narrow Service A cutover and ownership-test update if needed
-        shell: python
-        run: |
-          from pathlib import Path
-
-          p = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts')
-          s = p.read_text()
-          old = 'const effectiveWagerCents = sweetSpotTell ? Math.max(normalWagerCents, ETH_420_OVERRIDE_CENTS) : normalWagerCents;'
-          new = 'const effectiveWagerCents = normalWagerCents;'
-          if old in s:
-              s = s.replace(old, new, 1)
-              s = s.replace('// A qualifying p95-to-p99 move is a sizing signal only. Its direction must\n  // never override the durable sequence side, including when the carried state\n  // is step 0. This keeps a jump order on the same side the candidate would\n  // otherwise have placed.', '// Service A observes the p95-to-p99 band for telemetry only. Service B owns\n  // the standalone $420 jump order; A must never change its ladder wager here.')
-              s = s.replace(': sweetSpotTell ? "sweet_spot_jump" : atOrAboveP95 ?', ': sweetSpotTell ? "jump_signal_observed_service_b_owned" : atOrAboveP95 ?', 1)
-              p.write_text(s)
-          elif new not in s:
-              raise SystemExit('Expected Service A sizing seam not found')
-
-          t = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.test.ts')
-          x = t.read_text()
-          x = x.replace(
-              'test("sweet spot includes p95, excludes p99, filters NaN, and overrides only the wager", () => {',
-              'test("sweet spot includes p95, excludes p99, filters NaN, and leaves Service A on its normal wager", () => {',
-              1,
-          )
-          x = x.replace(
-              'assert.equal(atP95.side, "no"); assert.equal(atP95.effectiveWagerCents, 42000);',
-              'assert.equal(atP95.side, "no"); assert.equal(atP95.effectiveWagerCents, atP95.normalWagerCents); assert.equal(atP95.overrideIncreasedWager, false);',
-              1,
-          )
-          x = x.replace(
-              'assert.equal(downJump.side, "yes"); assert.equal(downJump.effectiveWagerCents, 42000);',
-              'assert.equal(downJump.side, "yes"); assert.equal(downJump.effectiveWagerCents, downJump.normalWagerCents); assert.equal(downJump.overrideIncreasedWager, false);',
-              1,
-          )
-          x = x.replace(
-              'test("qualifying jump keeps the step-0 carried side while using $420", () => {',
-              'test("qualifying jump keeps the step-0 carried side while Service A remains on its normal rung", () => {',
-              1,
-          )
-          x = x.replace(
-              'assert.equal(decision.effectiveWagerCents, 42000);',
-              'assert.equal(decision.effectiveWagerCents, decision.normalWagerCents);\n  assert.equal(decision.overrideIncreasedWager, false);',
-              1,
-          )
-          t.write_text(x)
-      - name: Assert cutover invariant
+      - name: Assert Service A/B cutover invariant
         shell: python
         run: |
           from pathlib import Path
@@ -90,14 +44,3 @@ jobs:
       - name: Run existing six-step candidate harness
         working-directory: artifacts/api-server
         run: node scripts/run-eth420-six-step-candidate-test.mjs
-      - name: Commit verified cutover to isolated branch
-        run: |
-          if git diff --quiet; then
-            echo 'No cutover diff to commit'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.test.ts
-          git commit -m 'Separate Service A ladder sizing from jump signal'
-          git push origin HEAD:service-split-a-b-c
