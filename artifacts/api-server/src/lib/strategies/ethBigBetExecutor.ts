@@ -21,6 +21,11 @@ export interface EthBigBetExecutionStore {
   }): Promise<boolean>;
 }
 
+export type EthBigBetSubmitResult =
+  | { kind: "accepted"; exchangeOrderId: string }
+  | { kind: "rejected"; reason: string }
+  | { kind: "unknown" };
+
 export interface EthBigBetExchangeSubmitter {
   submit(input: {
     clientOrderId: string;
@@ -28,13 +33,16 @@ export interface EthBigBetExchangeSubmitter {
     side: "yes" | "no";
     contracts: number;
     limitPriceCents: number;
-  }): Promise<{ exchangeOrderId: string | null }>;
+  }): Promise<EthBigBetSubmitResult>;
 }
 
 /**
  * Stateless B/C submission seam. It deliberately has no martingale-state input
  * or settlement dependency. An unresolved earlier market is allowed; only the
  * exact same strategy+market identity can suppress a duplicate submission.
+ *
+ * Any thrown/ambiguous POST remains submission_unknown. Only an explicit,
+ * authoritative exchange rejection may be persisted as rejected.
  */
 export async function submitEthBigBetIntent(input: {
   intent: EthBigBetOrderIntent;
@@ -61,21 +69,38 @@ export async function submitEthBigBetIntent(input: {
       contracts,
       limitPriceCents: input.intent.limitPriceCents,
     });
-    const status = submitted.exchangeOrderId ? "submitted" as const : "submission_unknown" as const;
+    if (submitted.kind === "accepted") {
+      await input.store.acknowledgeEthBigBetOrder({
+        orderId,
+        exchangeOrderId: submitted.exchangeOrderId,
+        status: "submitted",
+        acknowledgedAtMs: Date.now(),
+      });
+      return "submitted";
+    }
+    if (submitted.kind === "rejected") {
+      await input.store.acknowledgeEthBigBetOrder({
+        orderId,
+        exchangeOrderId: null,
+        status: "rejected",
+        acknowledgedAtMs: Date.now(),
+      });
+      return "rejected";
+    }
     await input.store.acknowledgeEthBigBetOrder({
       orderId,
-      exchangeOrderId: submitted.exchangeOrderId,
-      status,
+      exchangeOrderId: null,
+      status: "submission_unknown",
       acknowledgedAtMs: Date.now(),
     });
-    return status;
+    return "submission_unknown";
   } catch {
     await input.store.acknowledgeEthBigBetOrder({
       orderId,
       exchangeOrderId: null,
-      status: "rejected",
+      status: "submission_unknown",
       acknowledgedAtMs: Date.now(),
     });
-    return "rejected";
+    return "submission_unknown";
   }
 }
