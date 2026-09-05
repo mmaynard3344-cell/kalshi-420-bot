@@ -19,9 +19,9 @@ function resolveCommitSha() {
 }
 
 async function buildAll() {
-  // Three-road router plus the regular-zero-fill Back Flip handoff. Every patch
-  // uses exact source replacements and aborts if the expected production source
-  // has drifted. The normal production esbuild remains the compile gate.
+  // Historical compatibility patches remain in their established order. The
+  // final ETH simplification lives in the neutralLt50 patch. The midnight patch
+  // then changes only day-boundary accounting: side/rung continue across ET midnight.
   const routerPatchScript = path.resolve(artifactDir, "../../scripts/apply_eth_three_road_router.py");
   execSync(`python3 "${routerPatchScript}"`, { stdio: "inherit" });
   const regularZeroFillArmPatch = path.resolve(artifactDir, "../../scripts/apply_regular_zero_fill_backflip_v2.py");
@@ -36,6 +36,8 @@ async function buildAll() {
   execSync(`python3 "${oneShotBackFlipPatch}"`, { stdio: "inherit" });
   const neutralLt50BackFlipPatch = path.resolve(artifactDir, "../../scripts/apply_backflip_lt50_neutral_martingale.py");
   execSync(`python3 "${neutralLt50BackFlipPatch}"`, { stdio: "inherit" });
+  const midnightAccountingOnlyPatch = path.resolve(artifactDir, "../../scripts/apply_midnight_accounting_only.py");
+  execSync(`python3 "${midnightAccountingOnlyPatch}"`, { stdio: "inherit" });
 
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
