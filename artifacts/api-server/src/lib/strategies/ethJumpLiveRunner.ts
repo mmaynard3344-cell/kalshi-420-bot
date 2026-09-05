@@ -3,6 +3,8 @@ import { prepareEthJumpServiceIntent } from "./ethJumpServiceRuntime.js";
 import { createEthBigBetKalshiSubmitter } from "./ethBigBetKalshiExchange.js";
 import { submitEthBigBetIntent } from "./ethBigBetExecutor.js";
 import { ethBigBetExecutionStore } from "./ethBigBetExecutionStoreAdapter.js";
+import { initEthBigBetStore } from "./ethBigBetStore.js";
+import { evaluateEthAccountCapital, type EthAccountCapitalInput } from "./ethAccountCapitalGuard.js";
 import { currentEthServiceRole, serviceOwnsJump } from "./ethServiceRole.js";
 
 /**
@@ -19,15 +21,26 @@ export function isEthJumpServiceExecutionPermitted(role = currentEthServiceRole(
 }
 
 type JumpEvidenceStore = Parameters<typeof prepareEthJumpServiceIntent>[0]["store"];
+let storeReady: Promise<void> | null = null;
+
+async function ensureStoreReady(): Promise<void> {
+  storeReady ??= initEthBigBetStore();
+  return storeReady;
+}
 
 export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
   store: JumpEvidenceStore;
   market: Eth420CandidateMarket;
   exchangeIndex: number | null | undefined;
+  /** Caller-owned account snapshot. Null/invalid evidence fails closed. */
+  capital: Omit<EthAccountCapitalInput, "requestedRiskCents"> | null;
 }): Promise<
   | "disabled"
   | "no_signal"
+  | "capital_unavailable"
+  | "capital_blocked"
   | "routing_unavailable"
+  | "storage_unavailable"
   | "submitted"
   | "blocked_duplicate"
   | "blocked_invalid_size"
@@ -38,7 +51,15 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
   if (!isEthJumpServiceExecutionPermitted()) return "disabled";
   const intent = await prepareEthJumpServiceIntent({ store: input.store, market: input.market });
   if (!intent) return "no_signal";
+  if (!input.capital) return "capital_unavailable";
+  const capital = evaluateEthAccountCapital({ ...input.capital, requestedRiskCents: intent.wagerCents });
+  if (!capital.allowed) return capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked";
   const exchange = input.exchangeIndex == null ? null : createEthBigBetKalshiSubmitter(input.exchangeIndex);
   if (!exchange) return "routing_unavailable";
+  try {
+    await ensureStoreReady();
+  } catch {
+    return "storage_unavailable";
+  }
   return submitEthBigBetIntent({ intent, store: ethBigBetExecutionStore, exchange });
 }
