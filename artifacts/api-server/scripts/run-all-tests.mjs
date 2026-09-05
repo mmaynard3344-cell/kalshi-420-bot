@@ -28,6 +28,7 @@ const testFiles = [
   "src/lib/strategies/ethAccountCapitalGuard.test.ts",
   "src/lib/strategies/ethServiceACutover.test.ts",
   "src/lib/strategies/ethJumpServiceRuntime.test.ts",
+  "src/lib/strategies/ethBigBetStore.test.ts",
 ];
 
 const compiledTests = [];
