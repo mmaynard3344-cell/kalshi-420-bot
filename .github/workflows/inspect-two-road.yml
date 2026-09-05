@@ -1,0 +1,32 @@
+name: inspect-two-road
+on:
+  push:
+    branches: [fix/two-road-six-step-jump]
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply production source patches and inspect routing
+        run: |
+          python3 scripts/apply_eth_three_road_router.py
+          python3 scripts/apply_regular_zero_fill_backflip_v2.py
+          python3 scripts/apply_regular_zero_fill_verified_backflip.py
+          python3 scripts/apply_regular_reconcile_before_router.py
+          python3 scripts/apply_eth_three_road_durable_owner.py
+          python3 scripts/apply_backflip_market_ioc_once.py
+          python3 scripts/apply_backflip_lt50_neutral_martingale.py
+          python3 - <<'PY'
+          from pathlib import Path
+          for p in ['artifacts/api-server/src/lib/autoTrader.ts','artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts','artifacts/api-server/src/lib/tradeStore.ts','artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts']:
+              lines=Path(p).read_text().splitlines()
+              print('\n###',p)
+              needles=['evaluateEth420Candidate(', 'ordinary_martingale_owned', 'runEthPreflightAndPlacement', 'prepareEth420CandidateDecision', 'sweetSpotTell', 'backFlip', 'ETH_PRINCIPALS_CENTS', 'nextStep = won', 'lossNextStep']
+              hits=[i for i,l in enumerate(lines) if any(n in l for n in needles)]
+              shown=set()
+              for i in hits:
+                  a=max(0,i-12); b=min(len(lines),i+35)
+                  if any(x in shown for x in range(a,b)): continue
+                  shown.update(range(a,b))
+                  for j in range(a,b): print(f'{j+1}: {lines[j]}')
+          PY
