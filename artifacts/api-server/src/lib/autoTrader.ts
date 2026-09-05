@@ -695,6 +695,7 @@ import {
   observeEth420Candidate,
 } from "./strategies/eth420SixStepCandidate.js";
 import { runEthJumpServiceWhenExplicitlyEnabled } from "./strategies/ethJumpLiveRunner.js";
+import { runEthReversalServiceWhenExplicitlyEnabled } from "./strategies/ethReversalLiveRunner.js";
 export type { WindowLogEntry } from "./windowLog";
 export { getWindowLog } from "./windowLog";
 
@@ -984,6 +985,23 @@ async function evaluate(
     // provider is required before the hard B execution fence can change.
     capital: null,
   });
+    // Dormant wiring only. C shares the same market identity but has its own
+    // independent signal, ledger identity, and hard execution fence.
+    await runEthReversalServiceWhenExplicitlyEnabled({
+      store: tradeStore,
+      market: {
+        ticker: state.ticker,
+        easternDate: jumpOpenTimeMs != null && Number.isFinite(jumpOpenTimeMs)
+          ? easternDay(new Date(jumpOpenTimeMs)) : easternDay(new Date()),
+        observedAtMs: Date.now(),
+        floorStrike: state.floorStrike ?? null,
+        openTimeMs: jumpOpenTimeMs,
+      },
+      exchangeIndex: state.exchangeIndex ?? null,
+      // No capital provider is wired in this staging commit, so C remains
+      // fail-closed even independently of its hard code approval fence.
+      capital: null,
+    });
   }
   // The retired BTC/SOL/DOGE entry evaluator below is intentionally kept only
   // as historical source material. This unconditional production fence has no
