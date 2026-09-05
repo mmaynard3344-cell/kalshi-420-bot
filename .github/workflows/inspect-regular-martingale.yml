@@ -1,0 +1,22 @@
+name: inspect-regular-martingale
+on:
+  push:
+    branches:
+      - fix/regular-six-step-ladder
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect Regular martingale transition code
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for path in [Path('artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts'), Path('artifacts/api-server/src/lib/tradeStore.ts')]:
+              print(f'### {path}')
+              lines=path.read_text().splitlines()
+              needles=('ETH_PRINCIPALS_CENTS','martingaleStep','martingale_step','settleEthMartingaleOrder','advanceEthMartingaleLadderForZeroFill','nextStep','step >= 2','step > 2')
+              for i,line in enumerate(lines,1):
+                  if any(n in line for n in needles):
+                      print(f'{i}: {line}')
+          PY
