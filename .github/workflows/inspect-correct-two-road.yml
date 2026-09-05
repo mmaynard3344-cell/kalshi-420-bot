@@ -1,37 +1,66 @@
-name: inspect-correct-two-road
+name: validate-correct-two-road
 on:
   push:
     branches: [fix/correct-two-road-six-step]
 jobs:
-  inspect:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect known-good production patch chain and exact ETH seams
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build referenced TypeScript libraries
+        run: pnpm exec tsc -b lib/db/tsconfig.json lib/api-zod/tsconfig.json
+      - name: Production API build with full patch chain
+        run: pnpm --filter @workspace/api-server build
+      - name: Typecheck patched production source
+        run: pnpm --filter @workspace/api-server typecheck
+      - name: Assert exact two-road trading invariants
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          for p in [
-            'artifacts/api-server/build.mjs',
-            'artifacts/api-server/src/lib/autoTrader.ts',
-            'artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts',
-            'artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts',
-            'artifacts/api-server/src/lib/tradeStore.ts',
-          ]:
-              print('\n###', p)
-              lines=Path(p).read_text().splitlines()
-              needles=[
-                'apply_eth_three_road_router', 'apply_regular_zero_fill', 'apply_backflip',
-                'ETH_PRINCIPALS_CENTS', 'ETH_DAILY_LOSS_STOP_CENTS', 'lossNextStep',
-                'evaluateEth420Candidate(', 'evaluateAndSubmitEth420CandidateWhenExplicitlyEnabled',
-                'ordinary_martingale_owned', 'sweetSpotTell', 'advanceEthMartingaleLadderForZeroFill',
-                'settleEthMartingaleOrder', 'nextStep = won', 'runEthPreflightAndPlacement',
-              ]
-              hits=[i for i,l in enumerate(lines) if any(n in l for n in needles)]
-              shown=set()
-              for i in hits:
-                  a=max(0,i-10); b=min(len(lines),i+26)
-                  if any(x in shown for x in range(a,b)): continue
-                  shown.update(range(a,b))
-                  for j in range(a,b): print(f'{j+1}: {lines[j]}')
+          regular = Path('artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts').read_text()
+          candidate = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts').read_text()
+          store = Path('artifacts/api-server/src/lib/tradeStore.ts').read_text()
+          auto = Path('artifacts/api-server/src/lib/autoTrader.ts').read_text()
+
+          assert 'ETH_PRINCIPALS_CENTS = [1500, 3000, 6000, 12000, 24000, 32000]' in regular
+          assert 'ETH_DAILY_LOSS_STOP_CENTS = -120_000' in regular
+          assert 'Math.min(5, step)' in regular
+          assert 'lossNextStep: row.martingaleStep >= 5 ? 0 : row.martingaleStep + 1' in regular
+          assert 'projectedFullLossPnlCents < dailyLossStopCents' in regular
+
+          # Filled loss from step 2 (120 contracts / $60 rung) must advance to step 3
+          # ($120 / 240 contracts), and only step 5 resets after a loss.
+          assert store.count('const nextStep = won ? 0 : orderStep >= 5 ? 0 : orderStep + 1;') == 1
+          assert 'orderStep >= 2 ? 0' not in store[store.index('export async function settleEthMartingaleOrder'):]
+
+          z0 = store.index('export async function advanceEthMartingaleLadderForZeroFill')
+          z1 = store.index('/** Fill-evidence repair queue', z0)
+          zero = store[z0:z1]
+          assert 'A proven zero fill has no market exposure' in zero
+          assert 'eth420_candidate_back_flip_overrides' not in zero
+          assert 'martingale_step=${nextStep}' not in zero
+
+          c0 = candidate.index('export async function evaluateAndSubmitEth420CandidateWhenExplicitlyEnabled')
+          c1 = candidate.index('async function submitEth420CandidateOrder', c0)
+          active = candidate[c0:c1]
+          assert 'prepared.decision.sweetSpotTell' in active
+          assert 'requestedPrincipalCents: ETH_420_OVERRIDE_CENTS' in active
+          assert 'runEthPreflightAndPlacement' in active
+          assert 'getEth420CandidateBackFlipArm' not in active
+          assert 'submitEth420CandidateOrder' not in active
+
+          # The known-good autoTrader loop must remain structurally intact.
+          for symbol in ['onWsTick', 'restFetchAll', 'placeOrder', 'restFetchSeries', 'configureEthBoundarySettlementOrchestration']:
+              assert symbol in auto, symbol
+
+          # Static rung proof at the fixed 50c limit.
+          principals=[1500,3000,6000,12000,24000,32000]
+          assert [p//50 for p in principals] == [30,60,120,240,480,640]
+          print('all corrected two-road invariants passed')
           PY
