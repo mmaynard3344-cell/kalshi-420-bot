@@ -95,11 +95,11 @@ async function fetchAllOrderFills(
   let cursor: string | null = null;
   const seen = new Set<string>();
   for (let page = 0; page < 20; page++) {
-    const path = `/portfolio/fills?order_id=${encodeURIComponent(orderId)}&limit=1000${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
-    const response = await authFetch<KalshiFillsResponse>("GET", path);
+    const path: string = `/portfolio/fills?order_id=${encodeURIComponent(orderId)}&limit=1000${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+    const response: KalshiFillsResponse = await authFetch<KalshiFillsResponse>("GET", path);
     if (!Array.isArray(response?.fills)) return null;
     all.push(...response.fills);
-    const next = typeof response.cursor === "string" && response.cursor.trim() ? response.cursor : null;
+    const next: string | null = typeof response.cursor === "string" && response.cursor.trim() ? response.cursor : null;
     if (!next) return all;
     if (seen.has(next)) return null;
     seen.add(next);
