@@ -2,9 +2,23 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildEthJumpOrderIntent, buildEthReversalOrderIntent } from "./ethBigBetIntent.js";
 import { submitEthBigBetIntent } from "./ethBigBetExecutor.js";
-import { ethBigBetOrderId, type EthBigBetOrderIntent } from "./ethBigBetLifecycle.js";
+import { ethBigBetCapitalRiskCents, ethBigBetOrderId, type EthBigBetOrderIntent } from "./ethBigBetLifecycle.js";
 
-function memoryStore(unresolved: string[] = []) {
+const capital = {
+  availableBalanceCents: 200_000,
+  martingaleReserveCents: 43_470,
+  safetyReserveCents: 0,
+  otherBigBetReservedCents: 0,
+};
+
+function executionCapital(intent: EthBigBetOrderIntent) {
+  return {
+    capital,
+    requestedRiskCents: ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents),
+  };
+}
+
+function memoryStore(unresolved: string[] = [], reservationResult: "reserved" | "capital_blocked" | "reservation_failed" = "reserved") {
   const reservations: string[] = [];
   const acknowledgements: Array<{ orderId: string; status: string }> = [];
   return {
@@ -12,7 +26,7 @@ function memoryStore(unresolved: string[] = []) {
     acknowledgements,
     store: {
       async listUnresolvedEthBigBetOrderIds() { return unresolved; },
-      async reserveEthBigBetOrder(input: { orderId: string }) { reservations.push(input.orderId); return true; },
+      async reserveEthBigBetOrder(input: { orderId: string }) { reservations.push(input.orderId); return reservationResult; },
       async acknowledgeEthBigBetOrder(input: { orderId: string; status: string }) {
         acknowledgements.push({ orderId: input.orderId, status: input.status }); return true;
       },
@@ -54,6 +68,7 @@ test("an unresolved earlier market does not block a new B/C market", async () =>
   const result = await submitEthBigBetIntent({
     intent, store,
     exchange: { async submit(input) { return { kind: "accepted" as const, exchangeOrderId: `wire:${input.clientOrderId}` }; } },
+    ...executionCapital(intent),
     nowMs: 123,
   });
   assert.equal(result, "submitted");
@@ -70,9 +85,26 @@ test("the exact same strategy+market is blocked as a duplicate", async () => {
   const result = await submitEthBigBetIntent({
     intent, store,
     exchange: { async submit() { throw new Error("must not submit"); } },
+    ...executionCapital(intent),
   });
   assert.equal(result, "blocked_duplicate");
   assert.deepEqual(reservations, []);
+});
+
+test("serialized store capital rejection propagates before exchange POST", async () => {
+  const intent: EthBigBetOrderIntent = {
+    strategy: "jump", orderTag: "eth-jump-v1", ticker: "KXETH15M-CAPITAL",
+    side: "no", wagerCents: 42_000, limitPriceCents: 50, marketOpenTimeMs: 1_800_000,
+  };
+  const { store } = memoryStore([], "capital_blocked");
+  let posted = false;
+  const result = await submitEthBigBetIntent({
+    intent, store,
+    exchange: { async submit() { posted = true; return { kind: "accepted" as const, exchangeOrderId: "bad" }; } },
+    ...executionCapital(intent),
+  });
+  assert.equal(result, "capital_blocked");
+  assert.equal(posted, false);
 });
 
 test("flat sizing produces 840 jump contracts and 1000 reversal contracts at 50 cents", async () => {
@@ -88,6 +120,7 @@ test("flat sizing produces 840 jump contracts and 1000 reversal contracts at 50 
     await submitEthBigBetIntent({
       intent, store,
       exchange: { async submit(input) { seen.push(input.contracts); return { kind: "accepted" as const, exchangeOrderId: "ok" }; } },
+      ...executionCapital(intent),
     });
   }
   assert.deepEqual(seen, [840, 1000]);
@@ -102,6 +135,7 @@ test("a thrown POST is retained as submission_unknown, never assumed rejected", 
   const result = await submitEthBigBetIntent({
     intent, store,
     exchange: { async submit() { throw new Error("network response lost"); } },
+    ...executionCapital(intent),
   });
   assert.equal(result, "submission_unknown");
   assert.deepEqual(acknowledgements, [{ orderId: ethBigBetOrderId(intent), status: "submission_unknown" }]);
