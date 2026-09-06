@@ -11,7 +11,7 @@ if (source.includes('actual-ledger-v2')) process.exit(0);
 source = source.replace('ETH 420 transaction log', 'ETH 15-minute transaction log');
 source = source.replace(
   'Newest first · Eastern Time · actual candidate lifecycle and fill data when available.',
-  'Newest first · Eastern Time · actual Kalshi ETH orders and fills across Regular, 420 Jump and Back Flip roads.',
+  'Newest first · Eastern Time · actual Kalshi ETH orders and fills across Regular, Jump and Reversal strategies.',
 );
 source = source.replace('Original-dashboard style ledger', 'Actual exchange ledger');
 
@@ -54,7 +54,7 @@ const overlay = String.raw`
   const orderFilled=(row)=>num(row.fill_count_fp,row.fill_count,row.filled_count_fp,row.filled_count,row.filled_contracts,row.filledContracts,0)||0;
   const orderStatus=(row)=>String(row.status??row.order_status??row.state??'').toUpperCase().replaceAll('_',' ');
   const clientId=(row)=>String(row.client_order_id??row.clientOrderId??'');
-  const road=(row)=>{const c=clientId(row);if(c.startsWith('eth-yes-')||c.startsWith('eth-no-'))return'Regular';if(c.endsWith(':eth420-live-v1'))return'420 / Back Flip';return'ETH'};
+  const road=(row)=>{const c=clientId(row);if(c.startsWith('eth-yes-')||c.startsWith('eth-no-'))return'Regular';if(c.endsWith(':eth-jump-v1'))return'Jump';if(c.endsWith(':eth-no3-reversal-v1'))return'Reversal';if(c.endsWith(':eth420-live-v1'))return'Legacy 420';return'ETH'};
 
   function summarize(fills){
     const orders=new Map();
