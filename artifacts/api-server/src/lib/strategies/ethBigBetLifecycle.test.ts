@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   accountEthBigBetSettlement,
+  estimateEthBigBetFullFillFeeCents,
+  ethBigBetCapitalRiskCents,
   ethBigBetContracts,
   ethBigBetOrderId,
   mayEvaluateBigBetMarket,
@@ -16,6 +18,14 @@ test("B/C contract sizing is flat and independent of any ladder", () => {
   assert.equal(ethBigBetContracts(42_000, 50), 840);
   assert.equal(ethBigBetContracts(50_000, 50), 1000);
   assert.equal(ethBigBetContracts(50_000, 65), 769);
+});
+
+test("capital risk includes conservative full-fill fee headroom", () => {
+  assert.equal(estimateEthBigBetFullFillFeeCents(42_000, 50), 1_470);
+  assert.equal(ethBigBetCapitalRiskCents(42_000, 50), 43_470);
+  assert.equal(estimateEthBigBetFullFillFeeCents(50_000, 50), 1_750);
+  assert.equal(ethBigBetCapitalRiskCents(50_000, 50), 51_750);
+  assert.equal(ethBigBetCapitalRiskCents(0, 50), 0);
 });
 
 test("zero fill is accounting-neutral, not a loss or lifecycle blocker", () => {
