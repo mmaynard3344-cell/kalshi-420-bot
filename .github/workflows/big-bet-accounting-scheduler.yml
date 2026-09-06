@@ -1,0 +1,49 @@
+name: big-bet-accounting-scheduler
+
+on:
+  push:
+    branches: [service-split-a-b-c]
+    paths:
+      - .github/workflows/big-bet-accounting-scheduler.yml
+
+permissions:
+  contents: write
+
+jobs:
+  wire-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: service-split-a-b-c
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply and assert B/C accounting scheduler
+        run: python scripts/apply-big-bet-accounting-scheduler.py
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Run service isolation tests
+        working-directory: artifacts/api-server
+        run: node scripts/run-service-split-tests.mjs
+      - name: Run existing six-step candidate harness
+        working-directory: artifacts/api-server
+        run: node scripts/run-eth420-six-step-candidate-test.mjs
+      - name: Commit verified accounting scheduler
+        run: |
+          if git diff --quiet; then
+            echo 'No accounting scheduler diff to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add artifacts/api-server/src/index.ts
+          git commit -m 'Schedule B/C accounting retry sweep'
+          git push origin HEAD:service-split-a-b-c
