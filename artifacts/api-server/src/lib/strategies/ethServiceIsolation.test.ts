@@ -37,11 +37,14 @@ test("service roles have exclusive strategy ownership", () => {
   assert.equal(parseEthServiceRole("both"), null);
 });
 
-test("A runtime gate preserves legacy no-role behavior but excludes explicit B/C services", () => {
-  assert.equal(serviceMayRunMartingale(null), true);
-  assert.equal(serviceMayRunMartingale("martingale"), true);
-  assert.equal(serviceMayRunMartingale("jump"), false);
-  assert.equal(serviceMayRunMartingale("reversal"), false);
+test("A runtime gate preserves truly-unset legacy behavior but fails closed on explicit B/C or invalid roles", () => {
+  assert.equal(serviceMayRunMartingale(null, undefined), true);
+  assert.equal(serviceMayRunMartingale("martingale", "martingale"), true);
+  assert.equal(serviceMayRunMartingale("jump", "jump"), false);
+  assert.equal(serviceMayRunMartingale("reversal", "reversal"), false);
+  assert.equal(serviceMayRunMartingale(null, ""), false);
+  assert.equal(serviceMayRunMartingale(null, "jumpp"), false);
+  assert.equal(serviceMayRunMartingale(null, "both"), false);
 });
 
 test("Service A owns only its six-rung martingale wager", () => {
