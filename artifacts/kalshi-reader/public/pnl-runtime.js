@@ -193,7 +193,7 @@
     busy = true;
     try {
       const [fillResult, orderResult] = await Promise.allSettled([
-        fetch('/api/trade/fills?limit=1000', {cache:'no-store'}),
+        fetch('/api/trade/fills?limit=10000', {cache:'no-store'}),
         fetch('/api/trade/orders?limit=100', {cache:'no-store'})
       ]);
       let fillMap = new Map();
