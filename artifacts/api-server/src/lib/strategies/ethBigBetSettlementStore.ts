@@ -4,6 +4,8 @@ import type { EthBigBetSettlementRow } from "./ethBigBetSettlementReconciler.js"
 type DbLike = { execute: (query: unknown) => Promise<unknown> };
 let _dbOverride: DbLike | null = null;
 
+export const ETH_BIG_BET_STALE_RESERVED_RECOVERY_AGE_MS = 15 * 60_000;
+
 export function _setEthBigBetSettlementStoreDbForTesting(db: DbLike | null): void {
   _dbOverride = db;
 }
@@ -63,10 +65,41 @@ export async function listUnresolvedEthBigBetSettlementRowsForTicker(
 }
 
 /**
+ * Crash-recovery visibility only. A process can die after the durable capital
+ * reservation is inserted but before the exchange response is acknowledged.
+ * After a full 15-minute market window, such an unacknowledged reservation is
+ * classified as submission_unknown so immutable client-order-ID recovery can
+ * inspect Kalshi. This NEVER marks rejection, zero fill, settlement, or releases
+ * reserved capital. Recent reservations and any row with a Kalshi order ID are
+ * untouched.
+ */
+export async function promoteStaleReservedEthBigBetsToSubmissionUnknown(
+  nowMs = Date.now(),
+): Promise<number> {
+  if (!Number.isSafeInteger(nowMs) || nowMs < ETH_BIG_BET_STALE_RESERVED_RECOVERY_AGE_MS) {
+    throw new Error("invalid B/C reserved recovery timestamp");
+  }
+  const db = await getDb();
+  if (!await ethBigBetLedgerExists(db)) return 0;
+  const cutoffMs = nowMs - ETH_BIG_BET_STALE_RESERVED_RECOVERY_AGE_MS;
+  const result = await db.execute(sql`
+    UPDATE eth_big_bet_orders
+    SET status='submission_unknown', updated_at_ms=${nowMs}
+    WHERE status='reserved'
+      AND kalshi_order_id IS NULL
+      AND created_at_ms <= ${cutoffMs}
+    RETURNING id
+  `);
+  const rows = (result as { rows?: unknown[] }).rows;
+  if (!Array.isArray(rows)) throw new Error("B/C reserved recovery result unavailable");
+  return rows.length;
+}
+
+/**
  * Bounded retry-sweep discovery. Only rows that have reached exchange
- * submission (or an ambiguous submission response) are eligible. A merely
- * reserved pre-POST row needs separate crash-recovery evidence and is never
- * silently converted into an order or settlement here.
+ * submission (or an ambiguous submission response) are eligible. Stale
+ * pre-ack crash rows enter submission_unknown only through the explicit
+ * age-gated recovery above; no absence is interpreted as rejection or zero fill.
  */
 export async function listUnresolvedEthBigBetTickers(limit = 50): Promise<string[]> {
   if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
