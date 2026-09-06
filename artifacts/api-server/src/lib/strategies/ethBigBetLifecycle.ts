@@ -47,6 +47,23 @@ export function ethBigBetContracts(wagerCents: number, limitPriceCents: number):
   return Math.floor(wagerCents / limitPriceCents);
 }
 
+/** Conservative exchange-style fee headroom for a complete fill at the limit.
+ * This mirrors the fee convention already used by A's prospective-loss guard. */
+export function estimateEthBigBetFullFillFeeCents(wagerCents: number, limitPriceCents: number): number {
+  const contracts = ethBigBetContracts(wagerCents, limitPriceCents);
+  if (contracts < 1) return 0;
+  return Math.ceil(0.07 * contracts * limitPriceCents * (100 - limitPriceCents) / 100);
+}
+
+/** Principal plus conservative full-fill fee headroom used only for account
+ * capital admission. It does not alter order notional or settlement P&L. */
+export function ethBigBetCapitalRiskCents(wagerCents: number, limitPriceCents: number): number {
+  const fee = estimateEthBigBetFullFillFeeCents(wagerCents, limitPriceCents);
+  if (fee < 1) return 0;
+  const total = wagerCents + fee;
+  return Number.isSafeInteger(total) && total > 0 ? total : 0;
+}
+
 /** Settlement updates accounting only. A zero fill has zero P&L and does not
  * become a loss, a sequence transition, or a blocker for the next market. */
 export function accountEthBigBetSettlement(input: EthBigBetSettlement): EthBigBetAccountingResult | null {
