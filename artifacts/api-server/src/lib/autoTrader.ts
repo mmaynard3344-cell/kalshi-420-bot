@@ -988,7 +988,8 @@ async function evaluate(
   });
     // Dormant wiring only. C shares the same market identity but has its own
     // independent signal, ledger identity, and hard execution fence.
-    await runEthReversalServiceWhenExplicitlyEnabled({
+          const reversalResult = await runEthReversalServiceWhenExplicitlyEnabled({
+
       store: tradeStore,
       market: {
         ticker: state.ticker,
@@ -1000,6 +1001,11 @@ async function evaluate(
       },
       exchangeIndex: state.exchangeIndex ?? null,
     });
+     logger.info(
+        { ticker: state.ticker, result: reversalResult },
+        "ETH Reversal service evaluation",
+      );
+
   }
   // The retired BTC/SOL/DOGE entry evaluator below is intentionally kept only
   // as historical source material. This unconditional production fence has no
