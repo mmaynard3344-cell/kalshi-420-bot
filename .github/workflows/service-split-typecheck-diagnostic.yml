@@ -9,8 +9,6 @@ on:
 permissions:
   contents: read
 
-actions:
-
 jobs:
   diagnostic:
     runs-on: ubuntu-latest
