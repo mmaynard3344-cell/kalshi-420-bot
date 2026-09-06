@@ -55,9 +55,12 @@ export const ETH_420_FINALIZED_RECONCILIATION_ALERT_THRESHOLD_MS = 2 * 60_000;
  * after execution-readiness requirements have been met.
  */
 export const ETH_420_CANDIDATE_EXECUTION_APPROVED = true;
+export const ETH_420_CANDIDATE_MAIN_EXECUTION_RETIRED = true;
 
 export function isEth420CandidateExecutionPermitted(): boolean {
   return ETH_420_CANDIDATE_EXECUTION_APPROVED
+       && !ETH_420_CANDIDATE_MAIN_EXECUTION_RETIRED
+
     && process.env["ETH_420_CANDIDATE_LIVE_ENABLED"] === "true";
 }
 
