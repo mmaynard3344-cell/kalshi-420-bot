@@ -44,3 +44,6 @@ jobs:
       - name: Run existing six-step candidate harness
         working-directory: artifacts/api-server
         run: node scripts/run-eth420-six-step-candidate-test.mjs
+      - name: Build canonical service-split production bundle
+        working-directory: artifacts/api-server
+        run: node build-service-split.mjs
