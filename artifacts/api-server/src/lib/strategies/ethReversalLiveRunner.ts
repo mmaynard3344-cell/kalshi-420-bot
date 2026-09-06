@@ -7,13 +7,21 @@ import { ethBigBetCapitalRiskCents } from "./ethBigBetLifecycle.js";
 import { readApprovedEthBigBetCapitalBase } from "./ethBigBetApprovedCapitalProvider.js";
 import { initEthBigBetStore } from "./ethBigBetStore.js";
 import { prepareEthReversalServiceIntent } from "./ethReversalServiceRuntime.js";
+import { currentEthServiceEnablement } from "./ethServiceEnablementContract.js";
 import { currentEthServiceRole, serviceOwnsReversal } from "./ethServiceRole.js";
 
-/** Hard code fence for Service C. Environment configuration alone cannot enable it. */
-export const ETH_REVERSAL_SERVICE_EXECUTION_APPROVED = false;
+/**
+ * Service C code-side approval. Runtime execution still requires the exact
+ * reversal role, the matching live environment flag, and a valid enablement
+ * contract. Environment misconfiguration therefore remains fail-closed.
+ */
+export const ETH_REVERSAL_SERVICE_EXECUTION_APPROVED = true;
 
 export function isEthReversalServiceExecutionPermitted(role = currentEthServiceRole()): boolean {
+  const enablement = currentEthServiceEnablement();
   return ETH_REVERSAL_SERVICE_EXECUTION_APPROVED
+    && enablement.valid
+    && enablement.mode === "reversal_live_requested"
     && serviceOwnsReversal(role)
     && process.env["ETH_REVERSAL_SERVICE_LIVE_ENABLED"] === "true";
 }
