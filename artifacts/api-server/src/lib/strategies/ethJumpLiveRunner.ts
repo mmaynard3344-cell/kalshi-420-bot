@@ -4,6 +4,7 @@ import { createEthBigBetKalshiSubmitter } from "./ethBigBetKalshiExchange.js";
 import { submitEthBigBetIntent } from "./ethBigBetExecutor.js";
 import { ethBigBetExecutionStore } from "./ethBigBetExecutionStoreAdapter.js";
 import { initEthBigBetStore } from "./ethBigBetStore.js";
+import { ethBigBetCapitalRiskCents } from "./ethBigBetLifecycle.js";
 import { evaluateEthAccountCapital, type EthAccountCapitalInput } from "./ethAccountCapitalGuard.js";
 import { currentEthServiceRole, serviceOwnsJump } from "./ethServiceRole.js";
 
@@ -52,7 +53,9 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
   const intent = await prepareEthJumpServiceIntent({ store: input.store, market: input.market });
   if (!intent) return "no_signal";
   if (!input.capital) return "capital_unavailable";
-  const capital = evaluateEthAccountCapital({ ...input.capital, requestedRiskCents: intent.wagerCents });
+  const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
+  if (requestedRiskCents < 1) return "capital_unavailable";
+  const capital = evaluateEthAccountCapital({ ...input.capital, requestedRiskCents });
   if (!capital.allowed) return capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked";
   const exchange = input.exchangeIndex == null ? null : createEthBigBetKalshiSubmitter(input.exchangeIndex);
   if (!exchange) return "routing_unavailable";
