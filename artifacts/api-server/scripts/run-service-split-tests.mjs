@@ -17,6 +17,7 @@ const testFiles = [
   "src/lib/strategies/ethBigBetApprovedCapitalProvider.test.ts",
   "src/lib/strategies/ethBigBetSettlementReconciler.test.ts",
   "src/lib/strategies/ethBigBetSettlementStore.test.ts",
+  "src/lib/strategies/ethBigBetAccountingSweep.test.ts",
   "src/lib/strategies/ethServiceACutover.test.ts",
   "src/lib/strategies/ethJumpServiceRuntime.test.ts",
   "src/lib/strategies/ethBigBetStore.test.ts",
