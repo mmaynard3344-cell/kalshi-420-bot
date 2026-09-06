@@ -9,16 +9,33 @@ import {
   createEthBigBetKalshiSubmitter,
 } from "./ethBigBetKalshiExchange.js";
 
-test("Service B live execution remains hard-disabled even with role and env enabled", () => {
-  const prior = process.env["ETH_JUMP_SERVICE_LIVE_ENABLED"];
-  process.env["ETH_JUMP_SERVICE_LIVE_ENABLED"] = "true";
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value == null) delete process.env[name];
+  else process.env[name] = value;
+}
+
+test("Service B execution requires exact jump role and matching live contract", () => {
+  const priorRole = process.env["ETH_SERVICE_ROLE"];
+  const priorJump = process.env["ETH_JUMP_SERVICE_LIVE_ENABLED"];
+  const priorReversal = process.env["ETH_REVERSAL_SERVICE_LIVE_ENABLED"];
   try {
-    assert.equal(ETH_JUMP_SERVICE_EXECUTION_APPROVED, false);
-    assert.equal(isEthJumpServiceExecutionPermitted("jump"), false);
+    assert.equal(ETH_JUMP_SERVICE_EXECUTION_APPROVED, true);
+    process.env["ETH_SERVICE_ROLE"] = "jump";
+    process.env["ETH_JUMP_SERVICE_LIVE_ENABLED"] = "true";
+    delete process.env["ETH_REVERSAL_SERVICE_LIVE_ENABLED"];
+    assert.equal(isEthJumpServiceExecutionPermitted("jump"), true);
     assert.equal(isEthJumpServiceExecutionPermitted("martingale"), false);
+
+    process.env["ETH_REVERSAL_SERVICE_LIVE_ENABLED"] = "true";
+    assert.equal(isEthJumpServiceExecutionPermitted("jump"), false);
+
+    process.env["ETH_SERVICE_ROLE"] = "jumpp";
+    delete process.env["ETH_REVERSAL_SERVICE_LIVE_ENABLED"];
+    assert.equal(isEthJumpServiceExecutionPermitted(null), false);
   } finally {
-    if (prior == null) delete process.env["ETH_JUMP_SERVICE_LIVE_ENABLED"];
-    else process.env["ETH_JUMP_SERVICE_LIVE_ENABLED"] = prior;
+    restoreEnv("ETH_SERVICE_ROLE", priorRole);
+    restoreEnv("ETH_JUMP_SERVICE_LIVE_ENABLED", priorJump);
+    restoreEnv("ETH_REVERSAL_SERVICE_LIVE_ENABLED", priorReversal);
   }
 });
 
