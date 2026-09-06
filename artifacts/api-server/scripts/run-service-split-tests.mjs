@@ -9,6 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 globalThis.require = createRequire(import.meta.url);
 const testFiles = [
   "src/lib/strategies/ethServiceIsolation.test.ts",
+  "src/lib/strategies/ethServiceEnablementContract.test.ts",
   "src/lib/strategies/ethBigBetLifecycle.test.ts",
   "src/lib/strategies/ethBigBetExecutor.test.ts",
   "src/lib/strategies/ethAccountCapitalGuard.test.ts",
