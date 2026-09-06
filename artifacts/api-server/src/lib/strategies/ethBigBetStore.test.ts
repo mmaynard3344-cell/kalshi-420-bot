@@ -66,7 +66,7 @@ test("reservation is exact-strategy+market scoped and fails closed on duplicate"
   }
 });
 
-test("serialized capital admission sees unresolved risk before inserting the next service", async () => {
+test("serialized capital admission rechecks existing cross-service risk before insert", async () => {
   let call = 0;
   const fakeDb = {
     execute: async () => ({ rows: [] }),
@@ -75,7 +75,8 @@ test("serialized capital admission sees unresolved risk before inserting the nex
         call += 1;
         if (call === 1) return { rows: [] }; // pg_advisory_xact_lock
         if (call === 2) return { rows: [{ wager_cents: "50000", limit_price_cents: "50" }] }; // C already reserved
-        throw new Error("insert must not occur when capital is blocked");
+        if (call === 3) return { rows: [{ id: "KXETH15M-26SEP051800-00:eth-jump-v1" }] }; // B insert
+        throw new Error("unexpected query");
       },
       transaction: async () => { throw new Error("nested transaction not expected"); },
     }),
@@ -88,10 +89,10 @@ test("serialized capital admission sees unresolved risk before inserting the nex
       capital: capitalBase,
       requestedRiskCents: ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents),
     });
-    // 1400.00 balance - 434.70 A reserve - 517.50 existing C = 447.80,
-    // which is enough for neither a fresh 434.70 B after a safety margin? It is
-    // actually enough here, so use a tighter balance below in the assertion path.
+    // $1,400 - $434.70 A reserve - $517.50 existing C = $447.80,
+    // leaving enough for B's $434.70 fee-inclusive risk.
     assert.equal(result, "reserved");
+    assert.equal(call, 3);
   } finally {
     _setEthBigBetStoreDbForTesting(null);
   }
@@ -119,6 +120,8 @@ test("serialized capital admission blocks the second service when shared envelop
       capital: { ...capitalBase, availableBalanceCents: 135_000 },
       requestedRiskCents: ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents),
     });
+    // $1,350 - $434.70 A reserve - $517.50 existing C = $397.80,
+    // below B's $434.70 fee-inclusive risk.
     assert.equal(result, "capital_blocked");
     assert.equal(call, 2);
   } finally {
@@ -126,7 +129,7 @@ test("serialized capital admission blocks the second service when shared envelop
   }
 });
 
-test("serialized capital admission inserts only after the locked recheck passes", async () => {
+test("serialized capital admission inserts only after a clean locked recheck", async () => {
   let call = 0;
   const fakeDb = {
     execute: async () => ({ rows: [] }),
