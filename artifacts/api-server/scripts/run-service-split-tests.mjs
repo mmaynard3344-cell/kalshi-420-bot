@@ -13,6 +13,7 @@ const testFiles = [
   "src/lib/strategies/ethBigBetExecutor.test.ts",
   "src/lib/strategies/ethAccountCapitalGuard.test.ts",
   "src/lib/strategies/ethBigBetCapitalFacts.test.ts",
+  "src/lib/strategies/ethBigBetCapitalPolicy.test.ts",
   "src/lib/strategies/ethServiceACutover.test.ts",
   "src/lib/strategies/ethJumpServiceRuntime.test.ts",
   "src/lib/strategies/ethBigBetStore.test.ts",
