@@ -1820,7 +1820,7 @@ export default function Dashboard() {
   const [pnlReport, setPnlReport] = useState<PnlReport | null>(null);
   const [accountSettledPnl, setAccountSettledPnl] = useState<AccountSettledPnl | null>(null);
   const [accountFillsStale, setAccountFillsStale] = useState(false);
-  const [pnlPeriod, setPnlPeriod] = useState<'today' | '7d' | 'all-time'>('7d');
+  const [pnlPeriod, setPnlPeriod] = useState<'today' | '7d' | 'all-time'>('all-time');
   const [protectiveExits, setProtectiveExits] = useState<ProtectiveExitAudit[]>([]);
   const [protectiveExitMonitorStatus, setProtectiveExitMonitorStatus] = useState<ProtectiveExitMonitorStatus | null>(null);
   const [protectiveExitEvidenceTicker, setProtectiveExitEvidenceTicker] = useState<string | null>(null);
