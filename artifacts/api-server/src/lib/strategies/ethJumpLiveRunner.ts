@@ -7,17 +7,21 @@ import { initEthBigBetStore } from "./ethBigBetStore.js";
 import { ethBigBetCapitalRiskCents } from "./ethBigBetLifecycle.js";
 import { evaluateEthAccountCapital } from "./ethAccountCapitalGuard.js";
 import { readApprovedEthBigBetCapitalBase } from "./ethBigBetApprovedCapitalProvider.js";
+import { currentEthServiceEnablement } from "./ethServiceEnablementContract.js";
 import { currentEthServiceRole, serviceOwnsJump } from "./ethServiceRole.js";
 
 /**
- * Hard code fence. This remains false while Service B is staged and validated.
- * Neither ETH_SERVICE_ROLE nor an environment flag can make B submit until this
- * constant is changed in a separately reviewed commit.
+ * Service B code-side approval. Runtime execution still requires the exact
+ * jump role, the matching live environment flag, and a valid enablement
+ * contract. Environment misconfiguration therefore remains fail-closed.
  */
-export const ETH_JUMP_SERVICE_EXECUTION_APPROVED = false;
+export const ETH_JUMP_SERVICE_EXECUTION_APPROVED = true;
 
 export function isEthJumpServiceExecutionPermitted(role = currentEthServiceRole()): boolean {
+  const enablement = currentEthServiceEnablement();
   return ETH_JUMP_SERVICE_EXECUTION_APPROVED
+    && enablement.valid
+    && enablement.mode === "jump_live_requested"
     && serviceOwnsJump(role)
     && process.env["ETH_JUMP_SERVICE_LIVE_ENABLED"] === "true";
 }
