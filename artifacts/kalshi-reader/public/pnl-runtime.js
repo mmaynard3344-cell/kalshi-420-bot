@@ -6,7 +6,7 @@
   const MAX_FILL_PAGES = 25;
   const PAGE_SIZE = 1000;
   const byId = (id) => document.getElementById(id);
-  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (s) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (s) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[s]));
   const firstNumber = (...values) => {
     for (const value of values) {
       if (value == null || value === '') continue;
@@ -61,9 +61,67 @@
   const road = (row) => {
     const client = String(row?.client_order_id ?? row?.clientOrderId ?? '');
     if (client.startsWith('eth-yes-') || client.startsWith('eth-no-')) return 'Regular';
-    if (client.endsWith(':eth420-live-v1')) return '420 / Back Flip';
+    if (client.endsWith(':eth-jump-v1')) return 'Jump';
+    if (client.endsWith(':eth-no3-reversal-v1')) return 'Reversal';
+    if (client.endsWith(':eth420-live-v1')) return 'Legacy 420';
     return 'ETH';
   };
+
+  const weekKey = (key) => {
+    const [y,m,d] = key.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+    return date.toISOString().slice(0,10);
+  };
+  const aggregate = (days, keyFn) => {
+    const map = new Map();
+    for (const row of days) {
+      const key = keyFn(row.easternDate);
+      map.set(key, (map.get(key) || 0) + Number(row.netCents || 0));
+    }
+    return [...map.entries()].sort((a,b) => a[0].localeCompare(b[0])).map(([label,value]) => ({label,value}));
+  };
+  function lineChart(svg, points) {
+    if (!svg) return;
+    svg.innerHTML = '';
+    if (!points.length) return;
+    const values = points.map((p) => p.value);
+    const min = Math.min(0, ...values), max = Math.max(0, ...values), range = Math.max(1, max - min);
+    const x = (i) => points.length === 1 ? 350 : 20 + i * (660 / (points.length - 1));
+    const y = (v) => 210 - ((v - min) / range) * 190;
+    const zero = y(0);
+    svg.insertAdjacentHTML('beforeend', `<line x1="15" y1="${zero}" x2="685" y2="${zero}" stroke="currentColor" opacity=".18"/>`);
+    const pts = points.map((p,i) => `${x(i)},${y(p.value)}`).join(' ');
+    svg.insertAdjacentHTML('beforeend', `<polyline fill="none" stroke="currentColor" stroke-width="2" points="${pts}"/>`);
+    points.forEach((p,i) => svg.insertAdjacentHTML('beforeend', `<circle cx="${x(i)}" cy="${y(p.value)}" r="3" fill="currentColor"><title>${esc(p.label)} · ${money(p.value)}</title></circle>`));
+  }
+  function barChart(svg, points) {
+    if (!svg) return;
+    svg.innerHTML = '';
+    if (!points.length) return;
+    const values = points.map((p) => p.value);
+    const min = Math.min(0, ...values), max = Math.max(0, ...values), range = Math.max(1, max - min);
+    const zero = 210 - ((0 - min) / range) * 190;
+    svg.insertAdjacentHTML('beforeend', `<line x1="15" y1="${zero}" x2="685" y2="${zero}" stroke="currentColor" opacity=".18"/>`);
+    const slot = 660 / points.length;
+    const width = Math.max(2, Math.min(42, slot * .62));
+    points.forEach((p,i) => {
+      const y = 210 - ((p.value - min) / range) * 190;
+      const top = Math.min(y, zero);
+      const height = Math.max(1, Math.abs(zero - y));
+      const x = 20 + i * slot + (slot - width) / 2;
+      svg.insertAdjacentHTML('beforeend', `<rect x="${x}" y="${top}" width="${width}" height="${height}" fill="currentColor" opacity=".78"><title>${esc(p.label)} · ${money(p.value)}</title></rect>`);
+    });
+  }
+  function renderCharts(days) {
+    let running = 0;
+    const cumulative = days.map((row) => ({label:row.easternDate,value:(running += Number(row.netCents || 0))}));
+    const daily = days.map((row) => ({label:row.easternDate,value:Number(row.netCents || 0)}));
+    lineChart(byId('cumChart'), cumulative);
+    barChart(byId('dailyChart'), daily);
+    barChart(byId('weeklyChart'), aggregate(days, weekKey));
+    barChart(byId('monthlyChart'), aggregate(days, (key) => key.slice(0,7)));
+  }
 
   async function fetchAllFillsSinceCutoff() {
     const fills = [];
@@ -162,9 +220,9 @@
     const [y,m,d] = todayKey.split('-').map(Number);
     const monday = new Date(Date.UTC(y, m - 1, d));
     monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
-    const weekKey = monday.toISOString().slice(0,10);
+    const currentWeekKey = monday.toISOString().slice(0,10);
     const monthKey = todayKey.slice(0,7);
-    const week = days.filter((x) => x.easternDate >= weekKey && x.easternDate <= todayKey).reduce((s,x) => s + x.netCents, 0);
+    const week = days.filter((x) => x.easternDate >= currentWeekKey && x.easternDate <= todayKey).reduce((s,x) => s + x.netCents, 0);
     const month = days.filter((x) => x.easternDate.startsWith(monthKey)).reduce((s,x) => s + x.netCents, 0);
     const allDays = days.filter((x) => x.easternDate >= ALL_TIME_START);
     const all = allDays.reduce((s,x) => s + x.netCents, 0);
@@ -197,6 +255,7 @@
         `<tr><td>${dayLabel(row.easternDate)}</td><td class="num">${row.settled}</td><td class="num">${row.wins}</td><td class="num">${row.losses}</td><td class="num">${row.bets}</td><td class="num">${money(row.feesCents, false)}</td><td class="num ${row.netCents > 0 ? 'good' : row.netCents < 0 ? 'bad' : ''}">${money(row.netCents)}</td></tr>`
       ).join('') || '<tr><td colspan="7" class="empty">No settled ETH fills available.</td></tr>';
     }
+    renderCharts(allDays);
   }
 
   function paintOrders(rawOrders, fillMap) {
