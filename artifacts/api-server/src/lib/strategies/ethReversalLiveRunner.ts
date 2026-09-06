@@ -66,5 +66,11 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
   } catch {
     return "storage_unavailable";
   }
-  return submitEthBigBetIntent({ intent, store: ethBigBetExecutionStore, exchange });
+  return submitEthBigBetIntent({
+    intent,
+    store: ethBigBetExecutionStore,
+    exchange,
+    capital: input.capital,
+    requestedRiskCents,
+  });
 }
