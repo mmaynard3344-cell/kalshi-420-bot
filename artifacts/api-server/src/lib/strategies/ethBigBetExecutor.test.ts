@@ -49,13 +49,13 @@ test("Service B carries A's side read-only while owning the $420 wager", () => {
   assert.equal(no?.wagerCents, 42_000);
 });
 
-test("Service C never needs martingale state and always emits a $500 YES intent", () => {
+test("Service C never needs martingale state and always emits a $100 YES intent", () => {
   const intent = buildEthReversalOrderIntent({
     ticker: "KXETH15M-TEST", marketOpenTimeMs: 1_800_000,
     consecutiveNoOutcomes: 3, currentMove: 0.06, p95: 0.05, p99: 0.09,
   });
   assert.equal(intent?.side, "yes");
-  assert.equal(intent?.wagerCents, 50_000);
+  assert.equal(intent?.wagerCents, 10_000);
   assert.equal(intent?.strategy, "reversal");
 });
 
@@ -78,7 +78,7 @@ test("an unresolved earlier market does not block a new B/C market", async () =>
 test("the exact same strategy+market is blocked as a duplicate", async () => {
   const intent: EthBigBetOrderIntent = {
     strategy: "reversal", orderTag: "eth-no3-reversal-v1", ticker: "KXETH15M-SAME",
-    side: "yes", wagerCents: 50_000, limitPriceCents: 50, marketOpenTimeMs: 1_800_000,
+    side: "yes", wagerCents: 10_000, limitPriceCents: 50, marketOpenTimeMs: 1_800_000,
   };
   const id = ethBigBetOrderId(intent);
   const { store, reservations } = memoryStore([id]);
@@ -107,9 +107,9 @@ test("serialized store capital rejection propagates before exchange POST", async
   assert.equal(posted, false);
 });
 
-test("flat sizing produces 840 jump contracts and 1000 reversal contracts at 50 cents", async () => {
+test("flat sizing produces 840 jump contracts and 200 reversal contracts at 50 cents", async () => {
   const seen: number[] = [];
-  for (const wagerCents of [42_000, 50_000]) {
+  for (const wagerCents of [42_000, 10_000]) {
     const intent: EthBigBetOrderIntent = {
       strategy: wagerCents === 42_000 ? "jump" : "reversal",
       orderTag: wagerCents === 42_000 ? "eth-jump-v1" : "eth-no3-reversal-v1",
@@ -123,7 +123,7 @@ test("flat sizing produces 840 jump contracts and 1000 reversal contracts at 50 
       ...executionCapital(intent),
     });
   }
-  assert.deepEqual(seen, [840, 1000]);
+  assert.deepEqual(seen, [840, 200]);
 });
 
 test("a thrown POST is retained as submission_unknown, never assumed rejected", async () => {
