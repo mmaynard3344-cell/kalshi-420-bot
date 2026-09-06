@@ -2,7 +2,7 @@ name: service-split-validation
 
 on:
   push:
-    branches: [service-split-a-b-c]
+    branches: [service-c-100]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: service-split-a-b-c
+          ref: service-c-100
       - uses: pnpm/action-setup@v4
         with:
           version: 10.26.1
@@ -36,6 +36,13 @@ jobs:
           assert 'assert.equal(atP95.effectiveWagerCents, 42000);' not in t
           assert 'assert.equal(downJump.effectiveWagerCents, 42000);' not in t
           assert 'test("qualifying jump keeps the step-0 carried side while using $420"' not in t
+      - name: Assert Service C wager invariant
+        shell: python
+        run: |
+          from pathlib import Path
+          s = Path('artifacts/api-server/src/lib/strategies/ethNoStreakReversal.ts').read_text()
+          assert 'ETH_REVERSAL_WAGER_CENTS = 10_000' in s
+          assert 'ETH_REVERSAL_WAGER_CENTS = 50_000' not in s
       - name: Typecheck
         run: pnpm run typecheck
       - name: Run service isolation tests
