@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   parseEthServiceRole,
+  serviceMayRunMartingale,
   serviceOwnsJump,
   serviceOwnsMartingale,
   serviceOwnsReversal,
@@ -34,6 +35,13 @@ test("service roles have exclusive strategy ownership", () => {
   assert.equal(serviceOwnsReversal(reversal), true);
   assert.equal(parseEthServiceRole(""), null);
   assert.equal(parseEthServiceRole("both"), null);
+});
+
+test("A runtime gate preserves legacy no-role behavior but excludes explicit B/C services", () => {
+  assert.equal(serviceMayRunMartingale(null), true);
+  assert.equal(serviceMayRunMartingale("martingale"), true);
+  assert.equal(serviceMayRunMartingale("jump"), false);
+  assert.equal(serviceMayRunMartingale("reversal"), false);
 });
 
 test("Service A owns only its six-rung martingale wager", () => {
