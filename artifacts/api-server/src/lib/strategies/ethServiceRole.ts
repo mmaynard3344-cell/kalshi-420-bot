@@ -26,15 +26,19 @@ export function serviceOwnsMartingale(role: EthServiceRole | null): boolean {
 }
 
 /**
- * Backward-compatible runtime gate for Service A.
+ * Backward-compatible, fail-closed runtime gate for Service A.
  *
- * Production historically ran without ETH_SERVICE_ROLE. Keeping null allowed
- * preserves that behavior until the A deployment is deliberately assigned the
- * martingale role. Explicit B/C roles, however, must never execute either
- * martingale-family evaluator from the shared API process.
+ * Production historically ran with ETH_SERVICE_ROLE truly unset, so undefined
+ * preserves that behavior. Once a role variable is explicitly supplied, only
+ * the exact value "martingale" may run A. A blank or mistyped value therefore
+ * suppresses A rather than accidentally reverting to the legacy default.
  */
-export function serviceMayRunMartingale(role: EthServiceRole | null): boolean {
-  return role == null || role === "martingale";
+export function serviceMayRunMartingale(
+  role: EthServiceRole | null,
+  rawRole: string | undefined = process.env["ETH_SERVICE_ROLE"],
+): boolean {
+  if (rawRole == null) return true;
+  return role === "martingale";
 }
 
 export function serviceOwnsJump(role: EthServiceRole | null): boolean {
