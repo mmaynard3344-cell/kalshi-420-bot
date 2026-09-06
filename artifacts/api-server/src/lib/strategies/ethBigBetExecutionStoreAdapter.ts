@@ -4,9 +4,9 @@ import {
   listUnresolvedEthBigBetOrderIds,
   markEthBigBetRejected,
   markEthBigBetSubmissionUnknown,
-  reserveEthBigBetIntent,
+  reserveEthBigBetIntentWithCapital,
 } from "./ethBigBetStore.js";
-import { ethBigBetContracts, ethBigBetOrderId } from "./ethBigBetLifecycle.js";
+import { ethBigBetCapitalRiskCents, ethBigBetContracts, ethBigBetOrderId } from "./ethBigBetLifecycle.js";
 
 /** Production adapter between the generic stateless B/C executor and the
  * dedicated eth_big_bet_orders ledger. It performs no martingale reads/writes. */
@@ -14,9 +14,18 @@ export const ethBigBetExecutionStore: EthBigBetExecutionStore = {
   listUnresolvedEthBigBetOrderIds,
 
   async reserveEthBigBetOrder(input) {
-    if (input.orderId !== ethBigBetOrderId(input.intent)) return false;
-    if (input.requestedContracts !== ethBigBetContracts(input.intent.wagerCents, input.intent.limitPriceCents)) return false;
-    return reserveEthBigBetIntent(input.intent);
+    if (input.orderId !== ethBigBetOrderId(input.intent)) return "reservation_failed";
+    if (input.requestedContracts !== ethBigBetContracts(input.intent.wagerCents, input.intent.limitPriceCents)) {
+      return "reservation_failed";
+    }
+    if (input.requestedRiskCents !== ethBigBetCapitalRiskCents(input.intent.wagerCents, input.intent.limitPriceCents)) {
+      return "reservation_failed";
+    }
+    return reserveEthBigBetIntentWithCapital({
+      intent: input.intent,
+      capital: input.capital,
+      requestedRiskCents: input.requestedRiskCents,
+    });
   },
 
   async acknowledgeEthBigBetOrder(input) {
