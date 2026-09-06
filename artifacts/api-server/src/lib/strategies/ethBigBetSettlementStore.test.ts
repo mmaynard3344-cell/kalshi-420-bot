@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   _setEthBigBetSettlementStoreDbForTesting,
+  ETH_BIG_BET_STALE_RESERVED_RECOVERY_AGE_MS,
   listUnresolvedEthBigBetSettlementRowsForTicker,
   listUnresolvedEthBigBetTickers,
+  promoteStaleReservedEthBigBetsToSubmissionUnknown,
 } from "./ethBigBetSettlementStore.js";
 
 function existingLedgerDb(dataRows: Array<Record<string, unknown>>) {
@@ -54,10 +56,37 @@ test("dormant accounting returns empty when B/C ledger has never been created", 
   try {
     assert.deepEqual(await listUnresolvedEthBigBetSettlementRowsForTicker("KXETH15M-X"), []);
     assert.deepEqual(await listUnresolvedEthBigBetTickers(), []);
-    assert.equal(calls, 2);
+    assert.equal(await promoteStaleReservedEthBigBetsToSubmissionUnknown(ETH_BIG_BET_STALE_RESERVED_RECOVERY_AGE_MS), 0);
+    assert.equal(calls, 3);
   } finally {
     _setEthBigBetSettlementStoreDbForTesting(null);
   }
+});
+
+test("stale reserved crash recovery uses one full 15-minute age and remains nonterminal", async () => {
+  assert.equal(ETH_BIG_BET_STALE_RESERVED_RECOVERY_AGE_MS, 15 * 60_000);
+  let call = 0;
+  _setEthBigBetSettlementStoreDbForTesting({
+    execute: async () => {
+      call++;
+      if (call === 1) return { rows: [{ table_name: "eth_big_bet_orders" }] };
+      return { rows: [{ id: "KXETH15M-X:eth-jump-v1" }, { id: "KXETH15M-Y:eth-no3-reversal-v1" }] };
+    },
+  });
+  try {
+    assert.equal(
+      await promoteStaleReservedEthBigBetsToSubmissionUnknown(2 * ETH_BIG_BET_STALE_RESERVED_RECOVERY_AGE_MS),
+      2,
+    );
+    assert.equal(call, 2);
+  } finally {
+    _setEthBigBetSettlementStoreDbForTesting(null);
+  }
+});
+
+test("reserved crash recovery rejects nonsensical timestamps rather than guessing", async () => {
+  await assert.rejects(() => promoteStaleReservedEthBigBetsToSubmissionUnknown(-1));
+  await assert.rejects(() => promoteStaleReservedEthBigBetsToSubmissionUnknown(1));
 });
 
 test("unresolved ticker reader is bounded and validates ETH identities", async () => {
