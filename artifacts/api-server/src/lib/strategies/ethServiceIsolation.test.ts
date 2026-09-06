@@ -77,7 +77,7 @@ test("role-gated dispatch cannot evaluate another service", () => {
   assert.equal(a?.role === "martingale" ? a.decision.wagerCents : null, 6000);
   assert.equal(b?.role === "jump" ? b.decision.fires : null, true);
   assert.equal(b?.role === "jump" ? b.decision.side : null, "no");
-  assert.equal(c?.role === "reversal" ? c.decision.wagerCents : null, 50000);
+  assert.equal(c?.role === "reversal" ? c.decision.wagerCents : null, 10000);
 });
 
 test("jump signal is fixed-size, preserves A side read-only, and p95 inclusive / p99 exclusive", () => {
@@ -90,11 +90,11 @@ test("jump signal is fixed-size, preserves A side read-only, and p95 inclusive /
   assert.equal(evaluateEthJumpSignal({ currentMove: 0.09, p95: 0.05, p99: 0.09, carriedSide: "no" }).fires, false);
 });
 
-test("reversal requires 3+ NO outcomes and uses an independent $500 wager", () => {
-  assert.equal(ETH_REVERSAL_WAGER_CENTS, 50_000);
+test("reversal requires 3+ NO outcomes and uses an independent $100 wager", () => {
+  assert.equal(ETH_REVERSAL_WAGER_CENTS, 10_000);
   assert.equal(evaluateEthNoStreakReversal({ consecutiveNoOutcomes: 2, currentMove: 0.06, p95: 0.05, p99: 0.09 }).fires, false);
   const decision = evaluateEthNoStreakReversal({ consecutiveNoOutcomes: 3, currentMove: 0.06, p95: 0.05, p99: 0.09 });
   assert.equal(decision.fires, true);
   assert.equal(decision.side, "yes");
-  assert.equal(decision.wagerCents, 50_000);
+  assert.equal(decision.wagerCents, 10_000);
 });
