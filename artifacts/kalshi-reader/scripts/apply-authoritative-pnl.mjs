@@ -22,26 +22,49 @@ fs.writeFileSync(serverPath, server);
 const pnlPath = new URL('../public/pnl-runtime.js', import.meta.url);
 let pnl = fs.readFileSync(pnlPath, 'utf8');
 
-if (!pnl.includes("fetch('/api/diagnostics/db-pnl'")) {
-  pnl = pnl.replace(
-    '      const [fillResult, orderResult] = await Promise.allSettled([',
-    '      const [fillResult, orderResult, dbPnlResult] = await Promise.allSettled(['
-  );
-  const orderFetch1000 = "        fetch('/api/trade/orders?limit=1000', {cache:'no-store'})";
-  const orderFetch100 = "        fetch('/api/trade/orders?limit=100', {cache:'no-store'})";
-  if (pnl.includes(orderFetch1000)) {
-    pnl = pnl.replace(orderFetch1000, orderFetch1000 + ",\n        fetch('/api/diagnostics/db-pnl', {cache:'no-store'})");
-  } else if (pnl.includes(orderFetch100)) {
-    pnl = pnl.replace(orderFetch100, orderFetch100 + ",\n        fetch('/api/diagnostics/db-pnl', {cache:'no-store'})");
-  } else {
-    throw new Error('database P&L runtime fetch anchor not found');
+// Original formatted runtime.
+if (pnl.includes('const [fillResult, orderResult] = await Promise.allSettled([') || pnl.includes('const [fillResult, orderResult, dbPnlResult] = await Promise.allSettled([')) {
+  if (!pnl.includes("fetch('/api/diagnostics/db-pnl'")) {
+    pnl = pnl.replace(
+      '      const [fillResult, orderResult] = await Promise.allSettled([',
+      '      const [fillResult, orderResult, dbPnlResult] = await Promise.allSettled(['
+    );
+    const orderFetch1000 = "        fetch('/api/trade/orders?limit=1000', {cache:'no-store'})";
+    const orderFetch100 = "        fetch('/api/trade/orders?limit=100', {cache:'no-store'})";
+    if (pnl.includes(orderFetch1000)) {
+      pnl = pnl.replace(orderFetch1000, orderFetch1000 + ",\n        fetch('/api/diagnostics/db-pnl', {cache:'no-store'})");
+    } else if (pnl.includes(orderFetch100)) {
+      pnl = pnl.replace(orderFetch100, orderFetch100 + ",\n        fetch('/api/diagnostics/db-pnl', {cache:'no-store'})");
+    } else {
+      throw new Error('database P&L runtime fetch anchor not found');
+    }
   }
+
+  const paintAnchor = "      if (byId('ledgerSub')) byId('ledgerSub').textContent = 'Actual Kalshi ETH ledger · ' + fillMessage + ' · ' + orderMessage;";
+  const paintBlock = `      if (dbPnlResult.status === 'fulfilled' && dbPnlResult.value.ok) {\n        const dbPnl = await dbPnlResult.value.json();\n        if (Array.isArray(dbPnl?.days)) {\n          paintSummary(dbPnl.days);\n          fillMessage += ' · P&L from durable DB ledger';\n        }\n      }\n\n` + paintAnchor;
+  if (!pnl.includes('P&L from durable DB ledger')) {
+    if (!pnl.includes(paintAnchor)) throw new Error('database P&L runtime paint anchor not found');
+    pnl = pnl.replace(paintAnchor, paintBlock);
+  }
+} else {
+  // Compact runtime. Keep detailed fill/order analytics intact, but make the
+  // durable database daily ledger authoritative for the summary cards/table.
+  const compactFetchOld = "const[fr,or]=await Promise.allSettled([fills(),orders()]);";
+  const compactFetchNew = "const[fr,or,dr]=await Promise.allSettled([fills(),orders(),fetch('/api/diagnostics/db-pnl',{cache:'no-store'})]);";
+  if (!pnl.includes(compactFetchNew)) {
+    if (!pnl.includes(compactFetchOld)) throw new Error('database P&L compact runtime fetch anchor not found');
+    pnl = pnl.replace(compactFetchOld, compactFetchNew);
+  }
+
+  const compactSummaryOld = "if(fr.status==='fulfilled'){const z=summarize(fr.value.rows,idx);fm=z.orders;summary(z.days);analytics([...z.orders.values()],z.days)}";
+  const compactSummaryNew = "if(fr.status==='fulfilled'){const z=summarize(fr.value.rows,idx);fm=z.orders;summary(z.days);analytics([...z.orders.values()],z.days)}if(dr.status==='fulfilled'&&dr.value.ok){const db=await dr.value.json();if(Array.isArray(db?.days))summary(db.days)}";
+  if (!pnl.includes(compactSummaryNew)) {
+    if (!pnl.includes(compactSummaryOld)) throw new Error('database P&L compact runtime paint anchor not found');
+    pnl = pnl.replace(compactSummaryOld, compactSummaryNew);
+  }
+
+  if (!pnl.includes("fetch('/api/diagnostics/db-pnl'")) throw new Error('database P&L compact runtime fetch was not applied');
+  if (!pnl.includes("if(Array.isArray(db?.days))summary(db.days)")) throw new Error('database P&L compact runtime summary was not applied');
 }
 
-const paintAnchor = "      if (byId('ledgerSub')) byId('ledgerSub').textContent = 'Actual Kalshi ETH ledger · ' + fillMessage + ' · ' + orderMessage;";
-const paintBlock = `      if (dbPnlResult.status === 'fulfilled' && dbPnlResult.value.ok) {\n        const dbPnl = await dbPnlResult.value.json();\n        if (Array.isArray(dbPnl?.days)) {\n          paintSummary(dbPnl.days);\n          fillMessage += ' · P&L from durable DB ledger';\n        }\n      }\n\n` + paintAnchor;
-if (!pnl.includes('P&L from durable DB ledger')) {
-  if (!pnl.includes(paintAnchor)) throw new Error('database P&L runtime paint anchor not found');
-  pnl = pnl.replace(paintAnchor, paintBlock);
-}
 fs.writeFileSync(pnlPath, pnl);
