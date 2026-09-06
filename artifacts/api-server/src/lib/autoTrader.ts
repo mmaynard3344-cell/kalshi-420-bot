@@ -3,7 +3,7 @@
  *
  * Architecture:
  *  - WebSocket (kalshiStream) is the PRIMARY trigger. Every incoming tick for
- *    a tracked market is merged into a local state cache and evaluated immediately.
+ *    a tracked market is merged into a localn state cache and evaluated immediately.
  *  - REST is the FALLBACK + RECONCILIATION path:
  *      • Runs automatically when the WS has been silent for >30 s or is disconnected.
  *      • Also runs on a fixed 45-second reconciliation interval regardless of WS health.
@@ -3647,8 +3647,14 @@ async function restFetchSeries(
 async function restFetchAll(source: TriggerSource, isEthSettlementRetryPass = false): Promise<void> {
   const fetchStartMs = Date.now();
   await Promise.all(ACTIVE_ENTRY_SERIES.map((series) => restFetchSeries(series, source, fetchStartMs)));
-  const ethSettlementComplete = await reconcileEthMartingaleSettlements();
-  const ethExposure = await hasUnsettledEthMartingaleExposure();
+  const ethServiceRole = currentEthServiceRole();
+  const mayRunMartingale = serviceMayRunMartingale(ethServiceRole);
+  let ethSettlementComplete = true;
+  let ethExposure = false;
+  if (mayRunMartingale) {
+    ethSettlementComplete = await reconcileEthMartingaleSettlements();
+    ethExposure = await hasUnsettledEthMartingaleExposure();
+  }
 
   // A fetched next window may have been evaluated while the prior ETH GTC was
   // still unsettled. Revisit that exact in-memory market once reconciliation
@@ -3668,9 +3674,14 @@ async function restFetchAll(source: TriggerSource, isEthSettlementRetryPass = fa
   // remain correctly fenced by unresolved exposure, but must never turn into a
   // five-second polling loop; the normal reconciliation cadence can establish a
   // new one-shot retry later.
-  if ((!ethSettlementComplete || ethExposure !== false) && !isEthSettlementRetryPass) {
+   if (
+    mayRunMartingale &&
+    (!ethSettlementComplete || ethExposure !== false) &&
+    !isEthSettlementRetryPass
+  ) {
     armEthSettlementRetry(source);
   }
+
 }
 
 /** Configure the orchestration-only boundary scheduler with existing authority. */
