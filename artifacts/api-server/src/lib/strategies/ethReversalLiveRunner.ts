@@ -3,6 +3,7 @@ import { evaluateEthAccountCapital, type EthAccountCapitalInput } from "./ethAcc
 import { createEthBigBetKalshiSubmitter } from "./ethBigBetKalshiExchange.js";
 import { submitEthBigBetIntent } from "./ethBigBetExecutor.js";
 import { ethBigBetExecutionStore } from "./ethBigBetExecutionStoreAdapter.js";
+import { ethBigBetCapitalRiskCents } from "./ethBigBetLifecycle.js";
 import { initEthBigBetStore } from "./ethBigBetStore.js";
 import { prepareEthReversalServiceIntent } from "./ethReversalServiceRuntime.js";
 import { currentEthServiceRole, serviceOwnsReversal } from "./ethServiceRole.js";
@@ -54,7 +55,9 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
   });
   if (!intent) return "no_signal";
   if (!input.capital) return "capital_unavailable";
-  const capital = evaluateEthAccountCapital({ ...input.capital, requestedRiskCents: intent.wagerCents });
+  const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
+  if (requestedRiskCents < 1) return "capital_unavailable";
+  const capital = evaluateEthAccountCapital({ ...input.capital, requestedRiskCents });
   if (!capital.allowed) return capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked";
   const exchange = input.exchangeIndex == null ? null : createEthBigBetKalshiSubmitter(input.exchangeIndex);
   if (!exchange) return "routing_unavailable";
