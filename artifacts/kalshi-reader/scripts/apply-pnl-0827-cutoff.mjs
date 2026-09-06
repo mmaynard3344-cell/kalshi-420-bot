@@ -31,5 +31,24 @@ if (!source.includes(route.trim())) {
   source = source.replace(anchor, `${route}${anchor}`);
 }
 
+// The live Shawshank P&L runtime paints its summary from the newer
+// /api/diagnostics/authoritative-pnl route. Apply the same Eastern-date cutoff
+// there so the visible All Time P&L is truly Aug 27, 2026 onward.
+const authoritativeDayRows = "    const dayRows = [...days.values()].sort((a, b) => a.easternDate.localeCompare(b.easternDate));";
+if (source.includes(authoritativeDayRows) && !source.includes("const pnlCutoffDate = '2026-08-27';")) {
+  source = source.replace(
+    authoritativeDayRows,
+    "    const pnlCutoffDate = '2026-08-27';\n    const cutoffRows = rows.filter((row) => row.easternDate >= pnlCutoffDate);\n    const dayRows = [...days.values()].filter((day) => day.easternDate >= pnlCutoffDate).sort((a, b) => a.easternDate.localeCompare(b.easternDate));",
+  );
+  source = source.replace(
+    "      resolvedOrderCount: grouped.size,\n      days: dayRows,\n      rows,",
+    "      resolvedOrderCount: cutoffRows.length,\n      days: dayRows,\n      rows: cutoffRows,",
+  );
+}
+
+if (source.includes('async function authoritativePnlDiagnostics(req, res) {') && !source.includes("const pnlCutoffDate = '2026-08-27';")) {
+  throw new Error('P&L cutoff patch: authoritative route found but cutoff was not applied');
+}
+
 await writeFile(path, source, 'utf8');
-console.log('Applied dashboard all-time P&L cutoff: 2026-08-27 Eastern');
+console.log('Applied dashboard all-time P&L cutoff: 2026-08-27 Eastern (reports + authoritative runtime)');
