@@ -981,9 +981,6 @@ async function evaluate(
       openTimeMs: jumpOpenTimeMs,
     },
     exchangeIndex: state.exchangeIndex ?? null,
-    // Dormant wiring only. A later separately reviewed capital snapshot
-    // provider is required before the hard B execution fence can change.
-    capital: null,
   });
     // Dormant wiring only. C shares the same market identity but has its own
     // independent signal, ledger identity, and hard execution fence.
@@ -998,9 +995,6 @@ async function evaluate(
         openTimeMs: jumpOpenTimeMs,
       },
       exchangeIndex: state.exchangeIndex ?? null,
-      // No capital provider is wired in this staging commit, so C remains
-      // fail-closed even independently of its hard code approval fence.
-      capital: null,
     });
   }
   // The retired BTC/SOL/DOGE entry evaluator below is intentionally kept only
