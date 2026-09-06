@@ -4,9 +4,10 @@ import {
   _setEthBigBetStoreDbForTesting,
   isEthBigBetTerminalStatus,
   reserveEthBigBetIntent,
+  reserveEthBigBetIntentWithCapital,
   validateEthBigBetIntentForStorage,
 } from "./ethBigBetStore.js";
-import type { EthBigBetOrderIntent } from "./ethBigBetLifecycle.js";
+import { ethBigBetCapitalRiskCents, type EthBigBetOrderIntent } from "./ethBigBetLifecycle.js";
 
 const jumpIntent = (overrides: Partial<EthBigBetOrderIntent> = {}): EthBigBetOrderIntent => ({
   strategy: "jump",
@@ -18,6 +19,13 @@ const jumpIntent = (overrides: Partial<EthBigBetOrderIntent> = {}): EthBigBetOrd
   marketOpenTimeMs: Date.parse("2026-09-06T00:00:00.000Z"),
   ...overrides,
 });
+
+const capitalBase = {
+  availableBalanceCents: 140_000,
+  martingaleReserveCents: 43_470,
+  safetyReserveCents: 0,
+  otherBigBetReservedCents: 0,
+};
 
 test("B/C ledger accepts only valid ETH big-bet intents", () => {
   assert.equal(validateEthBigBetIntentForStorage(jumpIntent()), true);
@@ -53,6 +61,96 @@ test("reservation is exact-strategy+market scoped and fails closed on duplicate"
     assert.equal(await reserveEthBigBetIntent(jumpIntent()), true);
     assert.equal(await reserveEthBigBetIntent(jumpIntent()), false);
     assert.equal(await reserveEthBigBetIntent(jumpIntent({ ticker: "NOT-ETH" })), false);
+  } finally {
+    _setEthBigBetStoreDbForTesting(null);
+  }
+});
+
+test("serialized capital admission sees unresolved risk before inserting the next service", async () => {
+  let call = 0;
+  const fakeDb = {
+    execute: async () => ({ rows: [] }),
+    transaction: async <T>(fn: (tx: any) => Promise<T>): Promise<T> => fn({
+      execute: async () => {
+        call += 1;
+        if (call === 1) return { rows: [] }; // pg_advisory_xact_lock
+        if (call === 2) return { rows: [{ wager_cents: "50000", limit_price_cents: "50" }] }; // C already reserved
+        throw new Error("insert must not occur when capital is blocked");
+      },
+      transaction: async () => { throw new Error("nested transaction not expected"); },
+    }),
+  };
+  _setEthBigBetStoreDbForTesting(fakeDb as any);
+  try {
+    const intent = jumpIntent();
+    const result = await reserveEthBigBetIntentWithCapital({
+      intent,
+      capital: capitalBase,
+      requestedRiskCents: ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents),
+    });
+    // 1400.00 balance - 434.70 A reserve - 517.50 existing C = 447.80,
+    // which is enough for neither a fresh 434.70 B after a safety margin? It is
+    // actually enough here, so use a tighter balance below in the assertion path.
+    assert.equal(result, "reserved");
+  } finally {
+    _setEthBigBetStoreDbForTesting(null);
+  }
+});
+
+test("serialized capital admission blocks the second service when shared envelope is exhausted", async () => {
+  let call = 0;
+  const fakeDb = {
+    execute: async () => ({ rows: [] }),
+    transaction: async <T>(fn: (tx: any) => Promise<T>): Promise<T> => fn({
+      execute: async () => {
+        call += 1;
+        if (call === 1) return { rows: [] }; // lock
+        if (call === 2) return { rows: [{ wager_cents: "50000", limit_price_cents: "50" }] }; // prior C
+        throw new Error("insert must not occur when capital is blocked");
+      },
+      transaction: async () => { throw new Error("nested transaction not expected"); },
+    }),
+  };
+  _setEthBigBetStoreDbForTesting(fakeDb as any);
+  try {
+    const intent = jumpIntent();
+    const result = await reserveEthBigBetIntentWithCapital({
+      intent,
+      capital: { ...capitalBase, availableBalanceCents: 135_000 },
+      requestedRiskCents: ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents),
+    });
+    assert.equal(result, "capital_blocked");
+    assert.equal(call, 2);
+  } finally {
+    _setEthBigBetStoreDbForTesting(null);
+  }
+});
+
+test("serialized capital admission inserts only after the locked recheck passes", async () => {
+  let call = 0;
+  const fakeDb = {
+    execute: async () => ({ rows: [] }),
+    transaction: async <T>(fn: (tx: any) => Promise<T>): Promise<T> => fn({
+      execute: async () => {
+        call += 1;
+        if (call === 1) return { rows: [] }; // lock
+        if (call === 2) return { rows: [] }; // no unresolved B/C
+        if (call === 3) return { rows: [{ id: "KXETH15M-26SEP051800-00:eth-jump-v1" }] }; // insert
+        throw new Error("unexpected query");
+      },
+      transaction: async () => { throw new Error("nested transaction not expected"); },
+    }),
+  };
+  _setEthBigBetStoreDbForTesting(fakeDb as any);
+  try {
+    const intent = jumpIntent();
+    const result = await reserveEthBigBetIntentWithCapital({
+      intent,
+      capital: capitalBase,
+      requestedRiskCents: ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents),
+    });
+    assert.equal(result, "reserved");
+    assert.equal(call, 3);
   } finally {
     _setEthBigBetStoreDbForTesting(null);
   }
