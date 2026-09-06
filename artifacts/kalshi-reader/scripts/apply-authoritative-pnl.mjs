@@ -21,6 +21,15 @@ fs.writeFileSync(serverPath, server);
 
 const pnlPath = new URL('../public/pnl-runtime.js', import.meta.url);
 let pnl = fs.readFileSync(pnlPath, 'utf8');
+
+// The current P&L runtime pages the actual fill ledger back to the Aug 27 cutoff.
+// Do not overwrite that complete-history calculation with this legacy diagnostic,
+// which intentionally reads only one 1,000-fill page.
+if (pnl.includes('fetchAllFillsSinceCutoff')) {
+  fs.writeFileSync(pnlPath, pnl);
+  process.exit(0);
+}
+
 const fetchAnchor = "        fetch('/api/trade/orders?limit=1000', {cache:'no-store'})";
 if (!pnl.includes("fetch('/api/diagnostics/authoritative-pnl'")) {
   if (!pnl.includes(fetchAnchor)) throw new Error('authoritative P&L runtime fetch anchor not found');
