@@ -1,6 +1,9 @@
 import { kalshiAuthFetch } from "../kalshiAuth.js";
 import { reconcilePersistedEthBigBetsForTicker } from "./ethBigBetSettlementReconciler.js";
-import { listUnresolvedEthBigBetTickers } from "./ethBigBetSettlementStore.js";
+import {
+  listUnresolvedEthBigBetTickers,
+  promoteStaleReservedEthBigBetsToSubmissionUnknown,
+} from "./ethBigBetSettlementStore.js";
 
 interface MarketResponse {
   market?: { result?: unknown; [key: string]: unknown };
@@ -9,12 +12,14 @@ interface MarketResponse {
 
 type SweepAuthFetch = <T>(method: string, path: string) => Promise<T>;
 type SweepListTickers = (limit?: number) => Promise<string[]>;
+type SweepRecoverReserved = (nowMs?: number) => Promise<number>;
 type SweepReconcile = (
   ticker: string,
   result: "yes" | "no",
 ) => Promise<{ settled: number; unresolved: number }>;
 
 export interface EthBigBetAccountingSweepResult {
+  recoveredReservedRows: number;
   tickersChecked: number;
   tickersUnsettled: number;
   settledRows: number;
@@ -24,27 +29,40 @@ export interface EthBigBetAccountingSweepResult {
 
 /**
  * Retry B/C accounting only. No strategy state is read or written, and no
- * future market is blocked by this function. Missing market-result or fill
- * evidence leaves the row unresolved so its capital remains conservatively
- * reserved for a later retry.
+ * future market is blocked by this function. First, old pre-ack crash rows are
+ * reclassified from reserved to submission_unknown without releasing capital;
+ * then immutable client-order-ID recovery can inspect them like any other
+ * ambiguous submission. Missing market-result or fill evidence remains
+ * unresolved so capital stays conservatively reserved for a later retry.
  */
 export async function sweepUnresolvedEthBigBetAccounting(input: {
   limit?: number;
+  nowMs?: number;
   authFetch?: SweepAuthFetch;
+  recoverReserved?: SweepRecoverReserved;
   listTickers?: SweepListTickers;
   reconcile?: SweepReconcile;
 } = {}): Promise<EthBigBetAccountingSweepResult> {
   const limit = input.limit ?? 50;
   const authFetch = input.authFetch ?? (kalshiAuthFetch as unknown as SweepAuthFetch);
+  const recoverReserved = input.recoverReserved ?? promoteStaleReservedEthBigBetsToSubmissionUnknown;
   const listTickers = input.listTickers ?? listUnresolvedEthBigBetTickers;
   const reconcile = input.reconcile ?? reconcilePersistedEthBigBetsForTicker;
   const result: EthBigBetAccountingSweepResult = {
+    recoveredReservedRows: 0,
     tickersChecked: 0,
     tickersUnsettled: 0,
     settledRows: 0,
     unresolvedRows: 0,
     errors: 0,
   };
+
+  try {
+    result.recoveredReservedRows = await recoverReserved(input.nowMs);
+  } catch {
+    // Recovery failure must not prevent already-submitted rows from reconciling.
+    result.errors++;
+  }
 
   let tickers: string[];
   try {
