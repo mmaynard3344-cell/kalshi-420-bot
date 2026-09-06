@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
+import { evaluateEthAccountCapital, type EthAccountCapitalInput } from "./ethAccountCapitalGuard.js";
 import type { EthBigBetOrderIntent, EthBigBetSide, EthBigBetStrategy } from "./ethBigBetLifecycle.js";
-import { ethBigBetContracts, ethBigBetOrderId } from "./ethBigBetLifecycle.js";
+import { ethBigBetCapitalRiskCents, ethBigBetContracts, ethBigBetOrderId } from "./ethBigBetLifecycle.js";
 
 export type EthBigBetOrderStatus =
   | "reserved"
@@ -8,6 +9,8 @@ export type EthBigBetOrderStatus =
   | "submission_unknown"
   | "rejected"
   | "settled";
+
+export type EthBigBetReservationResult = "reserved" | "capital_blocked" | "reservation_failed";
 
 export interface EthBigBetLedgerRow {
   id: string;
@@ -66,6 +69,34 @@ export function validateEthBigBetIntentForStorage(intent: EthBigBetOrderIntent):
     && ethBigBetContracts(intent.wagerCents, intent.limitPriceCents) > 0;
 }
 
+function parsePositiveInteger(value: unknown): number | null {
+  const parsed = typeof value === "bigint" ? Number(value)
+    : typeof value === "number" ? value
+    : typeof value === "string" && /^\d+$/.test(value) ? Number(value)
+    : NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function unresolvedCapitalRiskCents(tx: DbLike): Promise<number | null> {
+  const result = await tx.execute(sql`
+    SELECT wager_cents, limit_price_cents
+    FROM eth_big_bet_orders
+    WHERE status NOT IN ('rejected', 'settled')
+  `);
+  const rows = (result as { rows?: Array<Record<string, unknown>> }).rows;
+  if (!Array.isArray(rows)) return null;
+  let total = 0;
+  for (const row of rows) {
+    const wagerCents = parsePositiveInteger(row["wager_cents"]);
+    const limitPriceCents = parsePositiveInteger(row["limit_price_cents"]);
+    if (wagerCents == null || limitPriceCents == null || limitPriceCents > 99) return null;
+    const riskCents = ethBigBetCapitalRiskCents(wagerCents, limitPriceCents);
+    if (riskCents < 1 || !Number.isSafeInteger(total + riskCents)) return null;
+    total += riskCents;
+  }
+  return total;
+}
+
 /** Dedicated B/C schema. It has no foreign key or lifecycle dependency on
  * Service A's eth420_candidate_live_orders table. Strategy+ticker uniqueness
  * blocks only an exact same-service duplicate; B and C may both own a market. */
@@ -103,8 +134,7 @@ export async function initEthBigBetStore(): Promise<void> {
   `);
 }
 
-/** Atomic exact-market reservation. No unresolved order from an older ticker is
- * consulted, so B/C never acquire A-style cross-market lifecycle coupling. */
+/** Atomic exact-market reservation retained for storage-focused tests/tools. */
 export async function reserveEthBigBetIntent(intent: EthBigBetOrderIntent): Promise<boolean> {
   if (!validateEthBigBetIntentForStorage(intent)) return false;
   const db = await getDb();
@@ -127,6 +157,63 @@ export async function reserveEthBigBetIntent(intent: EthBigBetOrderIntent): Prom
     const rows = (result as { rows?: unknown[] }).rows ?? [];
     return rows.length === 1;
   });
+}
+
+/**
+ * Cross-process B/C admission fence. The advisory transaction lock serializes
+ * separate Railway services on the same Postgres database. Under that lock we
+ * recompute unresolved B/C fee-inclusive risk, rerun the shared capital guard,
+ * and only then insert the new reservation. A stale pre-lock B/C exposure
+ * snapshot therefore cannot authorize two simultaneous big-bet reservations.
+ *
+ * The caller's available balance must already be a fresh routed exchange read.
+ * A remains outside this B/C lock and is protected by martingaleReserveCents.
+ */
+export async function reserveEthBigBetIntentWithCapital(params: {
+  intent: EthBigBetOrderIntent;
+  capital: Omit<EthAccountCapitalInput, "requestedRiskCents">;
+  requestedRiskCents: number;
+}): Promise<EthBigBetReservationResult> {
+  if (!validateEthBigBetIntentForStorage(params.intent)
+    || !Number.isSafeInteger(params.requestedRiskCents) || params.requestedRiskCents < 1) {
+    return "reservation_failed";
+  }
+  const expectedRisk = ethBigBetCapitalRiskCents(params.intent.wagerCents, params.intent.limitPriceCents);
+  if (params.requestedRiskCents !== expectedRisk) return "reservation_failed";
+  const db = await getDb();
+  const now = Date.now();
+  const id = ethBigBetOrderId(params.intent);
+  const contracts = ethBigBetContracts(params.intent.wagerCents, params.intent.limitPriceCents);
+  try {
+    return await db.transaction(async (tx) => {
+      // Stable project-local key; transaction-scoped so crashes cannot strand it.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(42015000)`);
+      const otherBigBetReservedCents = await unresolvedCapitalRiskCents(tx);
+      if (otherBigBetReservedCents == null) return "reservation_failed";
+      const capital = evaluateEthAccountCapital({
+        ...params.capital,
+        otherBigBetReservedCents,
+        requestedRiskCents: params.requestedRiskCents,
+      });
+      if (!capital.allowed) return "capital_blocked";
+      const result = await tx.execute(sql`
+        INSERT INTO eth_big_bet_orders
+          (id, strategy, order_tag, ticker, market_open_time_ms, side,
+           wager_cents, limit_price_cents, requested_contracts, status,
+           created_at_ms, updated_at_ms)
+        VALUES
+          (${id}, ${params.intent.strategy}, ${params.intent.orderTag}, ${params.intent.ticker},
+           ${params.intent.marketOpenTimeMs}, ${params.intent.side}, ${params.intent.wagerCents},
+           ${params.intent.limitPriceCents}, ${contracts}, 'reserved', ${now}, ${now})
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      `);
+      const rows = (result as { rows?: unknown[] }).rows ?? [];
+      return rows.length === 1 ? "reserved" : "reservation_failed";
+    });
+  } catch {
+    return "reservation_failed";
+  }
 }
 
 export async function acknowledgeEthBigBetSubmission(params: {
