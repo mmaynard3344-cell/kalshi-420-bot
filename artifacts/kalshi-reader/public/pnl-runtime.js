@@ -2,6 +2,7 @@
   'use strict';
 
   const ET = 'America/New_York';
+  const ALL_TIME_START = '2026-08-27';
   const byId = (id) => document.getElementById(id);
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (s) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
   const firstNumber = (...values) => {
@@ -122,9 +123,10 @@
     const monthKey = todayKey.slice(0,7);
     const week = days.filter((x) => x.easternDate >= weekKey && x.easternDate <= todayKey).reduce((s,x) => s + x.netCents, 0);
     const month = days.filter((x) => x.easternDate.startsWith(monthKey)).reduce((s,x) => s + x.netCents, 0);
-    const all = days.reduce((s,x) => s + x.netCents, 0);
-    const wins = days.reduce((s,x) => s + x.wins, 0);
-    const losses = days.reduce((s,x) => s + x.losses, 0);
+    const allDays = days.filter((x) => x.easternDate >= ALL_TIME_START);
+    const all = allDays.reduce((s,x) => s + x.netCents, 0);
+    const wins = allDays.reduce((s,x) => s + x.wins, 0);
+    const losses = allDays.reduce((s,x) => s + x.losses, 0);
     const settled = wins + losses;
 
     setMoney('opPnl', today.netCents);
@@ -133,10 +135,17 @@
     setMoney('pnlMonth', month);
     setMoney('pnlAll', all);
 
+    const allCard = byId('pnlAll')?.closest('.card');
+    if (allCard) {
+      const eyebrow = allCard.querySelector('.eyebrow');
+      const sub = allCard.querySelector('.sub');
+      if (eyebrow) eyebrow.textContent = 'All Time · Since 8/27/26';
+      if (sub) sub.textContent = 'Actual settled ETH fills from Aug 27, 2026 forward.';
+    }
     if (byId('statWinRate')) byId('statWinRate').textContent = settled ? (wins / settled * 100).toFixed(1) + '%' : '—';
-    if (byId('statAvgDay')) byId('statAvgDay').textContent = days.length ? money(Math.round(all / days.length)) : '—';
+    if (byId('statAvgDay')) byId('statAvgDay').textContent = allDays.length ? money(Math.round(all / allDays.length)) : '—';
     if (byId('statBestWorst')) {
-      const sorted = [...days].sort((a,b) => a.netCents - b.netCents);
+      const sorted = [...allDays].sort((a,b) => a.netCents - b.netCents);
       byId('statBestWorst').textContent = sorted.length ? money(sorted[sorted.length - 1].netCents) + ' / ' + money(sorted[0].netCents) : '—';
     }
     if (byId('dayCount')) byId('dayCount').textContent = days.length + ' days · actual fills';
