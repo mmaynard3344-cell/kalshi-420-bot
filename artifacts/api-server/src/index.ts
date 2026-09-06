@@ -64,6 +64,7 @@ import {
 } from "./lib/strategies/eth420SixStepCandidate.js";
 import { resumeEth420CandidateExecutionTelemetry } from "./lib/eth420ExecutionTelemetry.js";
 import { refreshEth420RunawayResearch } from "./lib/eth420RunawayResearch.js";
+import { runEthBigBetAccountingSweepSingleFlight } from "./lib/strategies/ethBigBetAccountingSweep.js";
 import {
   WEEK_2_PRODUCTION_NEW_ENTRY_SERIES,
 } from "./lib/week2EntryPolicy.js";
@@ -73,6 +74,7 @@ const PROTECTIVE_EXIT_RESTORE_RETRY_INTERVAL_MS = 15_000;
 const ETH_MARTINGALE_LIFECYCLE_SWEEP_INTERVAL_MS = 60_000;
 const ETH_420_CANDIDATE_LIFECYCLE_SWEEP_INTERVAL_MS = 60_000;
 const ETH_420_RUNAWAY_RESEARCH_REFRESH_INTERVAL_MS = 60_000;
+const ETH_BIG_BET_ACCOUNTING_SWEEP_INTERVAL_MS = 5 * 60_000;
 const ETH_MARKET_WINDOW_MS = 15 * 60_000;
 const ETH_BOUNDARY_SETTLEMENT_OFFSETS_MS = [
   1_000, 3_000, 5_000, 8_000, 12_000, 18_000, 25_000, 35_000, 45_000, 55_000,
@@ -244,6 +246,24 @@ app.listen(port, "0.0.0.0", async () => {
       }).catch((err) => logger.warn({ err }, "ETH 420 candidate lifecycle sweep failed"));
     };
     runEth420CandidateLifecycleSweep();
+
+    // B/C settlement is accounting-only and never controls future strategy
+    // evaluation. Retry incomplete authenticated fill evidence at startup and
+    // on a low-cadence single-flight timer so resolved rows release reserved
+    // capital without coupling B/C to martingale settlement state.
+    const runEthBigBetAccountingSweep = () => {
+      void runEthBigBetAccountingSweepSingleFlight().then((result) => {
+        if (result.settledRows > 0 || result.unresolvedRows > 0 || result.errors > 0) {
+          logger.info(result, "B/C accounting retry sweep completed");
+        }
+      }).catch((err) => logger.warn({ err }, "B/C accounting retry sweep failed"));
+    };
+    runEthBigBetAccountingSweep();
+    const ethBigBetAccountingSweepTimer = setInterval(
+      runEthBigBetAccountingSweep,
+      ETH_BIG_BET_ACCOUNTING_SWEEP_INTERVAL_MS,
+    );
+    ethBigBetAccountingSweepTimer.unref();
 
     // Every ETH 15-minute close gets the same fast lifecycle treatment. This
     // accelerates both the ordinary martingale and the isolated ETH420 ledger,
