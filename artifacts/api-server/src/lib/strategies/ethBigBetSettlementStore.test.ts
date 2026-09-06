@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   _setEthBigBetSettlementStoreDbForTesting,
@@ -82,6 +83,22 @@ test("stale reserved crash recovery uses one full 15-minute age and remains nont
   } finally {
     _setEthBigBetSettlementStoreDbForTesting(null);
   }
+});
+
+test("stale reserved recovery SQL cannot broaden beyond unacknowledged aged reservations", () => {
+  const source = readFileSync("src/lib/strategies/ethBigBetSettlementStore.ts", "utf8");
+  const start = source.indexOf("export async function promoteStaleReservedEthBigBetsToSubmissionUnknown");
+  const end = source.indexOf("export async function listUnresolvedEthBigBetTickers", start);
+  assert.ok(start >= 0 && end > start);
+  const recovery = source.slice(start, end);
+  assert.match(recovery, /SET status='submission_unknown'/);
+  assert.match(recovery, /WHERE status='reserved'/);
+  assert.match(recovery, /kalshi_order_id IS NULL/);
+  assert.match(recovery, /created_at_ms <= \$\{cutoffMs\}/);
+  assert.doesNotMatch(recovery, /status='rejected'/);
+  assert.doesNotMatch(recovery, /status='settled'/);
+  assert.doesNotMatch(recovery, /filled_contracts/);
+  assert.doesNotMatch(recovery, /realized_pnl_cents/);
 });
 
 test("reserved crash recovery rejects nonsensical timestamps rather than guessing", async () => {
