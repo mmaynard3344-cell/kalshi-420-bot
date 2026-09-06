@@ -7,7 +7,7 @@
  *
  * This module deliberately owns no martingale state and performs no I/O.
  */
-export const ETH_REVERSAL_WAGER_CENTS = 50_000;
+export const ETH_REVERSAL_WAGER_CENTS = 10_000;
 export const ETH_REVERSAL_SIDE = "yes" as const;
 export const ETH_REVERSAL_ORDER_TAG = "eth-no3-reversal-v1";
 export const ETH_REVERSAL_MIN_NO_STREAK = 3;
