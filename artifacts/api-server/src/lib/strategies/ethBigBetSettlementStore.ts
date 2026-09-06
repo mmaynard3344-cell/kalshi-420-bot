@@ -14,11 +14,28 @@ async function getDb(): Promise<DbLike> {
   return mod.db as unknown as DbLike;
 }
 
+async function ethBigBetLedgerExists(db: DbLike): Promise<boolean> {
+  const result = await db.execute(sql`
+    SELECT to_regclass('public.eth_big_bet_orders') AS table_name
+  `);
+  const rows = (result as { rows?: Array<Record<string, unknown>> }).rows;
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    throw new Error("B/C ledger existence evidence unavailable");
+  }
+  const tableName = rows[0]?.["table_name"];
+  if (tableName == null) return false;
+  if (typeof tableName !== "string" || tableName.length === 0) {
+    throw new Error("malformed B/C ledger existence evidence");
+  }
+  return true;
+}
+
 export async function listUnresolvedEthBigBetSettlementRowsForTicker(
   ticker: string,
 ): Promise<EthBigBetSettlementRow[]> {
   if (!/^KXETH15M-/.test(ticker)) return [];
   const db = await getDb();
+  if (!await ethBigBetLedgerExists(db)) return [];
   const result = await db.execute(sql`
     SELECT id, ticker, side, kalshi_order_id
     FROM eth_big_bet_orders
@@ -56,6 +73,7 @@ export async function listUnresolvedEthBigBetTickers(limit = 50): Promise<string
     throw new Error("invalid B/C accounting sweep limit");
   }
   const db = await getDb();
+  if (!await ethBigBetLedgerExists(db)) return [];
   const result = await db.execute(sql`
     SELECT ticker, MIN(created_at_ms) AS oldest_created_at_ms
     FROM eth_big_bet_orders
