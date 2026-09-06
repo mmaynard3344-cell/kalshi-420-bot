@@ -696,6 +696,7 @@ import {
 } from "./strategies/eth420SixStepCandidate.js";
 import { runEthJumpServiceWhenExplicitlyEnabled } from "./strategies/ethJumpLiveRunner.js";
 import { runEthReversalServiceWhenExplicitlyEnabled } from "./strategies/ethReversalLiveRunner.js";
+import { currentEthServiceRole, serviceMayRunMartingale } from "./strategies/ethServiceRole.js";
 export type { WindowLogEntry } from "./windowLog";
 export { getWindowLog } from "./windowLog";
 
@@ -961,14 +962,17 @@ async function evaluate(
   // legacy 80¢ protective-exit path. Legacy cleanup runs only from the
   // restored-position monitor in index.ts and is never driven by this evaluator.
   if (isEthTicker(state.ticker)) {
-    await (_evaluateEthNoMartingaleImpl ?? evaluateEthNoMartingale)({
-      ticker: state.ticker,
-      exchangeIndex: state.exchangeIndex ?? null,
-      openTime: state.openTime,
-      closeTime: state.closeTime,
-      status: state.status,
-    });
-    await evaluateEth420Candidate(state, _timing);
+    const ethServiceRole = currentEthServiceRole();
+    if (serviceMayRunMartingale(ethServiceRole)) {
+      await (_evaluateEthNoMartingaleImpl ?? evaluateEthNoMartingale)({
+        ticker: state.ticker,
+        exchangeIndex: state.exchangeIndex ?? null,
+        openTime: state.openTime,
+        closeTime: state.closeTime,
+        status: state.status,
+      });
+      await evaluateEth420Candidate(state, _timing);
+    }
   const jumpOpenTimeMs = state.openTime == null ? null : Date.parse(state.openTime);
   await runEthJumpServiceWhenExplicitlyEnabled({
     store: tradeStore,
