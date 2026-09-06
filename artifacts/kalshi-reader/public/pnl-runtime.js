@@ -3,6 +3,8 @@
 
   const ET = 'America/New_York';
   const ALL_TIME_START = '2026-08-27';
+  const MAX_FILL_PAGES = 25;
+  const PAGE_SIZE = 1000;
   const byId = (id) => document.getElementById(id);
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (s) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
   const firstNumber = (...values) => {
@@ -62,6 +64,47 @@
     if (client.endsWith(':eth420-live-v1')) return '420 / Back Flip';
     return 'ETH';
   };
+
+  async function fetchAllFillsSinceCutoff() {
+    const fills = [];
+    const seenCursors = new Set();
+    let cursor = '';
+    let pages = 0;
+    let reachedCutoff = false;
+
+    while (pages < MAX_FILL_PAGES) {
+      const params = new URLSearchParams({limit:String(PAGE_SIZE)});
+      if (cursor) params.set('cursor', cursor);
+      const response = await fetch('/api/trade/fills?' + params.toString(), {cache:'no-store'});
+      if (!response.ok) throw new Error('fills page returned ' + response.status);
+      const payload = await response.json();
+      const page = Array.isArray(payload?.fills) ? payload.fills : [];
+      fills.push(...page);
+      pages += 1;
+
+      for (const row of page) {
+        const ms = rowTimeMs(row);
+        if (ms != null && dayKey(ms) < ALL_TIME_START) {
+          reachedCutoff = true;
+          break;
+        }
+      }
+
+      const next = String(payload?.cursor ?? payload?.next_cursor ?? payload?.nextCursor ?? '');
+      if (reachedCutoff || !next || seenCursors.has(next) || page.length === 0) break;
+      seenCursors.add(next);
+      cursor = next;
+    }
+
+    const deduped = new Map();
+    for (const row of fills) {
+      const ms = rowTimeMs(row);
+      if (ms == null || dayKey(ms) < ALL_TIME_START) continue;
+      const key = String(row?.fill_id ?? row?.fillId ?? `${orderId(row)}:${ms}:${side(row)}:${fillCount(row)}:${fillPriceDollars(row, side(row))}`);
+      if (!deduped.has(key)) deduped.set(key, row);
+    }
+    return {fills:[...deduped.values()], pages, reachedCutoff};
+  }
 
   function summarizeFills(fills) {
     const orders = new Map();
@@ -193,20 +236,18 @@
     busy = true;
     try {
       const [fillResult, orderResult] = await Promise.allSettled([
-        fetch('/api/trade/fills?limit=10000', {cache:'no-store'}),
+        fetchAllFillsSinceCutoff(),
         fetch('/api/trade/orders?limit=100', {cache:'no-store'})
       ]);
       let fillMap = new Map();
       let fillMessage = 'fills unavailable';
       let orderMessage = 'orders unavailable';
 
-      if (fillResult.status === 'fulfilled' && fillResult.value.ok) {
-        const payload = await fillResult.value.json();
-        const fills = Array.isArray(payload?.fills) ? payload.fills : [];
-        const summary = summarizeFills(fills);
+      if (fillResult.status === 'fulfilled') {
+        const summary = summarizeFills(fillResult.value.fills);
         fillMap = summary.orders;
         paintSummary(summary.days);
-        fillMessage = summary.orders.size + ' filled orders';
+        fillMessage = summary.orders.size + ' filled orders · ' + fillResult.value.pages + ' pages';
       }
 
       if (orderResult.status === 'fulfilled' && orderResult.value.ok) {
@@ -226,5 +267,5 @@
 
   ensureTabs();
   refresh();
-  window.setInterval(refresh, 5000);
+  window.setInterval(refresh, 15000);
 })();
