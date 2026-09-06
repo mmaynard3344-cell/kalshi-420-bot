@@ -3,15 +3,25 @@ import test from "node:test";
 import {
   _setEthBigBetSettlementStoreDbForTesting,
   listUnresolvedEthBigBetSettlementRowsForTicker,
+  listUnresolvedEthBigBetTickers,
 } from "./ethBigBetSettlementStore.js";
 
+function existingLedgerDb(dataRows: Array<Record<string, unknown>>) {
+  let call = 0;
+  return {
+    execute: async () => {
+      call++;
+      if (call === 1) return { rows: [{ table_name: "eth_big_bet_orders" }] };
+      return { rows: dataRows };
+    },
+  };
+}
+
 test("settlement reader returns only auditable unresolved B/C row fields", async () => {
-  _setEthBigBetSettlementStoreDbForTesting({
-    execute: async () => ({ rows: [
-      { id: "KXETH15M-X:eth-jump-v1", ticker: "KXETH15M-X", side: "no", kalshi_order_id: "order-1" },
-      { id: "KXETH15M-X:eth-no3-reversal-v1", ticker: "KXETH15M-X", side: "yes", kalshi_order_id: null },
-    ] }),
-  });
+  _setEthBigBetSettlementStoreDbForTesting(existingLedgerDb([
+    { id: "KXETH15M-X:eth-jump-v1", ticker: "KXETH15M-X", side: "no", kalshi_order_id: "order-1" },
+    { id: "KXETH15M-X:eth-no3-reversal-v1", ticker: "KXETH15M-X", side: "yes", kalshi_order_id: null },
+  ]));
   try {
     assert.deepEqual(await listUnresolvedEthBigBetSettlementRowsForTicker("KXETH15M-X"), [
       { id: "KXETH15M-X:eth-jump-v1", ticker: "KXETH15M-X", side: "no", kalshiOrderId: "order-1" },
@@ -23,14 +33,45 @@ test("settlement reader returns only auditable unresolved B/C row fields", async
 });
 
 test("settlement reader fails closed on malformed durable rows", async () => {
-  _setEthBigBetSettlementStoreDbForTesting({
-    execute: async () => ({ rows: [{ id: "x", ticker: "KXETH15M-X", side: "maybe", kalshi_order_id: null }] }),
-  });
+  _setEthBigBetSettlementStoreDbForTesting(existingLedgerDb([
+    { id: "x", ticker: "KXETH15M-X", side: "maybe", kalshi_order_id: null },
+  ]));
   try {
     await assert.rejects(() => listUnresolvedEthBigBetSettlementRowsForTicker("KXETH15M-X"));
   } finally {
     _setEthBigBetSettlementStoreDbForTesting(null);
   }
+});
+
+test("dormant accounting returns empty when B/C ledger has never been created", async () => {
+  let calls = 0;
+  _setEthBigBetSettlementStoreDbForTesting({
+    execute: async () => {
+      calls++;
+      return { rows: [{ table_name: null }] };
+    },
+  });
+  try {
+    assert.deepEqual(await listUnresolvedEthBigBetSettlementRowsForTicker("KXETH15M-X"), []);
+    assert.deepEqual(await listUnresolvedEthBigBetTickers(), []);
+    assert.equal(calls, 2);
+  } finally {
+    _setEthBigBetSettlementStoreDbForTesting(null);
+  }
+});
+
+test("unresolved ticker reader is bounded and validates ETH identities", async () => {
+  _setEthBigBetSettlementStoreDbForTesting(existingLedgerDb([
+    { ticker: "KXETH15M-ONE" },
+    { ticker: "KXETH15M-TWO" },
+  ]));
+  try {
+    assert.deepEqual(await listUnresolvedEthBigBetTickers(10), ["KXETH15M-ONE", "KXETH15M-TWO"]);
+  } finally {
+    _setEthBigBetSettlementStoreDbForTesting(null);
+  }
+  await assert.rejects(() => listUnresolvedEthBigBetTickers(0));
+  await assert.rejects(() => listUnresolvedEthBigBetTickers(501));
 });
 
 test("non-ETH ticker never queries the B/C ledger", async () => {
