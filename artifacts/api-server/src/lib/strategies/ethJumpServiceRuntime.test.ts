@@ -4,7 +4,10 @@ import {
   _setEth420BootstrapFactsForTesting,
   type Eth420CandidateMarket,
 } from "./eth420SixStepCandidate.js";
-import { prepareEthJumpServiceIntent } from "./ethJumpServiceRuntime.js";
+import {
+  _setEthJumpMarketFetcherForTesting,
+  prepareEthJumpServiceIntent,
+} from "./ethJumpServiceRuntime.js";
 
 function historicalFacts(firstOpenMs: number) {
   const facts: Array<{ ticker: string; openTimeMs: number; floorStrike: number }> = [];
@@ -48,6 +51,71 @@ test("Service B reuses rolling evidence and A side read-only to emit its $420 in
     assert.equal(intent?.ticker, market.ticker);
   } finally {
     _setEth420BootstrapFactsForTesting(null);
+    _setEthJumpMarketFetcherForTesting(null);
+  }
+});
+
+test("Service B recovers a missing current move directly from exact adjacent Kalshi markets", async () => {
+  const firstOpenMs = 1_999_954_800_000;
+  const facts = historicalFacts(firstOpenMs);
+  _setEth420BootstrapFactsForTesting(facts as any);
+  const prior = facts.at(-1)!;
+  const currentOpenMs = prior.openTimeMs + 900_000;
+  const currentStrike = prior.floorStrike * 1.048;
+  const market: Eth420CandidateMarket = {
+    ticker: "KXETH15M-DIRECT-JUMP",
+    easternDate: "2033-05-18",
+    observedAtMs: currentOpenMs,
+    openTimeMs: currentOpenMs,
+    floorStrike: null,
+  };
+  const store: any = {
+    getEth420CandidateState: async () => ({
+      easternDate: market.easternDate,
+      side: "no",
+      step: 2,
+      realizedPnlCents: 0,
+      lastBlockResetAtMs: null,
+    }),
+    listEth420CandidateTelemetry: async () => [],
+  };
+  const calls: string[] = [];
+  _setEthJumpMarketFetcherForTesting((async (path: string) => {
+    calls.push(path);
+    if (path === `/markets/${market.ticker}`) {
+      return { market: {
+        ticker: market.ticker,
+        open_time: new Date(currentOpenMs).toISOString(),
+        floor_strike: currentStrike,
+      } };
+    }
+    if (path === "/markets") {
+      return { markets: [{
+        ticker: prior.ticker,
+        open_time: new Date(prior.openTimeMs).toISOString(),
+        floor_strike: prior.floorStrike,
+        status: "finalized",
+      }] };
+    }
+    throw new Error(`unexpected path ${path}`);
+  }) as any);
+
+  try {
+    let observedMove: number | null = null;
+    const intent = await prepareEthJumpServiceIntent({
+      store,
+      market,
+      role: "jump",
+      onEvaluation: (observation) => { observedMove = observation.currentMove; },
+    });
+    assert.equal(intent?.strategy, "jump");
+    assert.equal(intent?.side, "no");
+    assert.equal(intent?.wagerCents, 42_000);
+    assert.ok(observedMove != null && Math.abs(observedMove - 0.048) < 1e-12);
+    assert.deepEqual(calls, [`/markets/${market.ticker}`, "/markets"]);
+  } finally {
+    _setEth420BootstrapFactsForTesting(null);
+    _setEthJumpMarketFetcherForTesting(null);
   }
 });
 
