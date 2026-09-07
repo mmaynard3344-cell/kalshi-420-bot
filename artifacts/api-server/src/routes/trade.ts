@@ -928,7 +928,7 @@ router.get("/trade/martingale", requireTradeAuth, async (_req, res) => {
     state: {
       next_side: dashboard.state.side,
       martingale_step: dashboard.state.martingaleStep,
-      next_principal_cents: [1500, 3000, 6000][Math.max(0, Math.min(2, dashboard.state.martingaleStep))],
+      next_principal_cents: [1500, 3000, 6000, 12000, 24000, 32000][Math.max(0, Math.min(5, dashboard.state.martingaleStep))],
       realized_pnl_dollars: dashboard.state.realizedPnlCents / 100,
     },
     session: {
