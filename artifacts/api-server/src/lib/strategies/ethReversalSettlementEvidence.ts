@@ -10,10 +10,10 @@ export type EthReversalSettlementOutcome = "yes" | "no" | "missing_or_conflict";
  * Resolve the three immediately preceding ETH 15-minute market settlements
  * from the durable authoritative market_results table.
  *
- * The in-memory window log is used only to identify candidate tickers for each
- * close boundary. SQL window_log rows are also consulted as a restart-safe
- * ticker mapping fallback. The settlement value itself always comes from
- * market_results, where resolved Kalshi outcomes are durable and never null.
+ * Window-log rows are used only to map each exact close boundary to its ticker.
+ * SQL matching is done by parsed timestamp milliseconds rather than exact text,
+ * so equivalent ISO timestamp renderings cannot break the mapping. The YES/NO
+ * value itself always comes from market_results.
  *
  * Any unavailable, duplicate-conflicting, or malformed evidence fails closed.
  */
@@ -26,7 +26,6 @@ export async function resolveThreeAdjacentEthSettlements(
   }
 
   const targetCloseMs = [0, 1, 2].map((offset) => currentOpenTimeMs - offset * ETH_15M_MS);
-  const targetCloseIso = targetCloseMs.map((ms) => new Date(ms).toISOString());
   const localTickersByClose = new Map<number, Set<string>>();
 
   for (const entry of entries) {
@@ -38,32 +37,36 @@ export async function resolveThreeAdjacentEthSettlements(
     localTickersByClose.set(closeMs, tickers);
   }
 
-  const localTickers = [...new Set([...localTickersByClose.values()].flatMap((set) => [...set]))];
-
   try {
     const rows = await withBoundedReadOnlyClient(REVERSAL_SETTLEMENT_READ_TIMEOUT_MS, async (client) => {
       const result = await client.query(
-        `SELECT w.close_time, mr.ticker, mr.result
-           FROM market_results mr
-           LEFT JOIN window_log w ON w.ticker = mr.ticker
-          WHERE mr.ticker = ANY($1::text[])
-             OR (w.series = 'KXETH15M' AND w.close_time = ANY($2::text[]))`,
-        [localTickers, targetCloseIso],
+        `WITH target_windows AS (
+           SELECT
+             ticker,
+             (EXTRACT(EPOCH FROM close_time::timestamptz) * 1000)::bigint AS close_ms
+           FROM window_log
+           WHERE series = 'KXETH15M'
+             AND close_time IS NOT NULL
+             AND (EXTRACT(EPOCH FROM close_time::timestamptz) * 1000)::bigint = ANY($1::bigint[])
+         )
+         SELECT tw.close_ms, tw.ticker, mr.result
+           FROM target_windows tw
+           LEFT JOIN market_results mr ON mr.ticker = tw.ticker`,
+        [targetCloseMs],
       );
-      return result.rows as Array<{ close_time: string | null; ticker: string; result: string }>;
+      return result.rows as Array<{ close_ms: string | number; ticker: string; result: string | null }>;
     });
 
-    const resultByTicker = new Map<string, "yes" | "no">();
     const sqlTickersByClose = new Map<number, Set<string>>();
+    const resultByTicker = new Map<string, "yes" | "no">();
 
     for (const row of rows) {
-      if (row.result === "yes" || row.result === "no") resultByTicker.set(row.ticker, row.result);
-      if (!row.close_time) continue;
-      const closeMs = Date.parse(row.close_time);
-      if (!targetCloseMs.includes(closeMs)) continue;
+      const closeMs = Number(row.close_ms);
+      if (!Number.isInteger(closeMs) || !targetCloseMs.includes(closeMs)) continue;
       const tickers = sqlTickersByClose.get(closeMs) ?? new Set<string>();
       tickers.add(row.ticker);
       sqlTickersByClose.set(closeMs, tickers);
+      if (row.result === "yes" || row.result === "no") resultByTicker.set(row.ticker, row.result);
     }
 
     return targetCloseMs.map((closeMs) => {
