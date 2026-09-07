@@ -18,8 +18,11 @@ jobs:
       - name: Reconstruct exact approved patch
         run: |
           cat tmp-regular-patch.part00 tmp-regular-patch.part01 tmp-regular-patch.part02 tmp-regular-patch.part03 tmp-regular-patch.part04 tmp-regular-patch.part05 | base64 -d > /tmp/regular-six-step-chronology.patch
+          echo "PATCH_BYTES=$(wc -c < /tmp/regular-six-step-chronology.patch)"
+          echo "PATCH_SHA256=$(sha256sum /tmp/regular-six-step-chronology.patch | awk '{print $1}')"
           test "$(wc -c < /tmp/regular-six-step-chronology.patch)" -eq 20206
-          git apply --check /tmp/regular-six-step-chronology.patch
+          test "$(sha256sum /tmp/regular-six-step-chronology.patch | awk '{print $1}')" = "9db2c2cd2850fd06f46de9232c6a6a4f6ff766b7d1a7a1c5e8dbabcab763d235"
+          git apply --check --verbose /tmp/regular-six-step-chronology.patch
           git apply /tmp/regular-six-step-chronology.patch
           git diff --check
       - uses: pnpm/action-setup@v4
@@ -59,7 +62,8 @@ jobs:
           assert 'COALESCE(filled_contracts, 0) > 0' in ts
           assert 'FOR UPDATE' in ts
           assert '[1500, 3000, 6000, 12000, 24000, 32000][Math.max(0, Math.min(5, dashboard.state.martingaleStep))]' in route
-          assert ('[1500,3e3,6e3,12e3,24e3,32e3]' in bundle.replace(' ', '') or '32000' in bundle)
+          compact = bundle.replace(' ', '')
+          assert ('[1500,3e3,6e3,12e3,24e3,32e3]' in compact or '[1500,3000,6000,12000,24000,32000]' in compact or '32000' in bundle)
           assert 'Math.min(5' in bundle
           assert 'ORDER BY created_at_ms DESC, id DESC' in bundle
           assert 'COALESCE(filled_contracts, 0) > 0' in bundle
