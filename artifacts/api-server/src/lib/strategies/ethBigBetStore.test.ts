@@ -27,9 +27,10 @@ const capitalBase = {
   otherBigBetReservedCents: 0,
 };
 
-test("B/C ledger accepts only valid ETH big-bet intents", () => {
+test("B/C/D ledger accepts only valid ETH big-bet intents", () => {
   assert.equal(validateEthBigBetIntentForStorage(jumpIntent()), true);
-  assert.equal(validateEthBigBetIntentForStorage(jumpIntent({ strategy: "reversal", orderTag: "eth-reversal-v1", side: "yes", wagerCents: 50_000 })), true);
+  assert.equal(validateEthBigBetIntentForStorage(jumpIntent({ strategy: "reversal", orderTag: "eth-reversal-v1", side: "yes", wagerCents: 10_000 })), true);
+  assert.equal(validateEthBigBetIntentForStorage(jumpIntent({ strategy: "breakout_reversal", orderTag: "eth-no3-upperband-v1", side: "yes", wagerCents: 10_000 })), true);
   assert.equal(validateEthBigBetIntentForStorage(jumpIntent({ ticker: "KXBTC15M-X" })), false);
   assert.equal(validateEthBigBetIntentForStorage(jumpIntent({ wagerCents: 0 })), false);
   assert.equal(validateEthBigBetIntentForStorage(jumpIntent({ limitPriceCents: 100 })), false);
@@ -73,9 +74,9 @@ test("serialized capital admission rechecks existing cross-service risk before i
     transaction: async <T>(fn: (tx: any) => Promise<T>): Promise<T> => fn({
       execute: async () => {
         call += 1;
-        if (call === 1) return { rows: [] }; // pg_advisory_xact_lock
-        if (call === 2) return { rows: [{ wager_cents: "50000", limit_price_cents: "50" }] }; // C already reserved
-        if (call === 3) return { rows: [{ id: "KXETH15M-26SEP051800-00:eth-jump-v1" }] }; // B insert
+        if (call === 1) return { rows: [] };
+        if (call === 2) return { rows: [{ wager_cents: "10000", limit_price_cents: "50" }] };
+        if (call === 3) return { rows: [{ id: "KXETH15M-26SEP051800-00:eth-jump-v1" }] };
         throw new Error("unexpected query");
       },
       transaction: async () => { throw new Error("nested transaction not expected"); },
@@ -89,8 +90,6 @@ test("serialized capital admission rechecks existing cross-service risk before i
       capital: capitalBase,
       requestedRiskCents: ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents),
     });
-    // $1,400 - $434.70 A reserve - $517.50 existing C = $447.80,
-    // leaving enough for B's $434.70 fee-inclusive risk.
     assert.equal(result, "reserved");
     assert.equal(call, 3);
   } finally {
@@ -105,8 +104,8 @@ test("serialized capital admission blocks the second service when shared envelop
     transaction: async <T>(fn: (tx: any) => Promise<T>): Promise<T> => fn({
       execute: async () => {
         call += 1;
-        if (call === 1) return { rows: [] }; // lock
-        if (call === 2) return { rows: [{ wager_cents: "50000", limit_price_cents: "50" }] }; // prior C
+        if (call === 1) return { rows: [] };
+        if (call === 2) return { rows: [{ wager_cents: "50000", limit_price_cents: "50" }] };
         throw new Error("insert must not occur when capital is blocked");
       },
       transaction: async () => { throw new Error("nested transaction not expected"); },
@@ -120,8 +119,6 @@ test("serialized capital admission blocks the second service when shared envelop
       capital: { ...capitalBase, availableBalanceCents: 135_000 },
       requestedRiskCents: ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents),
     });
-    // $1,350 - $434.70 A reserve - $517.50 existing C = $397.80,
-    // below B's $434.70 fee-inclusive risk.
     assert.equal(result, "capital_blocked");
     assert.equal(call, 2);
   } finally {
@@ -136,9 +133,9 @@ test("serialized capital admission inserts only after a clean locked recheck", a
     transaction: async <T>(fn: (tx: any) => Promise<T>): Promise<T> => fn({
       execute: async () => {
         call += 1;
-        if (call === 1) return { rows: [] }; // lock
-        if (call === 2) return { rows: [] }; // no unresolved B/C
-        if (call === 3) return { rows: [{ id: "KXETH15M-26SEP051800-00:eth-jump-v1" }] }; // insert
+        if (call === 1) return { rows: [] };
+        if (call === 2) return { rows: [] };
+        if (call === 3) return { rows: [{ id: "KXETH15M-26SEP051800-00:eth-jump-v1" }] };
         throw new Error("unexpected query");
       },
       transaction: async () => { throw new Error("nested transaction not expected"); },
