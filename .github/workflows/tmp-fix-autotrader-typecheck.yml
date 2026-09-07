@@ -58,12 +58,18 @@ jobs:
           assert s.count(old2)==1, f'expected exactly one beforeEach target, got {s.count(old2)}'
           t.write_text(s.replace(old2,new2))
       - name: Prove isolated diff
+        shell: python
         run: |
-          git diff --check
-          printf '%s\n' "$(git diff --name-only)"
-          test "$(git diff --name-only)" = "artifacts/api-server/src/lib/autoTrader.ts
-artifacts/api-server/src/lib/kalshiLifecycleTransport.test.ts"
-          git diff -- artifacts/api-server/src/lib/autoTrader.ts artifacts/api-server/src/lib/kalshiLifecycleTransport.test.ts
+          import subprocess
+          subprocess.run(['git','diff','--check'], check=True)
+          names=subprocess.check_output(['git','diff','--name-only'], text=True).splitlines()
+          expected=[
+            'artifacts/api-server/src/lib/autoTrader.ts',
+            'artifacts/api-server/src/lib/kalshiLifecycleTransport.test.ts',
+          ]
+          assert names == expected, (names, expected)
+          print('\n'.join(names))
+          subprocess.run(['git','diff','--',*expected], check=True)
       - name: Typecheck
         run: pnpm run typecheck
       - name: Initialize ephemeral database schema
