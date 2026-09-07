@@ -1,3 +1,4 @@
+import { logger } from "../logger.js";
 import type { Eth420CandidateMarket } from "./eth420SixStepCandidate.js";
 import { prepareEthJumpServiceIntent } from "./ethJumpServiceRuntime.js";
 import { createEthBigBetKalshiSubmitter } from "./ethBigBetKalshiExchange.js";
@@ -27,18 +28,7 @@ export function isEthJumpServiceExecutionPermitted(role = currentEthServiceRole(
 }
 
 type JumpEvidenceStore = Parameters<typeof prepareEthJumpServiceIntent>[0]["store"];
-let storeReady: Promise<void> | null = null;
-
-async function ensureStoreReady(): Promise<void> {
-  storeReady ??= initEthBigBetStore();
-  return storeReady;
-}
-
-export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
-  store: JumpEvidenceStore;
-  market: Eth420CandidateMarket;
-  exchangeIndex: number | null | undefined;
-}): Promise<
+type EthJumpLiveOutcome =
   | "disabled"
   | "no_signal"
   | "capital_unavailable"
@@ -50,32 +40,101 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
   | "blocked_invalid_size"
   | "reservation_failed"
   | "submission_unknown"
-  | "rejected"
-> {
-  if (!isEthJumpServiceExecutionPermitted()) return "disabled";
-  const intent = await prepareEthJumpServiceIntent({ store: input.store, market: input.market });
-  if (!intent) return "no_signal";
+  | "rejected";
+
+let storeReady: Promise<void> | null = null;
+
+async function ensureStoreReady(): Promise<void> {
+  storeReady ??= initEthBigBetStore();
+  return storeReady;
+}
+
+export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
+  store: JumpEvidenceStore;
+  market: Eth420CandidateMarket;
+  exchangeIndex: number | null | undefined;
+}): Promise<EthJumpLiveOutcome> {
+  let currentMove: number | null = null;
+  let p95: number | null = null;
+  let p99: number | null = null;
+  let signalRejectionReason: string | null = null;
+
+  const finish = <T extends EthJumpLiveOutcome>(outcome: T, rejectionReason: string | null = null): T => {
+    logger.info({
+      ticker: input.market.ticker,
+      currentMove,
+      p95,
+      p99,
+      outcome,
+      rejectionReason: rejectionReason ?? signalRejectionReason,
+    }, "ETH Jump evaluation");
+    return outcome;
+  };
+
+  if (!isEthJumpServiceExecutionPermitted()) return finish("disabled", "execution_not_permitted");
+
+  const intent = await prepareEthJumpServiceIntent({
+    store: input.store,
+    market: input.market,
+    onEvaluation: (observation) => {
+      currentMove = observation.currentMove;
+      p95 = observation.p95;
+      p99 = observation.p99;
+      signalRejectionReason = observation.rejectionReason;
+    },
+  });
+  if (!intent) return finish("no_signal");
+
   if (input.exchangeIndex == null || !Number.isInteger(input.exchangeIndex) || input.exchangeIndex < 0) {
-    return "routing_unavailable";
+    return finish("routing_unavailable", "invalid_exchange_index");
   }
+
   const capitalBase = await readApprovedEthBigBetCapitalBase(input.exchangeIndex);
-  if (!capitalBase) return "capital_unavailable";
+  if (!capitalBase) return finish("capital_unavailable", "capital_base_unavailable");
+
   const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
-  if (requestedRiskCents < 1) return "capital_unavailable";
+  if (requestedRiskCents < 1) return finish("capital_unavailable", "invalid_requested_risk");
+
   const capital = evaluateEthAccountCapital({ ...capitalBase, requestedRiskCents });
-  if (!capital.allowed) return capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked";
+  if (!capital.allowed) {
+    return finish(
+      capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked",
+      capital.reason,
+    );
+  }
+
   const exchange = createEthBigBetKalshiSubmitter(input.exchangeIndex);
-  if (!exchange) return "routing_unavailable";
+  if (!exchange) return finish("routing_unavailable", "exchange_route_unavailable");
+
   try {
     await ensureStoreReady();
   } catch {
-    return "storage_unavailable";
+    return finish("storage_unavailable", "execution_store_unavailable");
   }
-  return submitEthBigBetIntent({
+
+  const outcome = await submitEthBigBetIntent({
     intent,
     store: ethBigBetExecutionStore,
     exchange,
     capital: capitalBase,
     requestedRiskCents,
   });
+
+  const rejectionReason = outcome === "submitted"
+    ? null
+    : outcome === "blocked_duplicate"
+      ? "duplicate_strategy_market"
+      : outcome === "blocked_invalid_size"
+        ? "invalid_order_size"
+        : outcome === "capital_blocked"
+          ? "capital_guard_blocked"
+          : outcome === "reservation_failed"
+            ? "durable_reservation_failed"
+            : outcome === "submission_unknown"
+              ? "exchange_submission_unknown"
+              : outcome === "rejected"
+                ? "exchange_rejected_reason_not_exposed_by_executor"
+                : outcome;
+
+  return finish(outcome, rejectionReason);
 }
