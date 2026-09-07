@@ -1,0 +1,68 @@
+name: tmp-fix-autotrader-typecheck
+on:
+  push:
+    branches: [tmp-inspect-built-bundle-20260907]
+permissions:
+  contents: write
+jobs:
+  validate-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: service-split-a-b-c
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply exact isolated type fix
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('artifacts/api-server/src/lib/autoTrader.ts')
+          s=p.read_text()
+          old='  let ethExposure = false;'
+          new='  let ethExposure: boolean | null = false;'
+          assert s.count(old)==1, f'expected exactly one target, got {s.count(old)}'
+          p.write_text(s.replace(old,new))
+      - name: Prove isolated diff
+        run: |
+          git diff --check
+          test "$(git diff --name-only)" = "artifacts/api-server/src/lib/autoTrader.ts"
+          git diff -- artifacts/api-server/src/lib/autoTrader.ts
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Full API test
+        run: pnpm --filter @workspace/api-server test
+      - name: Service split tests
+        working-directory: artifacts/api-server
+        run: node scripts/run-service-split-tests.mjs
+      - name: Six-step candidate harness
+        working-directory: artifacts/api-server
+        run: node scripts/run-eth420-six-step-candidate-test.mjs
+      - name: Canonical service-split build
+        working-directory: artifacts/api-server
+        run: node build-service-split.mjs
+      - name: Verify Regular bundle invariants
+        shell: python
+        run: |
+          from pathlib import Path
+          b=Path('artifacts/api-server/dist/index.mjs').read_text()
+          assert 'ETH_PRINCIPALS_CENTS = [1500, 3e3, 6e3, 12e3, 24e3, 32e3]' in b
+          assert 'ETH_PRINCIPALS_CENTS[Math.max(0, Math.min(5, step))]' in b
+          assert 'ORDER BY created_at_ms DESC, id DESC' in b
+          assert 'COALESCE(filled_contracts, 0) > 0' in b
+          assert '[1500, 3e3, 6e3, 12e3, 24e3, 32e3][Math.max(0, Math.min(5, dashboard.state.martingaleStep))]' in b
+          print('REGULAR_BUNDLE_INVARIANTS_OK')
+      - name: Commit and push only after all validation passes
+        run: |
+          git config user.name "mmaynard3344-cell"
+          git config user.email "mmaynard3344@gmail.com"
+          git add artifacts/api-server/src/lib/autoTrader.ts
+          git commit -m "Fix martingale exposure nullability type"
+          git push origin HEAD:service-split-a-b-c
