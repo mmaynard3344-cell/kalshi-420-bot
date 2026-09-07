@@ -1,0 +1,27 @@
+diff --git a/artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts b/artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts
+--- a/artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts
++++ b/artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts
+@@
+- * Three-step martingale. Principals: $15, $30, $60 (cents: 1500, 3000, 6000).
++ * Six-step martingale. Principals: $15, $30, $60, $120, $240, $320
++ * (cents: 1500, 3000, 6000, 12000, 24000, 32000).
+  * Side starts "no" each ET day. After a win: side flips yes↔no, step=0.
+- * After a loss: side unchanged, step increments; after step 2 it resets to 0.
++ * After a loss: side unchanged, step increments; after step 5 it resets to 0.
+@@
+-export const ETH_PRINCIPALS_CENTS = [1500, 3000, 6000] as const;
++export const ETH_PRINCIPALS_CENTS = [1500, 3000, 6000, 12000, 24000, 32000] as const;
+@@
+ export function ethPrincipalForStep(step: number): number {
+-  return ETH_PRINCIPALS_CENTS[Math.max(0, Math.min(2, step))]!;
++  return ETH_PRINCIPALS_CENTS[Math.max(0, Math.min(5, step))]!;
+ }
+@@
+       winNextSide: row.side === "yes" ? "no" : "yes",
+       winNextStep: 0,
+       lossNextSide: row.side,
+-      lossNextStep: row.martingaleStep >= 2 ? 0 : row.martingaleStep + 1,
++      lossNextStep: row.martingaleStep >= 5 ? 0 : row.martingaleStep + 1,
+       createdAtMs: row.createdAtMs,
+     }));
+ }
