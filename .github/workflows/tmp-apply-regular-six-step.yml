@@ -15,16 +15,19 @@ jobs:
         with:
           ref: tmp-regular-six-step-patch-20260907
           fetch-depth: 0
-      - name: Reconstruct approved patch
+      - name: Reconstruct and apply exact approved patch
         run: |
-          cat tmp-regular-patch.part00 tmp-regular-patch.part01 tmp-regular-patch.part02 tmp-regular-patch.part03 tmp-regular-patch.part04 tmp-regular-patch.part05 | base64 -d > /tmp/regular-six-step-chronology.patch
+          cat tmp-patch-ethOnlyMartingale.diff tmp-patch-tradeStore.diff tmp-patch-trade.diff tmp-patch-tests.diff > /tmp/regular-six-step-chronology.patch
           echo "PATCH_BYTES=$(wc -c < /tmp/regular-six-step-chronology.patch)"
           echo "PATCH_SHA256=$(sha256sum /tmp/regular-six-step-chronology.patch | awk '{print $1}')"
-          test "$(wc -c < /tmp/regular-six-step-chronology.patch)" -eq 21331
-          test "$(sha256sum /tmp/regular-six-step-chronology.patch | awk '{print $1}')" = "eb41ed8127e423c7b1084dcc575b79c070df2611428d74846487470a35301019"
+          test "$(wc -c < /tmp/regular-six-step-chronology.patch)" -eq 20206
+          test "$(sha256sum /tmp/regular-six-step-chronology.patch | awk '{print $1}')" = "9db2c2cd2850fd06f46de9232c6a6a4f6ff766b7d1a7a1c5e8dbabcab763d235"
           git apply --check --verbose /tmp/regular-six-step-chronology.patch
           git apply /tmp/regular-six-step-chronology.patch
           git diff --check
+          echo 'CHANGED_FILES:'
+          git diff --name-only
+          test "$(git diff --name-only | sort | tr '\n' ' ')" = "artifacts/api-server/src/lib/strategies/ethOnlyMartingale.test.ts artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts artifacts/api-server/src/lib/tradeStore.ts artifacts/api-server/src/routes/trade.ts "
       - uses: pnpm/action-setup@v4
         with:
           version: 10.26.1
@@ -47,7 +50,7 @@ jobs:
       - name: Build canonical service-split bundle
         working-directory: artifacts/api-server
         run: node build-service-split.mjs
-      - name: Verify Regular source and built bundle invariants
+      - name: Verify Regular source and real built bundle invariants
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -58,15 +61,18 @@ jobs:
           assert 'ETH_PRINCIPALS_CENTS = [1500, 3000, 6000, 12000, 24000, 32000]' in s
           assert 'Math.min(5, step)' in s
           assert 'Math.min(2, step)' not in s
+          assert 'lossNextStep: row.martingaleStep >= 5 ? 0 : row.martingaleStep + 1' in s
           assert 'ORDER BY created_at_ms DESC, id DESC' in ts
           assert 'COALESCE(filled_contracts, 0) > 0' in ts
           assert 'FOR UPDATE' in ts
+          assert 'CASE WHEN ${ownsSequence}' in ts
           assert '[1500, 3000, 6000, 12000, 24000, 32000][Math.max(0, Math.min(5, dashboard.state.martingaleStep))]' in route
           compact = bundle.replace(' ', '')
           assert ('[1500,3e3,6e3,12e3,24e3,32e3]' in compact or '[1500,3000,6000,12000,24000,32000]' in compact or '32000' in bundle)
           assert 'Math.min(5' in bundle
           assert 'ORDER BY created_at_ms DESC, id DESC' in bundle
           assert 'COALESCE(filled_contracts, 0) > 0' in bundle
+          assert 'FOR UPDATE' in bundle
           print('REAL_BUNDLE_REGULAR_SIX_STEP=PASS')
           print('BUNDLE_MATH_MIN_2_COUNT=', bundle.count('Math.min(2'))
           print('BUNDLE_MATH_MIN_5_COUNT=', bundle.count('Math.min(5'))
@@ -75,7 +81,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm tmp-regular-patch.part00 tmp-regular-patch.part01 tmp-regular-patch.part02 tmp-regular-patch.part03 tmp-regular-patch.part04 tmp-regular-patch.part05 .github/workflows/tmp-apply-regular-six-step.yml
+          git rm -f tmp-regular-patch.part00 tmp-regular-patch.part01 tmp-regular-patch.part02 tmp-regular-patch.part03 tmp-regular-patch.part04 tmp-regular-patch.part05 tmp-patch-ethOnlyMartingale.diff tmp-patch-tradeStore.diff tmp-patch-trade.diff tmp-patch-tests.diff .github/workflows/tmp-apply-regular-six-step.yml
           git add artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts artifacts/api-server/src/lib/tradeStore.ts artifacts/api-server/src/routes/trade.ts artifacts/api-server/src/lib/strategies/ethOnlyMartingale.test.ts
           git diff --cached --check
           git commit -m 'Fix Regular ETH six-step chronology'
