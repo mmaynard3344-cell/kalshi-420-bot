@@ -5,6 +5,13 @@ import type { EthBigBetOrderIntent } from "./ethBigBetLifecycle.js";
 
 type JumpEvidenceStore = Parameters<typeof prepareEth420CandidateDecision>[0];
 
+export interface EthJumpEvaluationObservation {
+  currentMove: number | null;
+  p95: number | null;
+  p99: number | null;
+  rejectionReason: string | null;
+}
+
 /**
  * Service B's read-only signal-preparation seam.
  *
@@ -20,15 +27,25 @@ export async function prepareEthJumpServiceIntent(input: {
   store: JumpEvidenceStore;
   market: Eth420CandidateMarket;
   role?: ReturnType<typeof currentEthServiceRole>;
+  onEvaluation?: (observation: EthJumpEvaluationObservation) => void;
 }): Promise<EthBigBetOrderIntent | null> {
   const role = input.role === undefined ? currentEthServiceRole() : input.role;
-  if (!serviceOwnsJump(role)) return null;
-  if (!Number.isInteger(input.market.openTimeMs)) return null;
+  if (!serviceOwnsJump(role)) {
+    input.onEvaluation?.({ currentMove: null, p95: null, p99: null, rejectionReason: "service_role_not_jump" });
+    return null;
+  }
+  if (!Number.isInteger(input.market.openTimeMs)) {
+    input.onEvaluation?.({ currentMove: null, p95: null, p99: null, rejectionReason: "invalid_open_time" });
+    return null;
+  }
 
   const prepared = await prepareEth420CandidateDecision(input.store, input.market);
-  if (!prepared) return null;
+  if (!prepared) {
+    input.onEvaluation?.({ currentMove: null, p95: null, p99: null, rejectionReason: "candidate_decision_unavailable" });
+    return null;
+  }
 
-  return buildEthJumpOrderIntent({
+  const intent = buildEthJumpOrderIntent({
     ticker: input.market.ticker,
     marketOpenTimeMs: input.market.openTimeMs!,
     carriedSide: prepared.state.side,
@@ -36,4 +53,21 @@ export async function prepareEthJumpServiceIntent(input: {
     p95: prepared.decision.p95,
     p99: prepared.decision.p99,
   });
+
+  const rejectionReason = intent
+    ? null
+    : !/^KXETH15M-/.test(input.market.ticker)
+      ? "invalid_ticker"
+      : prepared.decision.resultingBand !== "p95_to_p99"
+        ? prepared.decision.resultingBand
+        : "intent_rejected";
+
+  input.onEvaluation?.({
+    currentMove: prepared.decision.currentMove,
+    p95: prepared.decision.p95,
+    p99: prepared.decision.p99,
+    rejectionReason,
+  });
+
+  return intent;
 }
