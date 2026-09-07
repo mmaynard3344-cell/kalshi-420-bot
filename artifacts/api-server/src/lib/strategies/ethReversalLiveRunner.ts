@@ -11,12 +11,11 @@ import { prepareEthBreakoutReversalServiceIntent } from "./ethBreakoutReversalRu
 import { currentEthServiceRole, serviceOwnsReversal } from "./ethServiceRole.js";
 
 /**
- * Service D code-side approval starts FALSE. Building or deploying this branch
- * therefore cannot submit an order until a later explicit enablement commit is
- * approved. Runtime execution will additionally require the isolated reversal
- * role and the exact Service D live flag.
+ * Service D execution is explicitly approved. Runtime execution still requires
+ * the isolated reversal role, the exact Service D live flag, and both Service C
+ * and Jump live flags to remain off on this service.
  */
-export const ETH_BREAKOUT_REVERSAL_SERVICE_EXECUTION_APPROVED = false;
+export const ETH_BREAKOUT_REVERSAL_SERVICE_EXECUTION_APPROVED = true;
 
 export function isEthReversalServiceExecutionPermitted(role = currentEthServiceRole()): boolean {
   return ETH_BREAKOUT_REVERSAL_SERVICE_EXECUTION_APPROVED
