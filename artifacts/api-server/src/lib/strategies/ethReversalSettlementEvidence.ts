@@ -1,24 +1,92 @@
-import { withBoundedReadOnlyClient } from "@workspace/db";
+import { kalshiAuthFetch } from "../kalshiAuth.js";
+import { upsertMarketResultInSql } from "../tradeStore.js";
 import type { WindowLogEntry } from "../windowLog.js";
 
 const ETH_15M_MS = 15 * 60_000;
-const REVERSAL_SETTLEMENT_READ_TIMEOUT_MS = 1_000;
+const UNRESOLVED_RETRY_MS = 5_000;
 
 export type EthReversalSettlementOutcome = "yes" | "no" | "missing_or_conflict";
 
+type KalshiMarketResponse = {
+  market?: {
+    result?: string | null;
+  } | null;
+};
+
+type CachedSettlement = {
+  result: "yes" | "no" | null;
+  checkedAtMs: number;
+};
+
+const settlementCache = new Map<string, CachedSettlement>();
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"] as const;
+
+function tickerForEth15mClose(closeTimeMs: number): string | null {
+  if (!Number.isInteger(closeTimeMs) || closeTimeMs % ETH_15M_MS !== 0) return null;
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "2-digit",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(closeTimeMs));
+
+  const value = (type: Intl.DateTimeFormatPartTypes): string | null =>
+    parts.find((part) => part.type === type)?.value ?? null;
+
+  const year = value("year");
+  const monthRaw = value("month");
+  const day = value("day");
+  const hour = value("hour");
+  const minute = value("minute");
+  if (!year || !monthRaw || !day || !hour || !minute) return null;
+
+  const monthIndex = Number(monthRaw) - 1;
+  const month = MONTHS[monthIndex];
+  if (!month) return null;
+
+  return `KXETH15M-${year}${month}${day}${hour}${minute}-${minute}`;
+}
+
+async function fetchAuthoritativeSettlement(ticker: string): Promise<"yes" | "no" | null> {
+  const cached = settlementCache.get(ticker);
+  const now = Date.now();
+  if (cached?.result === "yes" || cached?.result === "no") return cached.result;
+  if (cached && now - cached.checkedAtMs < UNRESOLVED_RETRY_MS) return null;
+
+  try {
+    const response = await kalshiAuthFetch<KalshiMarketResponse>("GET", `/markets/${ticker}`);
+    const result = response.market?.result;
+    if (result === "yes" || result === "no") {
+      settlementCache.set(ticker, { result, checkedAtMs: now });
+      upsertMarketResultInSql(ticker, result);
+      return result;
+    }
+    settlementCache.set(ticker, { result: null, checkedAtMs: now });
+    return null;
+  } catch {
+    settlementCache.set(ticker, { result: null, checkedAtMs: now });
+    return null;
+  }
+}
+
 /**
  * Resolve the three immediately preceding ETH 15-minute market settlements
- * from the durable authoritative market_results table.
+ * directly from Kalshi's authoritative market result endpoint.
  *
- * Window-log rows are used only to map each exact close boundary to its ticker.
- * SQL matching is done by parsed timestamp milliseconds rather than exact text,
- * so equivalent ISO timestamp renderings cannot break the mapping. The YES/NO
- * value itself always comes from market_results.
+ * The required tickers are derived deterministically from the three exact close
+ * boundaries in America/New_York, so this evidence path does not depend on our
+ * betting history, fills, window-log freshness, or whether another strategy
+ * happened to reconcile the market. Resolved YES/NO values are immutable and
+ * cached in-process; unresolved markets are retried at a bounded cadence.
  *
- * Any unavailable, duplicate-conflicting, or malformed evidence fails closed.
+ * Any unavailable or malformed evidence fails closed.
  */
 export async function resolveThreeAdjacentEthSettlements(
-  entries: readonly WindowLogEntry[],
+  _entries: readonly WindowLogEntry[],
   currentOpenTimeMs: number,
 ): Promise<EthReversalSettlementOutcome[]> {
   if (!Number.isInteger(currentOpenTimeMs) || currentOpenTimeMs % ETH_15M_MS !== 0) {
@@ -26,63 +94,11 @@ export async function resolveThreeAdjacentEthSettlements(
   }
 
   const targetCloseMs = [0, 1, 2].map((offset) => currentOpenTimeMs - offset * ETH_15M_MS);
-  const localTickersByClose = new Map<number, Set<string>>();
-
-  for (const entry of entries) {
-    if (entry.series !== "KXETH15M" || !entry.closeTime || !entry.ticker) continue;
-    const closeMs = Date.parse(entry.closeTime);
-    if (!targetCloseMs.includes(closeMs)) continue;
-    const tickers = localTickersByClose.get(closeMs) ?? new Set<string>();
-    tickers.add(entry.ticker);
-    localTickersByClose.set(closeMs, tickers);
-  }
-
-  try {
-    const rows = await withBoundedReadOnlyClient(REVERSAL_SETTLEMENT_READ_TIMEOUT_MS, async (client) => {
-      const result = await client.query(
-        `WITH target_windows AS (
-           SELECT
-             ticker,
-             (EXTRACT(EPOCH FROM close_time::timestamptz) * 1000)::bigint AS close_ms
-           FROM window_log
-           WHERE series = 'KXETH15M'
-             AND close_time IS NOT NULL
-             AND (EXTRACT(EPOCH FROM close_time::timestamptz) * 1000)::bigint = ANY($1::bigint[])
-         )
-         SELECT tw.close_ms, tw.ticker, mr.result
-           FROM target_windows tw
-           LEFT JOIN market_results mr ON mr.ticker = tw.ticker`,
-        [targetCloseMs],
-      );
-      return result.rows as Array<{ close_ms: string | number; ticker: string; result: string | null }>;
-    });
-
-    const sqlTickersByClose = new Map<number, Set<string>>();
-    const resultByTicker = new Map<string, "yes" | "no">();
-
-    for (const row of rows) {
-      const closeMs = Number(row.close_ms);
-      if (!Number.isInteger(closeMs) || !targetCloseMs.includes(closeMs)) continue;
-      const tickers = sqlTickersByClose.get(closeMs) ?? new Set<string>();
-      tickers.add(row.ticker);
-      sqlTickersByClose.set(closeMs, tickers);
-      if (row.result === "yes" || row.result === "no") resultByTicker.set(row.ticker, row.result);
-    }
-
-    return targetCloseMs.map((closeMs) => {
-      const tickers = new Set<string>([
-        ...(localTickersByClose.get(closeMs) ?? []),
-        ...(sqlTickersByClose.get(closeMs) ?? []),
-      ]);
-      const outcomes = new Set<"yes" | "no">();
-      for (const ticker of tickers) {
-        const result = resultByTicker.get(ticker);
-        if (result) outcomes.add(result);
-      }
-      if (outcomes.size !== 1) return "missing_or_conflict";
-      return [...outcomes][0]!;
-    });
-  } catch {
+  const tickers = targetCloseMs.map(tickerForEth15mClose);
+  if (tickers.some((ticker) => ticker == null)) {
     return ["missing_or_conflict", "missing_or_conflict", "missing_or_conflict"];
   }
+
+  const settlements = await Promise.all(tickers.map((ticker) => fetchAuthoritativeSettlement(ticker!)));
+  return settlements.map((result) => result ?? "missing_or_conflict");
 }
