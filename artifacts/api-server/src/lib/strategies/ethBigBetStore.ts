@@ -56,7 +56,7 @@ export function isEthBigBetTerminalStatus(status: EthBigBetOrderStatus): boolean
 }
 
 export function validateEthBigBetIntentForStorage(intent: EthBigBetOrderIntent): boolean {
-  return (intent.strategy === "jump" || intent.strategy === "reversal")
+  return (intent.strategy === "jump" || intent.strategy === "reversal" || intent.strategy === "breakout_reversal")
     && /^KXETH15M-/.test(intent.ticker)
     && (intent.side === "yes" || intent.side === "no")
     && Number.isInteger(intent.marketOpenTimeMs)
@@ -97,15 +97,15 @@ async function unresolvedCapitalRiskCents(tx: DbLike): Promise<number | null> {
   return total;
 }
 
-/** Dedicated B/C schema. It has no foreign key or lifecycle dependency on
- * Service A's eth420_candidate_live_orders table. Strategy+ticker uniqueness
- * blocks only an exact same-service duplicate; B and C may both own a market. */
+/** Dedicated B/C/D schema. It has no foreign key or lifecycle dependency on
+ * Service A's martingale table. Strategy+ticker uniqueness blocks only an
+ * exact same-service duplicate, so B, C, and D may all own the same market. */
 export async function initEthBigBetStore(): Promise<void> {
   const db = await getDb();
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS eth_big_bet_orders (
       id text PRIMARY KEY,
-      strategy text NOT NULL CHECK (strategy IN ('jump', 'reversal')),
+      strategy text NOT NULL CHECK (strategy IN ('jump', 'reversal', 'breakout_reversal')),
       order_tag text NOT NULL,
       ticker text NOT NULL,
       market_open_time_ms bigint NOT NULL,
@@ -127,6 +127,10 @@ export async function initEthBigBetStore(): Promise<void> {
       UNIQUE (order_tag, ticker)
     )
   `);
+  // Existing production tables were created before Service D existed. Widen
+  // only the strategy CHECK; every existing uniqueness/capital guard remains.
+  await db.execute(sql`ALTER TABLE eth_big_bet_orders DROP CONSTRAINT IF EXISTS eth_big_bet_orders_strategy_check`);
+  await db.execute(sql`ALTER TABLE eth_big_bet_orders ADD CONSTRAINT eth_big_bet_orders_strategy_check CHECK (strategy IN ('jump', 'reversal', 'breakout_reversal'))`);
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS eth_big_bet_orders_unresolved_idx
       ON eth_big_bet_orders (strategy, status, created_at_ms)
@@ -160,14 +164,10 @@ export async function reserveEthBigBetIntent(intent: EthBigBetOrderIntent): Prom
 }
 
 /**
- * Cross-process B/C admission fence. The advisory transaction lock serializes
+ * Cross-process B/C/D admission fence. The advisory transaction lock serializes
  * separate Railway services on the same Postgres database. Under that lock we
- * recompute unresolved B/C fee-inclusive risk, rerun the shared capital guard,
- * and only then insert the new reservation. A stale pre-lock B/C exposure
- * snapshot therefore cannot authorize two simultaneous big-bet reservations.
- *
- * The caller's available balance must already be a fresh routed exchange read.
- * A remains outside this B/C lock and is protected by martingaleReserveCents.
+ * recompute unresolved big-bet fee-inclusive risk, rerun the shared capital
+ * guard, and only then insert the new reservation.
  */
 export async function reserveEthBigBetIntentWithCapital(params: {
   intent: EthBigBetOrderIntent;
@@ -186,7 +186,6 @@ export async function reserveEthBigBetIntentWithCapital(params: {
   const contracts = ethBigBetContracts(params.intent.wagerCents, params.intent.limitPriceCents);
   try {
     return await db.transaction(async (tx) => {
-      // Stable project-local key; transaction-scoped so crashes cannot strand it.
       await tx.execute(sql`SELECT pg_advisory_xact_lock(42015000)`);
       const otherBigBetReservedCents = await unresolvedCapitalRiskCents(tx);
       if (otherBigBetReservedCents == null) return "reservation_failed";
@@ -231,8 +230,6 @@ export async function acknowledgeEthBigBetSubmission(params: {
   return ((result as { rows?: unknown[] }).rows ?? []).length === 1;
 }
 
-/** Ambiguous transport failures remain unresolved. They are never converted to
- * a rejection merely because the POST response was unavailable. */
 export async function markEthBigBetSubmissionUnknown(id: string): Promise<boolean> {
   if (!id) return false;
   const db = await getDb();
@@ -245,7 +242,6 @@ export async function markEthBigBetSubmissionUnknown(id: string): Promise<boolea
   return ((result as { rows?: unknown[] }).rows ?? []).length === 1;
 }
 
-/** Only an authoritative exchange rejection may terminally release a B/C row. */
 export async function markEthBigBetRejected(id: string): Promise<boolean> {
   if (!id) return false;
   const db = await getDb();
@@ -259,7 +255,6 @@ export async function markEthBigBetRejected(id: string): Promise<boolean> {
   return ((result as { rows?: unknown[] }).rows ?? []).length === 1;
 }
 
-/** Settlement is accounting-only. It never writes or reads martingale state. */
 export async function settleEthBigBetOrder(params: {
   id: string;
   filledContracts: number;
