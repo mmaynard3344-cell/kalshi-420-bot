@@ -53,6 +53,8 @@ jobs:
           git diff -- artifacts/api-server/src/lib/autoTrader.ts
       - name: Typecheck
         run: pnpm run typecheck
+      - name: Initialize ephemeral database schema
+        run: pnpm --filter @workspace/db push-force
       - name: Full API test
         run: pnpm --filter @workspace/api-server test
       - name: Service split tests
