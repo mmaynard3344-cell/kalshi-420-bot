@@ -1,0 +1,48 @@
+name: tmp-inspect-built-bundle
+
+on:
+  push:
+    branches: [tmp-inspect-built-bundle-20260907]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp-inspect-built-bundle-20260907
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build canonical bundle
+        working-directory: artifacts/api-server
+        run: node build-service-split.mjs
+      - name: Inspect min clamps and Regular invariants
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          b=Path('artifacts/api-server/dist/index.mjs').read_text()
+          print('MATH_MIN_2_COUNT', b.count('Math.min(2'))
+          for m in re.finditer(r'Math\.min\(2', b):
+              s=max(0,m.start()-220); e=min(len(b),m.start()+320)
+              print('--- MIN2 CONTEXT ---')
+              print(b[s:e].replace('\n',' '))
+          print('MATH_MIN_5_COUNT', b.count('Math.min(5'))
+          for needle in ['ORDER BY created_at_ms DESC, id DESC','COALESCE(filled_contracts, 0) > 0','ETH_PRINCIPALS_CENTS']:
+              print(needle, needle in b)
+          for m in re.finditer(r'Math\.min\(5', b):
+              s=max(0,m.start()-180); e=min(len(b),m.start()+260)
+              ctx=b[s:e].replace('\n',' ')
+              if 'ETH_PRINCIPALS' in ctx or 'martingale' in ctx.lower() or 'step' in ctx.lower():
+                  print('--- RELEVANT MIN5 CONTEXT ---')
+                  print(ctx)
+          PY
