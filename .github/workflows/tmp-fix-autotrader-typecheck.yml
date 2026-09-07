@@ -36,7 +36,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Apply exact isolated type fix
+      - name: Apply isolated fixes
         shell: python
         run: |
           from pathlib import Path
@@ -44,13 +44,26 @@ jobs:
           s=p.read_text()
           old='  let ethExposure = false;'
           new='  let ethExposure: boolean | null = false;'
-          assert s.count(old)==1, f'expected exactly one target, got {s.count(old)}'
+          assert s.count(old)==1, f'expected exactly one type target, got {s.count(old)}'
           p.write_text(s.replace(old,new))
+
+          t=Path('artifacts/api-server/src/lib/kalshiLifecycleTransport.test.ts')
+          s=t.read_text()
+          old='const openMs = Date.UTC(2026, 8, 1, 12, 15, 0);'
+          new='let openMs = Date.now() - 50;'
+          assert s.count(old)==1, f'expected exactly one stale fixture target, got {s.count(old)}'
+          s=s.replace(old,new)
+          old2='  beforeEach(() => {\n    _resetAutoTraderStateForTesting();'
+          new2='  beforeEach(() => {\n    openMs = Date.now() - 50;\n    activeMarket.open_time = new Date(openMs).toISOString();\n    activeMarket.close_time = new Date(openMs + KALSHI_ETH_WINDOW_MS).toISOString();\n    _resetAutoTraderStateForTesting();'
+          assert s.count(old2)==1, f'expected exactly one beforeEach target, got {s.count(old2)}'
+          t.write_text(s.replace(old2,new2))
       - name: Prove isolated diff
         run: |
           git diff --check
-          test "$(git diff --name-only)" = "artifacts/api-server/src/lib/autoTrader.ts"
-          git diff -- artifacts/api-server/src/lib/autoTrader.ts
+          printf '%s\n' "$(git diff --name-only)"
+          test "$(git diff --name-only)" = "artifacts/api-server/src/lib/autoTrader.ts
+artifacts/api-server/src/lib/kalshiLifecycleTransport.test.ts"
+          git diff -- artifacts/api-server/src/lib/autoTrader.ts artifacts/api-server/src/lib/kalshiLifecycleTransport.test.ts
       - name: Typecheck
         run: pnpm run typecheck
       - name: Initialize ephemeral database schema
@@ -81,6 +94,6 @@ jobs:
         run: |
           git config user.name "mmaynard3344-cell"
           git config user.email "mmaynard3344@gmail.com"
-          git add artifacts/api-server/src/lib/autoTrader.ts
-          git commit -m "Fix martingale exposure nullability type"
+          git add artifacts/api-server/src/lib/autoTrader.ts artifacts/api-server/src/lib/kalshiLifecycleTransport.test.ts
+          git commit -m "Fix martingale exposure type and lifecycle test fixture"
           git push origin HEAD:service-split-a-b-c
