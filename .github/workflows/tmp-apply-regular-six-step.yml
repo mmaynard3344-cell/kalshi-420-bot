@@ -8,75 +8,31 @@ permissions:
   contents: write
 
 jobs:
-  apply-validate-commit:
+  inspect:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: tmp-regular-six-step-patch-20260907
           fetch-depth: 0
-      - name: Reconstruct exact approved patch
-        run: |
-          cat tmp-regular-patch.part00 tmp-regular-patch.part01 tmp-regular-patch.part02 tmp-regular-patch.part03 tmp-regular-patch.part04 tmp-regular-patch.part05 | base64 -d > /tmp/regular-six-step-chronology.patch
-          echo "PATCH_BYTES=$(wc -c < /tmp/regular-six-step-chronology.patch)"
-          echo "PATCH_SHA256=$(sha256sum /tmp/regular-six-step-chronology.patch | awk '{print $1}')"
-          test "$(wc -c < /tmp/regular-six-step-chronology.patch)" -eq 20206
-          test "$(sha256sum /tmp/regular-six-step-chronology.patch | awk '{print $1}')" = "9db2c2cd2850fd06f46de9232c6a6a4f6ff766b7d1a7a1c5e8dbabcab763d235"
-          git apply --check --verbose /tmp/regular-six-step-chronology.patch
-          git apply /tmp/regular-six-step-chronology.patch
-          git diff --check
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.26.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Typecheck
-        run: pnpm run typecheck
-      - name: Full API test suite
-        run: pnpm --filter @workspace/api-server test
-      - name: Service split isolation tests
-        working-directory: artifacts/api-server
-        run: node scripts/run-service-split-tests.mjs
-      - name: Existing six-step candidate harness
-        working-directory: artifacts/api-server
-        run: node scripts/run-eth420-six-step-candidate-test.mjs
-      - name: Build canonical service-split bundle
-        working-directory: artifacts/api-server
-        run: node build-service-split.mjs
-      - name: Verify exact Regular source and built bundle invariants
+      - name: Print exact Regular blocks needed for patching
         run: |
           python - <<'PY'
           from pathlib import Path
-          s = Path('artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts').read_text()
-          ts = Path('artifacts/api-server/src/lib/tradeStore.ts').read_text()
-          route = Path('artifacts/api-server/src/routes/trade.ts').read_text()
-          bundle = Path('artifacts/api-server/dist/index.mjs').read_text()
-          assert 'ETH_PRINCIPALS_CENTS = [1500, 3000, 6000, 12000, 24000, 32000]' in s
-          assert 'Math.min(5, step)' in s
-          assert 'Math.min(2, step)' not in s
-          assert 'ORDER BY created_at_ms DESC, id DESC' in ts
-          assert 'COALESCE(filled_contracts, 0) > 0' in ts
-          assert 'FOR UPDATE' in ts
-          assert '[1500, 3000, 6000, 12000, 24000, 32000][Math.max(0, Math.min(5, dashboard.state.martingaleStep))]' in route
-          compact = bundle.replace(' ', '')
-          assert ('[1500,3e3,6e3,12e3,24e3,32e3]' in compact or '[1500,3000,6000,12000,24000,32000]' in compact or '32000' in bundle)
-          assert 'Math.min(5' in bundle
-          assert 'ORDER BY created_at_ms DESC, id DESC' in bundle
-          assert 'COALESCE(filled_contracts, 0) > 0' in bundle
-          print('REAL_BUNDLE_REGULAR_SIX_STEP=PASS')
-          print('BUNDLE_MATH_MIN_2_COUNT=', bundle.count('Math.min(2'))
-          print('BUNDLE_MATH_MIN_5_COUNT=', bundle.count('Math.min(5'))
+          specs = [
+            ('artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts', ['Three-step martingale', 'export const ETH_PRINCIPALS_CENTS', 'export function ethPrincipalForStep', 'lossNextStep:']),
+            ('artifacts/api-server/src/lib/tradeStore.ts', ['export function isActiveEthMartingaleGeneration', 'export async function advanceEthMartingaleLadderForZeroFill', 'export async function settleEthMartingaleOrder']),
+            ('artifacts/api-server/src/routes/trade.ts', ['next_principal_cents:']),
+            ('artifacts/api-server/src/lib/strategies/ethOnlyMartingale.test.ts', ['test("ETH uses exactly three principals', 'test("zero-fill win flips side', 'test("zero-fill loss keeps side', 'test("full_fill settlement advances ladder step', 'test("step 1 uses $30 principal', 'test("after three consecutive losses']),
+          ]
+          for path, needles in specs:
+            text = Path(path).read_text()
+            print(f'===== {path} =====')
+            for needle in needles:
+              i = text.find(needle)
+              print(f'--- NEEDLE {needle!r} at {i} ---')
+              if i >= 0:
+                start = max(0, i-500)
+                end = min(len(text), i+6000)
+                print(text[start:end])
           PY
-      - name: Commit only the approved four-file patch to temporary branch
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm tmp-regular-patch.part00 tmp-regular-patch.part01 tmp-regular-patch.part02 tmp-regular-patch.part03 tmp-regular-patch.part04 tmp-regular-patch.part05 .github/workflows/tmp-apply-regular-six-step.yml
-          git add artifacts/api-server/src/lib/strategies/ethOnlyMartingale.ts artifacts/api-server/src/lib/tradeStore.ts artifacts/api-server/src/routes/trade.ts artifacts/api-server/src/lib/strategies/ethOnlyMartingale.test.ts
-          git diff --cached --check
-          git commit -m 'Fix Regular ETH six-step chronology'
-          git push origin HEAD:tmp-regular-six-step-patch-20260907
