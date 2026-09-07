@@ -3,6 +3,7 @@ import { prepareEth420StatisticalEvidence, type Eth420CandidateMarket } from "./
 import { buildEthReversalOrderIntent } from "./ethBigBetIntent.js";
 import type { EthBigBetOrderIntent } from "./ethBigBetLifecycle.js";
 import { evaluateEthNoStreakReversal } from "./ethNoStreakReversal.js";
+import { resolveThreeAdjacentEthSettlements } from "./ethReversalSettlementEvidence.js";
 import { currentEthServiceRole, serviceOwnsReversal } from "./ethServiceRole.js";
 
 const ETH_15M_MS = 15 * 60_000;
@@ -17,33 +18,14 @@ type ReversalEvaluationContext = {
   rejectionReason: string | null;
 };
 
-function readThreeAdjacentSettlementOutcomes(
-  entries: readonly WindowLogEntry[],
-  currentOpenTimeMs: number,
-): Array<"yes" | "no" | "missing_or_conflict"> {
-  if (!Number.isInteger(currentOpenTimeMs) || currentOpenTimeMs % ETH_15M_MS !== 0) {
-    return ["missing_or_conflict", "missing_or_conflict", "missing_or_conflict"];
-  }
-  const byClose = new Map<number, "yes" | "no" | "conflict">();
-  for (const entry of entries) {
-    if (entry.series !== "KXETH15M" || !entry.closeTime) continue;
-    const closeMs = Date.parse(entry.closeTime);
-    if (!Number.isInteger(closeMs) || closeMs % ETH_15M_MS !== 0) continue;
-    const result = entry.settlementResult;
-    if (result !== "yes" && result !== "no") continue;
-    const prior = byClose.get(closeMs);
-    byClose.set(closeMs, prior != null && prior !== result ? "conflict" : result);
-  }
-  return [0, 1, 2].map((offset) => {
-    const value = byClose.get(currentOpenTimeMs - offset * ETH_15M_MS);
-    return value === "yes" || value === "no" ? value : "missing_or_conflict";
-  });
-}
-
 /**
  * Proves the minimum 3-NO condition from durable authoritative window results.
  * The immediately preceding ETH windows close at T, T-15m, and T-30m when the
  * candidate market opens at T. Missing or conflicting evidence fails closed.
+ *
+ * This pure helper remains for deterministic tests. Live Service C evaluation
+ * resolves the same three outcomes from durable market_results immediately
+ * before applying this condition, so process-local window state cannot go stale.
  */
 export function proveThreeAdjacentNoSettlements(
   entries: readonly WindowLogEntry[],
@@ -80,13 +62,9 @@ export async function prepareEthReversalServiceIntent(input: {
   onEvaluation?: (context: ReversalEvaluationContext) => void;
 }): Promise<EthBigBetOrderIntent | null> {
   const role = input.role === undefined ? currentEthServiceRole() : input.role;
-  const priorOutcomes = readThreeAdjacentSettlementOutcomes(
-    input.windowEntries,
-    input.market.openTimeMs ?? Number.NaN,
-  );
   if (!serviceOwnsReversal(role)) {
     input.onEvaluation?.({
-      priorOutcomes,
+      priorOutcomes: ["missing_or_conflict", "missing_or_conflict", "missing_or_conflict"],
       consecutiveNoOutcomes: null,
       currentMove: null,
       p95: null,
@@ -97,7 +75,7 @@ export async function prepareEthReversalServiceIntent(input: {
   }
   if (!Number.isInteger(input.market.openTimeMs)) {
     input.onEvaluation?.({
-      priorOutcomes,
+      priorOutcomes: ["missing_or_conflict", "missing_or_conflict", "missing_or_conflict"],
       consecutiveNoOutcomes: null,
       currentMove: null,
       p95: null,
@@ -106,7 +84,12 @@ export async function prepareEthReversalServiceIntent(input: {
     });
     return null;
   }
-  const streak = proveThreeAdjacentNoSettlements(input.windowEntries, input.market.openTimeMs!);
+
+  const priorOutcomes = await resolveThreeAdjacentEthSettlements(
+    input.windowEntries,
+    input.market.openTimeMs!,
+  );
+  const streak = priorOutcomes.every((result) => result === "no") ? 3 : null;
   if (streak == null) {
     input.onEvaluation?.({
       priorOutcomes,
