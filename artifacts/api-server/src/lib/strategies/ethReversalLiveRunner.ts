@@ -7,28 +7,27 @@ import { ethBigBetExecutionStore } from "./ethBigBetExecutionStoreAdapter.js";
 import { ethBigBetCapitalRiskCents } from "./ethBigBetLifecycle.js";
 import { readApprovedEthBigBetCapitalBase } from "./ethBigBetApprovedCapitalProvider.js";
 import { initEthBigBetStore } from "./ethBigBetStore.js";
-import { prepareEthReversalServiceIntent } from "./ethReversalServiceRuntime.js";
-import { currentEthServiceEnablement } from "./ethServiceEnablementContract.js";
+import { prepareEthBreakoutReversalServiceIntent } from "./ethBreakoutReversalRuntime.js";
 import { currentEthServiceRole, serviceOwnsReversal } from "./ethServiceRole.js";
 
 /**
- * Service C code-side approval. Runtime execution still requires the exact
- * reversal role, the matching live environment flag, and a valid enablement
- * contract. Environment misconfiguration therefore remains fail-closed.
+ * Service D code-side approval starts FALSE. Building or deploying this branch
+ * therefore cannot submit an order until a later explicit enablement commit is
+ * approved. Runtime execution will additionally require the isolated reversal
+ * role and the exact Service D live flag.
  */
-export const ETH_REVERSAL_SERVICE_EXECUTION_APPROVED = true;
+export const ETH_BREAKOUT_REVERSAL_SERVICE_EXECUTION_APPROVED = false;
 
 export function isEthReversalServiceExecutionPermitted(role = currentEthServiceRole()): boolean {
-  const enablement = currentEthServiceEnablement();
-  return ETH_REVERSAL_SERVICE_EXECUTION_APPROVED
-    && enablement.valid
-    && enablement.mode === "reversal_live_requested"
+  return ETH_BREAKOUT_REVERSAL_SERVICE_EXECUTION_APPROVED
     && serviceOwnsReversal(role)
-    && process.env["ETH_REVERSAL_SERVICE_LIVE_ENABLED"] === "true";
+    && process.env["ETH_BREAKOUT_REVERSAL_SERVICE_LIVE_ENABLED"] === "true"
+    && process.env["ETH_REVERSAL_SERVICE_LIVE_ENABLED"] !== "true"
+    && process.env["ETH_JUMP_SERVICE_LIVE_ENABLED"] !== "true";
 }
 
-type ReversalEvidenceStore = Parameters<typeof prepareEthReversalServiceIntent>[0]["store"];
-type ReversalOutcome =
+type BreakoutReversalEvidenceStore = Parameters<typeof prepareEthBreakoutReversalServiceIntent>[0]["store"];
+type BreakoutReversalOutcome =
   | "disabled"
   | "no_signal"
   | "capital_unavailable"
@@ -49,19 +48,26 @@ async function ensureStoreReady(): Promise<void> {
   return storeReady;
 }
 
+/**
+ * The function name is retained because autoTrader already calls this isolated
+ * service hook on the Service C branch. On service-d-breakout-reversal the hook
+ * is deliberately repurposed to Service D only; Service C remains untouched on
+ * its own service-c-100 branch.
+ */
 export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
-  store: ReversalEvidenceStore;
+  store: BreakoutReversalEvidenceStore;
   market: Eth420CandidateMarket;
   exchangeIndex: number | null | undefined;
-}): Promise<ReversalOutcome> {
+}): Promise<BreakoutReversalOutcome> {
   let priorOutcomes: Array<"yes" | "no" | "missing_or_conflict"> = [];
   let consecutiveNoOutcomes: number | null = null;
   let currentMove: number | null = null;
   let p95: number | null = null;
   let p99: number | null = null;
+  let upperBandFloor: number | null = null;
   let signalRejectionReason: string | null = null;
 
-  const finish = <T extends ReversalOutcome>(
+  const finish = <T extends BreakoutReversalOutcome>(
     outcome: T,
     rejectionReason: string | null = null,
   ): T => {
@@ -73,10 +79,11 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
         currentMove,
         p95,
         p99,
+        upperBandFloor,
         outcome,
         rejectionReason,
       },
-      "ETH Reversal evaluation",
+      "ETH Breakout Reversal evaluation",
     );
     return outcome;
   };
@@ -84,10 +91,8 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
   if (!isEthReversalServiceExecutionPermitted()) {
     return finish("disabled", "execution_not_permitted");
   }
-  // Load the durable window-result reader only after every execution gate is
-  // open. A disabled C service must remain inert even without DATABASE_URL.
   const { getWindowLog } = await import("../windowLog.js");
-  const intent = await prepareEthReversalServiceIntent({
+  const intent = await prepareEthBreakoutReversalServiceIntent({
     store: input.store,
     market: input.market,
     windowEntries: getWindowLog(),
@@ -97,6 +102,7 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
       currentMove = context.currentMove;
       p95 = context.p95;
       p99 = context.p99;
+      upperBandFloor = context.upperBandFloor;
       signalRejectionReason = context.rejectionReason;
     },
   });
