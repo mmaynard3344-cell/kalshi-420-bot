@@ -7,6 +7,22 @@ permissions:
 jobs:
   baseline:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kalshi_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d kalshi_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/kalshi_test
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,6 +35,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Initialize ephemeral schema
+        run: pnpm --filter @workspace/db push-force
       - name: Run lifecycle test three times on untouched target
         working-directory: artifacts/api-server
         run: |
