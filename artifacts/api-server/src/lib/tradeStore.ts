@@ -11184,6 +11184,14 @@ export async function reserveEthMartingaleEntry(params: {
   side: "yes" | "no";
   martingaleStep: number; noPriceCents: number; requestedContracts: number;
   reservedFeeCents: number;
+  /**
+   * The sequence observed before exchange preflight. The state update below
+   * locks and verifies it so settlement cannot advance the ladder between
+   * preflight and a new reservation.
+   */
+  expectedState: {
+    easternDate: string; side: "yes" | "no"; martingaleStep: number; realizedPnlCents: number;
+  };
   /** The controlled live proof may reserve exactly one durable entry forever. */
   claimProofFence?: boolean;
 }): Promise<EthMartingaleReservationOutcome> {
@@ -11211,9 +11219,12 @@ export async function reserveEthMartingaleEntry(params: {
         // with the rest of the transaction so no orderless attempt is consumed.
         throw new EthMartingaleReservationRollback("ETH martingale ticker claim unavailable");
       }
-      // Reset day if eastern_date changed before adding cost.
-      // Note: the state table's side/step/pnl are only reset when eastern_date changes;
-      // within the same day they are left as-is (settlement drives those transitions).
+      // This UPDATE obtains the authoritative state-row lock before creating
+      // the order. On the same ET day, require the complete preflight snapshot
+      // to still match. A settlement that committed after preflight therefore
+      // makes this zero rows, rolling back the claim/proof inserts and blocking
+      // the exchange POST. A genuine new ET day may still initialize from any
+      // prior-day state as the existing reset behavior requires.
       const budget = await tx.execute(sql`
         UPDATE eth_martingale_state
         SET eastern_date = ${params.easternDate},
@@ -11223,6 +11234,19 @@ export async function reserveEthMartingaleEntry(params: {
             martingale_step = CASE WHEN eastern_date = ${params.easternDate} THEN martingale_step ELSE 0 END,
             updated_at_ms = ${now}
         WHERE strategy_key = ${ETH_MARTINGALE_ACTIVE_GENERATION_KEY}
+          AND (
+            (
+              eastern_date <> ${params.easternDate}
+              AND ${params.expectedState.easternDate} <> ${params.easternDate}
+            )
+            OR (
+              eastern_date = ${params.easternDate}
+              AND ${params.expectedState.easternDate} = ${params.easternDate}
+              AND side = ${params.expectedState.side}
+              AND martingale_step = ${params.expectedState.martingaleStep}
+              AND realized_pnl_cents = ${params.expectedState.realizedPnlCents}
+            )
+          )
         RETURNING spent_cents`);
       if ((budget as unknown as { rows: unknown[] }).rows.length !== 1) {
         // The claim and optional proof fence must not survive an unsuccessful

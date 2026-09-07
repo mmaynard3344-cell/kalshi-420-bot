@@ -119,6 +119,9 @@ test("shared placement gateway preserves legacy zero, partial, and ambiguous lif
   const request = {
     state: market, side: "no" as const, step: 0, requestedPrincipalCents: 1500,
     requestedContracts: 30, easternDate: "2026-08-22",
+    expectedMartingaleState: {
+      easternDate: "2026-08-22", side: "no" as const, martingaleStep: 0, realizedPnlCents: 0,
+    },
   };
   for (const scenario of [
     { name: "zero fill", response: { order: { order_id: "zero", status: "resting", fill_count_fp: "0.00" } }, expected: ["reserve", "post_started", "post", "resting:0"] },
@@ -179,7 +182,7 @@ test("daily loss -250 boundary is enforced by the shared preflight-and-placement
 test("shared gateway uses an explicitly supplied side and step without changing legacy defaults", async () => {
   const restore = setEnabled();
   const now = Date.now();
-  let reserved: { side: string; step: number } | null = null;
+  let reserved: { side: string; step: number; expectedStep: number } | null = null;
   _setEthNoMartingaleDependenciesForTesting({
     now: () => now,
     isEthOrderSubmissionPermitted: () => true,
@@ -190,7 +193,7 @@ test("shared gateway uses an explicitly supplied side and step without changing 
         spentCents: 0, realizedPnlCents: 0,
       }),
       reserveEthMartingaleEntry: async (entry: any) => {
-        reserved = { side: entry.side, step: entry.martingaleStep };
+        reserved = { side: entry.side, step: entry.martingaleStep, expectedStep: entry.expectedState.martingaleStep };
         return true;
       },
     }),
@@ -200,7 +203,66 @@ test("shared gateway uses an explicitly supplied side and step without changing 
       state: openMarket("KXETH15M-candidate-overrides", now),
       side: "yes", step: 4, requestedPrincipalCents: 42_000,
     });
-    assert.deepEqual(reserved, { side: "yes", step: 4 });
+    assert.deepEqual(reserved, { side: "yes", step: 4, expectedStep: 0 });
+  } finally {
+    _setEthNoMartingaleDependenciesForTesting(null);
+    restore();
+  }
+});
+
+test("a stale Step 0 reservation after a Step 2 loss rolls back before POST, then a fresh evaluation uses Step 3", async () => {
+  const restore = setEnabled();
+  const now = Date.UTC(2026, 7, 25, 16, 0, 0);
+  const date = easternDay(new Date(now));
+  let authoritative = {
+    easternDate: date, side: "no" as "yes" | "no", martingaleStep: 0,
+    spentCents: 0, realizedPnlCents: 0,
+  };
+  const reservations: Array<{ step: number; expectedStep: number; principal: number }> = [];
+  let posts = 0;
+  let balanceReads = 0;
+  _setEthNoMartingaleDependenciesForTesting({
+    now: () => now,
+    isEthOrderSubmissionPermitted: () => true,
+    fetchExchangeBalance: async () => {
+      balanceReads++;
+      // The concurrently settled prior NO Step 2 / $60 loss advances the
+      // authoritative regular ladder while this evaluation is in preflight.
+      if (balanceReads === 1) {
+        authoritative = {
+          ...authoritative, martingaleStep: 3, realizedPnlCents: -6_000,
+        };
+      }
+      return { value: { balance: 1_000_000 }, stale: false };
+    },
+    authFetch: async () => { posts++; return { order: { order_id: "fresh-step-3", status: "resting", fill_count_fp: "0.00" } }; },
+    store: makeStore({
+      getEthMartingaleState: async () => ({ ...authoritative }),
+      reserveEthMartingaleEntry: async (entry: any) => {
+        reservations.push({
+          step: entry.martingaleStep, expectedStep: entry.expectedState.martingaleStep,
+          principal: entry.requestedContracts * entry.noPriceCents,
+        });
+        return entry.expectedState.easternDate === authoritative.easternDate
+          && entry.expectedState.side === authoritative.side
+          && entry.expectedState.martingaleStep === authoritative.martingaleStep
+          && entry.expectedState.realizedPnlCents === authoritative.realizedPnlCents
+          ? "reserved"
+          : "failed";
+      },
+    }),
+  } as any);
+  try {
+    await runEthPreflightAndPlacement({ state: openMarket("KXETH15M-stale-step-0", now) });
+    assert.deepEqual(reservations, [{ step: 0, expectedStep: 0, principal: 1_500 }]);
+    assert.equal(posts, 0, "failed stale reservation must never reach the exchange POST");
+
+    await runEthPreflightAndPlacement({ state: openMarket("KXETH15M-fresh-step-3", now) });
+    assert.deepEqual(reservations, [
+      { step: 0, expectedStep: 0, principal: 1_500 },
+      { step: 3, expectedStep: 3, principal: 12_000 },
+    ]);
+    assert.equal(posts, 1, "a fresh Step 3 evaluation may submit after the stale one rolled back");
   } finally {
     _setEthNoMartingaleDependenciesForTesting(null);
     restore();

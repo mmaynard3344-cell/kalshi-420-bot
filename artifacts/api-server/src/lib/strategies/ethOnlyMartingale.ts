@@ -666,6 +666,16 @@ export interface EthPlacementLifecycleRequest {
   requestedPrincipalCents: number;
   requestedContracts: number;
   easternDate: string;
+  /**
+   * Immutable sequence snapshot used by the durable reservation to reject an
+   * evaluation that became stale while its exchange preflight was running.
+   */
+  expectedMartingaleState: {
+    easternDate: string;
+    side: "yes" | "no";
+    martingaleStep: number;
+    realizedPnlCents: number;
+  };
 }
 
 export type EthPlacementLifecycleGateway = (
@@ -716,7 +726,7 @@ export type EthPreflightAndPlacementGateway = (
  */
 export const placeEthMartingaleGtcEntry: EthPlacementLifecycleGateway = async ({
   state, side, step, requestedPrincipalCents: _requestedPrincipalCents,
-  requestedContracts: contracts, easternDate: date,
+  requestedContracts: contracts, easternDate: date, expectedMartingaleState,
 }) => {
   const exchangeIndex = state.exchangeIndex!;
   const noPriceCents = ETH_GTC_LIMIT_PRICE_CENTS;
@@ -729,6 +739,7 @@ export const placeEthMartingaleGtcEntry: EthPlacementLifecycleGateway = async ({
     side,
     martingaleStep: step, noPriceCents,
     requestedContracts: contracts, reservedFeeCents,
+    expectedState: expectedMartingaleState,
     claimProofFence: proofMode,
   });
   if (reservation === "proof_already_claimed") {
@@ -962,6 +973,12 @@ export const runEthPreflightAndPlacement: EthPreflightAndPlacementGateway = asyn
       state, side: effectiveSide, step: effectiveStep,
       requestedPrincipalCents,
       requestedContracts: contracts, easternDate: date,
+      expectedMartingaleState: {
+        easternDate: sequence.easternDate,
+        side: sequence.side,
+        martingaleStep: sequence.martingaleStep,
+        realizedPnlCents: sequence.realizedPnlCents,
+      },
     });
   } finally { active.delete(state.ticker); }
 };

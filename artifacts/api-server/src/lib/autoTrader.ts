@@ -3653,7 +3653,9 @@ async function restFetchAll(source: TriggerSource, isEthSettlementRetryPass = fa
   let ethExposure = false;
   if (mayRunMartingale) {
     ethSettlementComplete = await reconcileEthMartingaleSettlements();
-    ethExposure = await hasUnsettledEthMartingaleExposure();
+    // An unavailable exposure read is an unresolved exposure for retry
+    // purposes; do not coerce it into a safe-looking false value.
+    ethExposure = (await hasUnsettledEthMartingaleExposure()) ?? true;
   }
 
   // A fetched next window may have been evaluated while the prior ETH GTC was
