@@ -1,3 +1,4 @@
+import { logger } from "../logger.js";
 import type { Eth420CandidateMarket } from "./eth420SixStepCandidate.js";
 import { evaluateEthAccountCapital } from "./ethAccountCapitalGuard.js";
 import { createEthBigBetKalshiSubmitter } from "./ethBigBetKalshiExchange.js";
@@ -27,18 +28,7 @@ export function isEthReversalServiceExecutionPermitted(role = currentEthServiceR
 }
 
 type ReversalEvidenceStore = Parameters<typeof prepareEthReversalServiceIntent>[0]["store"];
-let storeReady: Promise<void> | null = null;
-
-async function ensureStoreReady(): Promise<void> {
-  storeReady ??= initEthBigBetStore();
-  return storeReady;
-}
-
-export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
-  store: ReversalEvidenceStore;
-  market: Eth420CandidateMarket;
-  exchangeIndex: number | null | undefined;
-}): Promise<
+type ReversalOutcome =
   | "disabled"
   | "no_signal"
   | "capital_unavailable"
@@ -50,9 +40,50 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
   | "blocked_invalid_size"
   | "reservation_failed"
   | "submission_unknown"
-  | "rejected"
-> {
-  if (!isEthReversalServiceExecutionPermitted()) return "disabled";
+  | "rejected";
+
+let storeReady: Promise<void> | null = null;
+
+async function ensureStoreReady(): Promise<void> {
+  storeReady ??= initEthBigBetStore();
+  return storeReady;
+}
+
+export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
+  store: ReversalEvidenceStore;
+  market: Eth420CandidateMarket;
+  exchangeIndex: number | null | undefined;
+}): Promise<ReversalOutcome> {
+  let priorOutcomes: Array<"yes" | "no" | "missing_or_conflict"> = [];
+  let consecutiveNoOutcomes: number | null = null;
+  let currentMove: number | null = null;
+  let p95: number | null = null;
+  let p99: number | null = null;
+  let signalRejectionReason: string | null = null;
+
+  const finish = <T extends ReversalOutcome>(
+    outcome: T,
+    rejectionReason: string | null = null,
+  ): T => {
+    logger.info(
+      {
+        ticker: input.market.ticker,
+        priorOutcomes,
+        consecutiveNoOutcomes,
+        currentMove,
+        p95,
+        p99,
+        outcome,
+        rejectionReason,
+      },
+      "ETH Reversal evaluation",
+    );
+    return outcome;
+  };
+
+  if (!isEthReversalServiceExecutionPermitted()) {
+    return finish("disabled", "execution_not_permitted");
+  }
   // Load the durable window-result reader only after every execution gate is
   // open. A disabled C service must remain inert even without DATABASE_URL.
   const { getWindowLog } = await import("../windowLog.js");
@@ -60,29 +91,46 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
     store: input.store,
     market: input.market,
     windowEntries: getWindowLog(),
+    onEvaluation: (context) => {
+      priorOutcomes = context.priorOutcomes;
+      consecutiveNoOutcomes = context.consecutiveNoOutcomes;
+      currentMove = context.currentMove;
+      p95 = context.p95;
+      p99 = context.p99;
+      signalRejectionReason = context.rejectionReason;
+    },
   });
-  if (!intent) return "no_signal";
+  if (!intent) return finish("no_signal", signalRejectionReason ?? "signal_not_qualified");
   if (input.exchangeIndex == null || !Number.isInteger(input.exchangeIndex) || input.exchangeIndex < 0) {
-    return "routing_unavailable";
+    return finish("routing_unavailable", "invalid_exchange_index");
   }
   const capitalBase = await readApprovedEthBigBetCapitalBase(input.exchangeIndex);
-  if (!capitalBase) return "capital_unavailable";
+  if (!capitalBase) return finish("capital_unavailable", "capital_base_unavailable");
   const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
-  if (requestedRiskCents < 1) return "capital_unavailable";
+  if (requestedRiskCents < 1) return finish("capital_unavailable", "invalid_requested_risk");
   const capital = evaluateEthAccountCapital({ ...capitalBase, requestedRiskCents });
-  if (!capital.allowed) return capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked";
+  if (!capital.allowed) {
+    return finish(
+      capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked",
+      capital.reason,
+    );
+  }
   const exchange = createEthBigBetKalshiSubmitter(input.exchangeIndex);
-  if (!exchange) return "routing_unavailable";
+  if (!exchange) return finish("routing_unavailable", "exchange_route_unavailable");
   try {
     await ensureStoreReady();
   } catch {
-    return "storage_unavailable";
+    return finish("storage_unavailable", "execution_store_unavailable");
   }
-  return submitEthBigBetIntent({
+  const outcome = await submitEthBigBetIntent({
     intent,
     store: ethBigBetExecutionStore,
     exchange,
     capital: capitalBase,
     requestedRiskCents,
   });
+  return finish(
+    outcome,
+    outcome === "submitted" ? null : outcome === "rejected" ? "exchange_rejected_reason_not_exposed_by_executor" : outcome,
+  );
 }
