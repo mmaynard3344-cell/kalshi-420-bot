@@ -94,22 +94,57 @@ try {
     EXECUTE FUNCTION enforce_eth_v2_canonical_state()
   `);
 
-  // Repair the active row immediately from the immutable settled ledger. This
-  // is safe even when an order is unresolved: the trading engine already blocks
-  // a successor while unresolved exposure exists, and settlement will then
-  // advance canonically through the trigger above.
-  const repair = await client.query(`
-    UPDATE eth_martingale_state s
-    SET side = c.expected_side,
-        martingale_step = c.expected_step,
-        updated_at_ms = (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::bigint
-    FROM LATERAL eth_v2_canonical_sequence(s.eastern_date) c
-    WHERE s.strategy_key = $1
-    RETURNING s.eastern_date, s.side, s.martingale_step, s.realized_pnl_cents
+  // Lock the one authoritative V2 state row, derive its canonical sequence,
+  // then repair it explicitly. Keeping these as separate statements avoids
+  // UPDATE/FROM lateral-reference ambiguity and makes the repair auditable.
+  const lockedState = await client.query(`
+    SELECT eastern_date
+    FROM eth_martingale_state
+    WHERE strategy_key = $1
+    FOR UPDATE
   `, [STRATEGY]);
+
+  if (lockedState.rowCount !== 1) {
+    throw new Error(`Expected exactly one ${STRATEGY} state row, found ${lockedState.rowCount}`);
+  }
+
+  const easternDate = lockedState.rows[0].eastern_date;
+  const canonical = await client.query(`
+    SELECT expected_side, expected_step
+    FROM eth_v2_canonical_sequence($1)
+  `, [easternDate]);
+
+  if (canonical.rowCount !== 1) {
+    throw new Error(`Expected one canonical sequence row for ${easternDate}, found ${canonical.rowCount}`);
+  }
+
+  const expectedSide = canonical.rows[0].expected_side;
+  const expectedStep = Number(canonical.rows[0].expected_step);
+  if (!['yes', 'no'].includes(expectedSide) || !Number.isInteger(expectedStep) || expectedStep < 0 || expectedStep > 5) {
+    throw new Error(`Invalid canonical state ${expectedSide}/${expectedStep} for ${easternDate}`);
+  }
+
+  const repair = await client.query(`
+    UPDATE eth_martingale_state
+    SET side = $2,
+        martingale_step = $3,
+        updated_at_ms = (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::bigint
+    WHERE strategy_key = $1
+    RETURNING eastern_date, side, martingale_step, realized_pnl_cents
+  `, [STRATEGY, expectedSide, expectedStep]);
 
   if (repair.rowCount !== 1) {
     throw new Error(`Expected exactly one ${STRATEGY} state row, repaired ${repair.rowCount}`);
+  }
+
+  const triggerCheck = await client.query(`
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgname = 'eth_v2_canonical_state_guard'
+      AND NOT tgisinternal
+  `);
+  if (triggerCheck.rowCount !== 1) {
+    throw new Error('Regular canonical-state trigger verification failed');
   }
 
   await client.query("COMMIT");
@@ -125,37 +160,38 @@ try {
     ORDER BY created_at_ms ASC, id ASC
   `, [STRATEGY, state.eastern_date]);
 
-  let expectedSide = "no";
-  let expectedStep = 0;
+  let replaySide = "no";
+  let replayStep = 0;
   const mismatches = [];
   for (const row of orders.rows) {
     const recordedStep = Number(row.martingale_step);
-    if (row.side !== expectedSide || recordedStep !== expectedStep) {
+    if (row.side !== replaySide || recordedStep !== replayStep) {
       mismatches.push({
         ticker: row.ticker,
         recordedSide: row.side,
         recordedStep,
-        expectedSide,
-        expectedStep,
+        expectedSide: replaySide,
+        expectedStep: replayStep,
         result: row.settlement_result,
       });
     }
     const won = row.settlement_result === row.side;
     if (won) {
-      expectedSide = row.side === "yes" ? "no" : "yes";
-      expectedStep = 0;
+      replaySide = row.side === "yes" ? "no" : "yes";
+      replayStep = 0;
     } else {
-      expectedSide = row.side;
-      expectedStep = expectedStep >= 5 ? 0 : expectedStep + 1;
+      replaySide = row.side;
+      replayStep = replayStep >= 5 ? 0 : replayStep + 1;
     }
   }
 
-  if (state.side !== expectedSide || Number(state.martingale_step) !== expectedStep) {
-    throw new Error(`Canonical repair verification failed: state=${state.side}/${state.martingale_step}, expected=${expectedSide}/${expectedStep}`);
+  if (state.side !== replaySide || Number(state.martingale_step) !== replayStep) {
+    throw new Error(`Canonical repair verification failed: state=${state.side}/${state.martingale_step}, expected=${replaySide}/${replayStep}`);
   }
 
   console.log(JSON.stringify({
     regularSequenceGuard: "installed",
+    triggerVerified: true,
     easternDate: state.eastern_date,
     canonicalSide: state.side,
     canonicalStep: Number(state.martingale_step),
