@@ -54,7 +54,7 @@ export interface EthMarketState {
 
 export const ETH_PRINCIPALS_CENTS = [1500, 3000, 6000, 12000, 24000, 32000] as const;
 /** Loss stop: fail closed if realized daily P&L (even-money cents) is at or below this. */
-export const ETH_DAILY_LOSS_STOP_CENTS = -25_000;
+export const ETH_DAILY_LOSS_STOP_CENTS = -120_000;
 /** A pending row has not entered POST yet, so it can be released after this bound. */
 export const ETH_PENDING_RESERVATION_EXPIRY_MS = 60_000;
 /**
@@ -930,8 +930,19 @@ export const runEthPreflightAndPlacement: EthPreflightAndPlacementGateway = asyn
     if (contracts < 1) return;
 
     const reservedFeeCents = ethTakerFeeCents(noPriceCents, contracts);
-    const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;
-    let exchangeBalance;
+
+const projectedFullLossPnlCents =
+  effectivePnl - requestedPrincipalCents - reservedFeeCents;
+
+if (projectedFullLossPnlCents < dailyLossStopCents) {
+  setEthBlockerStatus(
+    "daily_loss_stop",
+    "ETH entry is blocked because a full loss on this wager would exceed the daily loss limit",
+  );
+  return;
+}
+
+const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;    let exchangeBalance;
     try {
       exchangeBalance = await ethDependencies.fetchExchangeBalance(exchangeIndex);
     } catch (err) {
