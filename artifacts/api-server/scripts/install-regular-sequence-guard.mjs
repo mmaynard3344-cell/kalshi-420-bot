@@ -1,4 +1,4 @@
-import pg from "pg";
+import pg from "../../../lib/db/node_modules/pg/lib/index.js";
 
 const { Client } = pg;
 const STRATEGY = "ETH_NO_MARTINGALE_V2";
