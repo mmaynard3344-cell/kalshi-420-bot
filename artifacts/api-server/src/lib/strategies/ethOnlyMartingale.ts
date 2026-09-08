@@ -904,17 +904,17 @@ export const runEthPreflightAndPlacement: EthPreflightAndPlacementGateway = asyn
 
     const date = easternDay(new Date(ethDependencies.now()));
 
-    // Day-change reset: sequence.easternDate mismatch means the store will reset on first
-    // reservation. Compute effective values for this fresh day.
-    const isNewDay = sequence.easternDate !== date;
-    const effectivePnl = requestedRealizedPnlCents == null
-      ? (isNewDay ? 0 : sequence.realizedPnlCents)
-      : Math.trunc(requestedRealizedPnlCents);
-    const effectiveStep = requestedStep == null
-      ? (isNewDay ? 0 : sequence.martingaleStep)
-      : Math.max(0, Math.trunc(requestedStep));
-    // Side also resets to "no" at the start of each fresh ET day.
-    const effectiveSide: "yes" | "no" = requestedSide ?? (isNewDay ? "no" : sequence.side);
+   // Day change resets daily accounting/risk only. The martingale sequence is continuous
+// across midnight ET, so side and rung always come from the durable sequence unless
+// an explicitly approved caller override is supplied.
+const isNewDay = sequence.easternDate !== date;
+const effectivePnl = requestedRealizedPnlCents == null
+  ? (isNewDay ? 0 : sequence.realizedPnlCents)
+  : Math.trunc(requestedRealizedPnlCents);
+const effectiveStep = requestedStep == null
+  ? sequence.martingaleStep
+  : Math.max(0, Math.trunc(requestedStep));
+const effectiveSide: "yes" | "no" = requestedSide ?? sequence.side;
 
     // Fail closed: loss stop
     if (effectivePnl <= dailyLossStopCents) {
