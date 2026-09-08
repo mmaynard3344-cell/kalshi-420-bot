@@ -11230,8 +11230,7 @@ export async function reserveEthMartingaleEntry(params: {
         SET eastern_date = ${params.easternDate},
             spent_cents = CASE WHEN eastern_date = ${params.easternDate} THEN spent_cents + ${cost} ELSE ${cost} END,
             realized_pnl_cents = CASE WHEN eastern_date = ${params.easternDate} THEN realized_pnl_cents ELSE 0 END,
-            side = CASE WHEN eastern_date = ${params.easternDate} THEN side ELSE 'no' END,
-            martingale_step = CASE WHEN eastern_date = ${params.easternDate} THEN martingale_step ELSE 0 END,
+            
             updated_at_ms = ${now}
         WHERE strategy_key = ${ETH_MARTINGALE_ACTIVE_GENERATION_KEY}
           AND (
