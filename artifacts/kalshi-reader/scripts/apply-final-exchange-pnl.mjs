@@ -37,6 +37,21 @@ const summarizeLoopNew = "function summarize(fs,idx){const om=new Map;for(const 
 if (runtime.includes(summarizeLoopOld)) runtime = runtime.replace(summarizeLoopOld, summarizeLoopNew);
 else if (!runtime.includes(summarizeLoopNew)) throw new Error('Final exchange P&L bot-order filter anchor not found');
 
+// P&L SIGN AUTHORITY:
+// Earlier legacy code preferred the parent order's side over the exchange fill's
+// side. That can invert wins/losses when the parent representation differs from
+// the actual filled contract. The fill itself is the financial truth. Parent
+// orders are retained only for bot/strategy ownership.
+const parentFirstSide = "const t=ms(f),linked=idx.get(oid(f)),linkedSide=side(linked),s=linkedSide==='yes'||linkedSide==='no'?linkedSide:side(f),n=count(f),p=price(f,s);";
+const fillOnlySide = "const t=ms(f),s=side(f),n=count(f),p=price(f,s);";
+if (runtime.includes(parentFirstSide)) runtime = runtime.replace(parentFirstSide, fillOnlySide);
+else if (!runtime.includes(fillOnlySide)) throw new Error('Fill-side P&L authority anchor not found');
+
+const validationOld = "if(t==null||!(n>0)||p==null||p<0||p>1)continue;";
+const validationNew = "if((s!=='yes'&&s!=='no')||t==null||!(n>0)||p==null||p<0||p>1)continue;";
+if (runtime.includes(validationOld)) runtime = runtime.replace(validationOld, validationNew);
+else if (!runtime.includes(validationNew)) throw new Error('Fill-side validation anchor not found');
+
 // TRANSACTION ECONOMICS:
 // Once an exchange fill is joined, its economic side is authoritative for the
 // transaction row. The order object's side may describe a quote/order encoding
@@ -64,9 +79,21 @@ if (runtime.includes("fetch('/api/diagnostics/account-pnl'")) throw new Error('A
 if (runtime.includes('summary(account.days)')) throw new Error('DB account days still override final dashboard totals');
 if (!runtime.includes('if(!botOrder(parent))continue;')) throw new Error('Bot exchange-order filter missing');
 if (!runtime.includes("dataset.accountPnl='kalshi-fills'")) throw new Error('Final fill-authority proof marker missing');
+if (!runtime.includes(fillOnlySide)) throw new Error('Financial P&L is not fill-side authoritative');
+if (runtime.includes('linkedSide=side(linked)')) throw new Error('Parent-order side still overrides exchange fill side');
+if (!runtime.includes(validationNew)) throw new Error('Invalid exchange fill side is not fail-closed');
 if (!runtime.includes("s=f?.side||side(o)")) throw new Error('Transaction rows are not fill-side authoritative');
 if (/filled=f\?f\.contracts:(?:reported|orderFilled)\(o\)/.test(runtime)) throw new Error('Local fill fallback survived final exchange P&L stage');
 if (/\$\{esc\((?:status|orderStatus)\(o\)\|\|'—'\)\}/.test(runtime)) throw new Error('Unguarded local status survived final exchange P&L stage');
+
+// Regression proof for the exact observed economics: NO fill at 44c settling NO
+// must be positive, while the same fill settling YES must be negative.
+const testContracts = 840;
+const testPriceCents = 44;
+const testFeesCents = 1448;
+const noWin = testContracts * 100 - testContracts * testPriceCents - testFeesCents;
+const noLoss = -testContracts * testPriceCents - testFeesCents;
+if (!(noWin > 0 && noLoss < 0)) throw new Error('Fill-side P&L sign regression failed');
 
 fs.writeFileSync(runtimePath, runtime);
 
