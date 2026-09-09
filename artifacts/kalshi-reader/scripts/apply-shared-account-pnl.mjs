@@ -34,7 +34,8 @@ else if (!pnl.includes(paintNew)) throw new Error('shared account P&L runtime pa
 
 pnl = pnl.replaceAll('Existing frontend-accessible ledger only.','Kalshi exchange-proven ledger · same source as daily loss guard.');
 pnl = pnl.replaceAll('Durable all-service ledger · same source as daily loss guard.','Kalshi exchange-proven ledger · same source as daily loss guard.');
-pnl = pnl.replaceAll('actual Kalshi ETH orders and fills across Regular, Jump and Reversal strategies.','actual Kalshi ETH orders and fills across services A–G.');
+pnl = pnl.replaceAll('actual Kalshi ETH orders and fills across Regular, Jump and Reversal strategies.','actual Kalshi ETH orders and fills across services A–H.');
+pnl = pnl.replaceAll('actual Kalshi ETH orders and fills across services A–G.','actual Kalshi ETH orders and fills across services A–H.');
 
 if (!pnl.includes("fetch('/api/diagnostics/account-pnl'")) throw new Error('shared account P&L fetch not installed');
 if (!pnl.includes('summary(account.days)')) throw new Error('shared account P&L summary not installed');
@@ -45,5 +46,6 @@ const dashboardPath = new URL('../public/eth420-dashboard.html', import.meta.url
 let dashboard = fs.readFileSync(dashboardPath, 'utf8');
 dashboard = dashboard.replaceAll('Existing frontend-accessible ledger only.','Kalshi exchange-proven ledger · same source as daily loss guard.');
 dashboard = dashboard.replaceAll('Durable all-service ledger · same source as daily loss guard.','Kalshi exchange-proven ledger · same source as daily loss guard.');
-dashboard = dashboard.replaceAll('actual Kalshi ETH orders and fills across Regular, Jump and Reversal strategies.','actual Kalshi ETH orders and fills across services A–G.');
+dashboard = dashboard.replaceAll('actual Kalshi ETH orders and fills across Regular, Jump and Reversal strategies.','actual Kalshi ETH orders and fills across services A–H.');
+dashboard = dashboard.replaceAll('actual Kalshi ETH orders and fills across services A–G.','actual Kalshi ETH orders and fills across services A–H.');
 fs.writeFileSync(dashboardPath, dashboard);
