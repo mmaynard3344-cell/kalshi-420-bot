@@ -5,6 +5,8 @@ import type { EthBigBetExchangeSubmitter, EthBigBetSubmitResult } from "./ethBig
 type AuthFetch = typeof kalshiAuthFetch;
 let authFetch: AuthFetch = kalshiAuthFetch;
 
+const G_PROBE_ORDER_TAG = ":eth-probe-g-5m-30c-v1";
+
 export function _setEthBigBetAuthFetchForTesting(fetcher: AuthFetch | null): void {
   authFetch = fetcher ?? kalshiAuthFetch;
 }
@@ -18,12 +20,16 @@ export function createEthBigBetKalshiSubmitter(exchangeIndex: number): EthBigBet
   return {
     async submit(input): Promise<EthBigBetSubmitResult> {
       try {
+        const isGProbe = input.clientOrderId.endsWith(G_PROBE_ORDER_TAG);
+        const wirePriceCents = isGProbe && input.side === "no"
+          ? 100 - input.limitPriceCents
+          : input.limitPriceCents;
         const raw = await authFetch<Record<string, unknown>>("POST", "/portfolio/events/orders", {
           ticker: input.ticker,
           client_order_id: input.clientOrderId,
           side: input.side === "yes" ? "bid" : "ask",
           count: `${input.contracts}.00`,
-          price: (input.limitPriceCents / 100).toFixed(4),
+          price: (wirePriceCents / 100).toFixed(4),
           time_in_force: "good_till_canceled",
           self_trade_prevention_type: "taker_at_cross",
           exchange_index: exchangeIndex,
