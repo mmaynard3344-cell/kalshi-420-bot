@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 import { rm } from "node:fs/promises";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 
 globalThis.require = createRequire(import.meta.url);
 
@@ -20,7 +20,13 @@ function resolveCommitSha() {
 
 async function buildAll() {
   // Service-split branches contain the canonical validated source directly.
-  // Do not re-apply the historical production source-rewrite patch chain here.
+  // Apply only the read-only dashboard history pagination shim before bundling.
+  // It changes GET /trade/orders and GET /trade/fills pagination only; no
+  // evaluator, strategy, risk, reservation or order-placement path is touched.
+  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-dashboard-history-pagination.mjs")], {
+    stdio: "inherit",
+  });
+
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
