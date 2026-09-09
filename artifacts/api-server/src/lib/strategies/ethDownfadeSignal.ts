@@ -1,7 +1,7 @@
 import type { EthBigBetOrderIntent, EthBigBetStrategy } from "./ethBigBetLifecycle.js";
 
 export type EthDownfadeRole = "downfade_e" | "downfade_f" | "downfade_g";
-export type EthDownfadeBand = "p80_p99" | "p90_p99" | "p95_p99";
+export type EthDownfadeBand = "p80_p99" | "p90_p99" | "probe_5m_30c";
 
 export interface EthDownfadeEvidence {
   ticker: string;
@@ -45,10 +45,10 @@ export const ETH_DOWNFADE_CONFIG: Record<EthDownfadeRole, EthDownfadeConfig> = {
   },
   downfade_g: {
     role: "downfade_g",
-    strategy: "downfade_p95_p99",
-    band: "p95_p99",
-    wagerCents: 20_000,
-    orderTag: "eth-downfade-p95-p99-v1",
+    strategy: "probe_g",
+    band: "probe_5m_30c",
+    wagerCents: 500,
+    orderTag: "eth-probe-g-5m-30c-v1",
     lower: "p95",
     upper: "p99",
   },
@@ -62,6 +62,7 @@ export function buildEthDownfadeIntent(
   role: EthDownfadeRole,
   evidence: EthDownfadeEvidence,
 ): EthBigBetOrderIntent | null {
+  if (role === "downfade_g") return null;
   const config = ETH_DOWNFADE_CONFIG[role];
   if (!/^KXETH15M-/.test(evidence.ticker)
     || !Number.isInteger(evidence.marketOpenTimeMs)
