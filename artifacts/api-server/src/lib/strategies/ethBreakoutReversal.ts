@@ -8,7 +8,7 @@
  * Research result through 2026-08-25: 23/31 YES settlements (74.2%) for this
  * upper-half subset. This module owns no martingale state and performs no I/O.
  */
-export const ETH_BREAKOUT_REVERSAL_WAGER_CENTS = 10_000;
+export const ETH_BREAKOUT_REVERSAL_WAGER_CENTS = 25_000;
 export const ETH_BREAKOUT_REVERSAL_SIDE = "yes" as const;
 export const ETH_BREAKOUT_REVERSAL_ORDER_TAG = "eth-no3-upperband-v1";
 export const ETH_BREAKOUT_REVERSAL_MIN_NO_STREAK = 3;
