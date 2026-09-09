@@ -18,46 +18,42 @@ for (const pattern of fillFallbackPatterns) {
   }
 }
 
-// If no exchange fill is joined, never inherit a local status such as EXECUTED.
-// Preserve the local intent in the table, but label it explicitly as unconfirmed.
-const statusPatterns = [
-  /status=orderStatus\(o\)\|\|'—'/g,
-  /status=status\(o\)\|\|'—'/g,
+// If no exchange fill is joined, never display a local lifecycle status such
+// as EXECUTED as proof of exchange execution. The current compact runtime emits
+// status directly inside the result-cell template, so patch that render site.
+const statusRenderPatterns = [
+  {
+    pattern: /\$\{esc\(status\(o\)\|\|'—'\)\}/g,
+    replacement: "${esc(f?(status(o)||'—'):'LOCAL INTENT · NO KALSHI FILL')}",
+  },
+  {
+    pattern: /\$\{esc\(orderStatus\(o\)\|\|'—'\)\}/g,
+    replacement: "${esc(f?(orderStatus(o)||'—'):'LOCAL INTENT · NO KALSHI FILL')}",
+  },
 ];
 let statusChanged = false;
-for (const pattern of statusPatterns) {
-  const next = runtime.replace(pattern, "status=f?(orderStatus?.(o)||status?.(o)||'—'):'LOCAL INTENT · NO KALSHI FILL'");
+for (const { pattern, replacement } of statusRenderPatterns) {
+  const next = runtime.replace(pattern, replacement);
   if (next !== runtime) {
     runtime = next;
     statusChanged = true;
   }
 }
 
-// The optional-call expression above cannot be emitted if those identifiers are
-// not both present in a given compact runtime. Normalize it to the identifier
-// actually used by that runtime.
-runtime = runtime.replace(
-  "status=f?(orderStatus?.(o)||status?.(o)||'—'):'LOCAL INTENT · NO KALSHI FILL'",
-  runtime.includes('const orderStatus=')
-    ? "status=f?(orderStatus(o)||'—'):'LOCAL INTENT · NO KALSHI FILL'"
-    : "status=f?(status(o)||'—'):'LOCAL INTENT · NO KALSHI FILL'",
-);
-
-if (!fillFallbackChanged) {
-  // A previously-fixed source is acceptable only if the exchange-only form is
-  // already present. Otherwise fail the build instead of silently shipping.
-  if (!runtime.includes('filled=f?f.contracts:0')) {
-    throw new Error('Exchange-truth fill anchor not found');
-  }
+if (!fillFallbackChanged && !runtime.includes('filled=f?f.contracts:0')) {
+  throw new Error('Exchange-truth fill anchor not found');
 }
-if (!statusChanged && !runtime.includes("'LOCAL INTENT · NO KALSHI FILL'")) {
+if (!statusChanged && !runtime.includes('LOCAL INTENT · NO KALSHI FILL')) {
   throw new Error('Exchange-truth status anchor not found');
 }
 
-// Regression proof: no local filled-contract fallback may remain in the live
-// runtime after this finalizer.
+// Regression proofs: neither local filled-contract fallback nor an unguarded
+// local lifecycle status may remain in the live transaction-row renderer.
 if (/filled=f\?f\.contracts:(?:reported|orderFilled)\(o\)/.test(runtime)) {
   throw new Error('Local fill fallback survived exchange-truth finalizer');
+}
+if (/\$\{esc\((?:status|orderStatus)\(o\)\|\|'—'\)\}/.test(runtime)) {
+  throw new Error('Local status fallback survived exchange-truth finalizer');
 }
 
 fs.writeFileSync(runtimePath, runtime);
