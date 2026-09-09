@@ -26,7 +26,7 @@ export interface EthServiceEnablementResult {
 
 function enabled(raw: string | undefined): boolean { return raw === "true"; }
 function isDownfadeRole(role: EthServiceRole | null): boolean {
-  return role === "downfade_e" || role === "downfade_f" || role === "downfade_g";
+  return role === "downfade_e" || role === "downfade_f" || role === "downfade_g" || role === "downfade_h";
 }
 
 export function evaluateEthServiceEnablement(input: EthServiceEnablementInput): EthServiceEnablementResult {
