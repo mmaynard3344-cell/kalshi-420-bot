@@ -89,6 +89,14 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
     return finish("routing_unavailable", "invalid_exchange_index");
   }
 
+  // Capital facts query eth_big_bet_orders, so the dedicated B/C ledger must
+  // exist before the fail-closed capital provider attempts that read.
+  try {
+    await ensureStoreReady();
+  } catch {
+    return finish("storage_unavailable", "execution_store_unavailable");
+  }
+
   const capitalBase = await readApprovedEthBigBetCapitalBase(input.exchangeIndex);
   if (!capitalBase) return finish("capital_unavailable", "capital_base_unavailable");
 
@@ -105,12 +113,6 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
 
   const exchange = createEthBigBetKalshiSubmitter(input.exchangeIndex);
   if (!exchange) return finish("routing_unavailable", "exchange_route_unavailable");
-
-  try {
-    await ensureStoreReady();
-  } catch {
-    return finish("storage_unavailable", "execution_store_unavailable");
-  }
 
   const outcome = await submitEthBigBetIntent({
     intent,
