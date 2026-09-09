@@ -12,7 +12,7 @@
     "test:phase4a": "node scripts/run-phase4a-test.mjs",
     "export:stale-gap-counterfactuals": "node scripts/run-stale-gap-counterfactual-export.mjs",
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
-    "build": "node ./build.mjs",
+    "build": "node scripts/apply-dashboard-history-pagination.mjs && node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:recoverability": "node scripts/run-recoverability-capture-test.mjs",
