@@ -10,6 +10,7 @@ const DOWNFADE_STRATEGIES = new Set([
   "downfade_p90_p95",
   "downfade_p95_p99",
   "probe_g",
+  "ash_v2_i",
 ]);
 
 type DbLike = {
@@ -49,7 +50,7 @@ async function allUnresolvedRiskCents(tx: DbLike): Promise<number | null> {
   return total;
 }
 
-/** E/F/G share the capital ledger with B/C while keeping strategy+market order identity separate. */
+/** E/F/G/H/I share the capital ledger with B/C while keeping strategy+market order identity separate. */
 export async function initEthDownfadeExecutionStore(): Promise<void> {
   await initEthBigBetStore();
   const db = await getDb();
@@ -57,7 +58,7 @@ export async function initEthDownfadeExecutionStore(): Promise<void> {
   await db.execute(sql`
     ALTER TABLE eth_big_bet_orders
     ADD CONSTRAINT eth_big_bet_orders_strategy_check
-    CHECK (strategy IN ('jump', 'reversal', 'downfade_p80_p90', 'downfade_p90_p95', 'downfade_p95_p99', 'probe_g'))
+    CHECK (strategy IN ('jump', 'reversal', 'downfade_p80_p90', 'downfade_p90_p95', 'downfade_p95_p99', 'probe_g', 'ash_v2_i'))
   `);
 }
 
@@ -71,6 +72,11 @@ function validIntent(intent: EthBigBetOrderIntent): boolean {
     return (intent.side === "yes" || intent.side === "no")
       && intent.wagerCents === 500
       && intent.limitPriceCents === 30;
+  }
+  if (intent.strategy === "ash_v2_i") {
+    return (intent.side === "yes" || intent.side === "no")
+      && intent.wagerCents === 1_500
+      && intent.limitPriceCents === 50;
   }
 
   return intent.side === "yes" && intent.limitPriceCents === 50;
