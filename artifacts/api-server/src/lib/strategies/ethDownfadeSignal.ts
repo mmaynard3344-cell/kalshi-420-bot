@@ -1,7 +1,7 @@
 import type { EthBigBetOrderIntent, EthBigBetStrategy } from "./ethBigBetLifecycle.js";
 
 export type EthDownfadeRole = "downfade_e" | "downfade_f" | "downfade_g";
-export type EthDownfadeBand = "p80_p90" | "p90_p95" | "p95_p99";
+export type EthDownfadeBand = "p80_p99" | "p90_p99" | "p95_p99";
 
 export interface EthDownfadeEvidence {
   ticker: string;
@@ -21,27 +21,27 @@ export interface EthDownfadeConfig {
   wagerCents: number;
   orderTag: string;
   lower: "p80" | "p90" | "p95";
-  upper: "p90" | "p95" | "p99";
+  upper: "p99";
 }
 
 export const ETH_DOWNFADE_CONFIG: Record<EthDownfadeRole, EthDownfadeConfig> = {
   downfade_e: {
     role: "downfade_e",
     strategy: "downfade_p80_p90",
-    band: "p80_p90",
+    band: "p80_p99",
     wagerCents: 5_000,
-    orderTag: "eth-downfade-p80-p90-v1",
+    orderTag: "eth-downfade-p80-p99-v2",
     lower: "p80",
-    upper: "p90",
+    upper: "p99",
   },
   downfade_f: {
     role: "downfade_f",
     strategy: "downfade_p90_p95",
-    band: "p90_p95",
+    band: "p90_p99",
     wagerCents: 10_000,
-    orderTag: "eth-downfade-p90-p95-v1",
+    orderTag: "eth-downfade-p90-p99-v2",
     lower: "p90",
-    upper: "p95",
+    upper: "p99",
   },
   downfade_g: {
     role: "downfade_g",
