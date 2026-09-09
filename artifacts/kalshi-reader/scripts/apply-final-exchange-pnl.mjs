@@ -55,6 +55,17 @@ fs.writeFileSync(runtimePath, runtime);
 
 const dashboardPath = new URL('../public/eth420-dashboard.html', import.meta.url);
 let dashboard = fs.readFileSync(dashboardPath, 'utf8');
+
+// The historical actual-fill-dashboard-v1 overlay independently recalculates
+// and repaints opPnl/pnlToday/pnlWeek/pnlMonth/pnlAll every five seconds. It
+// predates the canonical runtime, has no bot-order filter, and can overwrite the
+// correct exchange-only numbers after page load. Remove it completely here,
+// after all earlier dashboard mutators have run.
+dashboard = dashboard.replace(/\n?<script id="actual-fill-dashboard-v1">[\s\S]*?<\/script>\n?/g, '\n');
+if (dashboard.includes('actual-fill-dashboard-v1')) {
+  throw new Error('Legacy actual-fill P&L repaint overlay survived finalizer');
+}
+
 dashboard = dashboard.replaceAll('Kalshi exchange-proven ledger · same source as daily loss guard.','Kalshi exchange fills only · settled bot orders.');
 dashboard = dashboard.replaceAll('Durable all-service ledger · same source as daily loss guard.','Kalshi exchange fills only · settled bot orders.');
 dashboard = dashboard.replaceAll('Existing frontend-accessible ledger only.','Kalshi exchange fills only · settled bot orders.');
