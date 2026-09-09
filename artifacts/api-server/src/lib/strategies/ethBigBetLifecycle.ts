@@ -1,10 +1,14 @@
 /**
- * Shared lifecycle contract for stateless ETH big-bet services (B = jump,
- * C = reversal). These services never mutate martingale sequence state.
- * Settlement is accounting evidence only and never gates evaluation of a later
- * 15-minute market.
+ * Shared lifecycle contract for stateless ETH big-bet services. These services
+ * never mutate martingale sequence state. Settlement is accounting evidence
+ * only and never gates evaluation of a later 15-minute market.
  */
-export type EthBigBetStrategy = "jump" | "reversal";
+export type EthBigBetStrategy =
+  | "jump"
+  | "reversal"
+  | "downfade_p80_p90"
+  | "downfade_p90_p95"
+  | "downfade_p95_p99";
 export type EthBigBetSide = "yes" | "no";
 
 export interface EthBigBetOrderIntent {
@@ -78,9 +82,9 @@ export function accountEthBigBetSettlement(input: EthBigBetSettlement): EthBigBe
   };
 }
 
-/** B/C may evaluate a later market even when an earlier order is unresolved.
- * Only an unresolved order for the exact same strategy+market blocks another
- * submit. Account-level capital/exposure controls remain a separate guard. */
+/** Stateless services may evaluate a later market even when an earlier order is unresolved.
+ * Only an unresolved order for the exact same strategy+market blocks another submit.
+ * Account-level capital/exposure controls remain a separate guard. */
 export function mayEvaluateBigBetMarket(input: {
   targetOrderId: string;
   unresolvedOrderIds: readonly string[];
