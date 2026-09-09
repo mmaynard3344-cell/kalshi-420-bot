@@ -37,6 +37,21 @@ const summarizeLoopNew = "function summarize(fs,idx){const om=new Map;for(const 
 if (runtime.includes(summarizeLoopOld)) runtime = runtime.replace(summarizeLoopOld, summarizeLoopNew);
 else if (!runtime.includes(summarizeLoopNew)) throw new Error('Final exchange P&L bot-order filter anchor not found');
 
+// TRANSACTION ECONOMICS:
+// Once an exchange fill is joined, its economic side is authoritative for the
+// transaction row. The order object's side may describe a quote/order encoding
+// and must not override the fill-side economics used to calculate P&L.
+const txnSideOld = "const f=fm.get(oid(o)),t=ms(o),s=side(o),filled=";
+const txnSideNew = "const f=fm.get(oid(o)),t=ms(o),s=f?.side||side(o),filled=";
+if (runtime.includes(txnSideOld)) runtime = runtime.replace(txnSideOld, txnSideNew);
+else if (!runtime.includes(txnSideNew)) throw new Error('Transaction fill-side anchor not found');
+
+// A transaction without a joined Kalshi fill is diagnostic only. It cannot
+// contribute realized P&L, fees, principal, settlement, or an execution label.
+runtime = runtime.replace(/filled=f\?f\.contracts:(?:reported|orderFilled)\(o\)/g, 'filled=f?f.contracts:0');
+runtime = runtime.replace(/\$\{esc\(status\(o\)\|\|'—'\)\}/g, "${esc(f?(status(o)||'—'):'LOCAL INTENT · NO KALSHI FILL')}");
+runtime = runtime.replace(/\$\{esc\(orderStatus\(o\)\|\|'—'\)\}/g, "${esc(f?(orderStatus(o)||'—'):'LOCAL INTENT · NO KALSHI FILL')}");
+
 // Remove stale wording that implies the dashboard is reading the DB loss-guard
 // ledger. The dashboard now reads direct exchange fills; the loss guard remains
 // a separate conservative safety mechanism.
@@ -49,7 +64,9 @@ if (runtime.includes("fetch('/api/diagnostics/account-pnl'")) throw new Error('A
 if (runtime.includes('summary(account.days)')) throw new Error('DB account days still override final dashboard totals');
 if (!runtime.includes('if(!botOrder(parent))continue;')) throw new Error('Bot exchange-order filter missing');
 if (!runtime.includes("dataset.accountPnl='kalshi-fills'")) throw new Error('Final fill-authority proof marker missing');
+if (!runtime.includes("s=f?.side||side(o)")) throw new Error('Transaction rows are not fill-side authoritative');
 if (/filled=f\?f\.contracts:(?:reported|orderFilled)\(o\)/.test(runtime)) throw new Error('Local fill fallback survived final exchange P&L stage');
+if (/\$\{esc\((?:status|orderStatus)\(o\)\|\|'—'\)\}/.test(runtime)) throw new Error('Unguarded local status survived final exchange P&L stage');
 
 fs.writeFileSync(runtimePath, runtime);
 
@@ -64,6 +81,17 @@ let dashboard = fs.readFileSync(dashboardPath, 'utf8');
 dashboard = dashboard.replace(/\n?<script id="actual-fill-dashboard-v1">[\s\S]*?<\/script>\n?/g, '\n');
 if (dashboard.includes('actual-fill-dashboard-v1')) {
   throw new Error('Legacy actual-fill P&L repaint overlay survived finalizer');
+}
+
+// The base Operations refresh also had its own inline Today-P&L calculation
+// from candidate/martingale state. Remove only that writer. pnl-runtime.js is
+// now the sole writer of opPnl as well as every P&L-tab financial surface.
+dashboard = dashboard.replace(/\s*const todayCents=Number\(today\?\.netRealizedPnlCents\s*\?\?\s*state\?\.realizedPnlCents\s*\?\?\s*0\);\s*\$\('opPnl'\)\.textContent=money\(todayCents\);\s*signedClass\(\$\('opPnl'\),todayCents\);?/g, '');
+// Compact/semicolon variants from earlier build mutators.
+dashboard = dashboard.replace(/\s*todayCents=Number\(today\?\.netRealizedPnlCents\s*\?\?\s*state\?\.realizedPnlCents\s*\?\?\s*0\);\s*\$\('opPnl'\)\.textContent=money\(todayCents\);\s*signedClass\(\$\('opPnl'\),todayCents\);?/g, '');
+
+if (/netRealizedPnlCents[^;]{0,180}opPnl/.test(dashboard) || /realizedPnlCents[^;]{0,180}opPnl/.test(dashboard)) {
+  throw new Error('Legacy Operations P&L writer survived finalizer');
 }
 
 dashboard = dashboard.replaceAll('Kalshi exchange-proven ledger · same source as daily loss guard.','Kalshi exchange fills only · settled bot orders.');
