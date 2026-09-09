@@ -9,6 +9,7 @@ const DOWNFADE_STRATEGIES = new Set([
   "downfade_p80_p90",
   "downfade_p90_p95",
   "downfade_p95_p99",
+  "probe_g",
 ]);
 
 type DbLike = {
@@ -48,10 +49,7 @@ async function allUnresolvedRiskCents(tx: DbLike): Promise<number | null> {
   return total;
 }
 
-/**
- * E/F/G use the same capital ledger as B/C, but widen only the strategy CHECK.
- * Existing B/C rows and uniqueness constraints are untouched.
- */
+/** E/F/G share the capital ledger with B/C while keeping strategy+market order identity separate. */
 export async function initEthDownfadeExecutionStore(): Promise<void> {
   await initEthBigBetStore();
   const db = await getDb();
@@ -59,17 +57,23 @@ export async function initEthDownfadeExecutionStore(): Promise<void> {
   await db.execute(sql`
     ALTER TABLE eth_big_bet_orders
     ADD CONSTRAINT eth_big_bet_orders_strategy_check
-    CHECK (strategy IN ('jump', 'reversal', 'downfade_p80_p90', 'downfade_p90_p95', 'downfade_p95_p99'))
+    CHECK (strategy IN ('jump', 'reversal', 'downfade_p80_p90', 'downfade_p90_p95', 'downfade_p95_p99', 'probe_g'))
   `);
 }
 
 function validIntent(intent: EthBigBetOrderIntent): boolean {
-  return DOWNFADE_STRATEGIES.has(intent.strategy)
-    && /^KXETH15M-/.test(intent.ticker)
-    && intent.side === "yes"
-    && Number.isInteger(intent.marketOpenTimeMs) && intent.marketOpenTimeMs > 0
-    && Number.isInteger(intent.wagerCents) && intent.wagerCents > 0
-    && intent.limitPriceCents === 50;
+  if (!DOWNFADE_STRATEGIES.has(intent.strategy)
+    || !/^KXETH15M-/.test(intent.ticker)
+    || !Number.isInteger(intent.marketOpenTimeMs) || intent.marketOpenTimeMs <= 0
+    || !Number.isInteger(intent.wagerCents) || intent.wagerCents <= 0) return false;
+
+  if (intent.strategy === "probe_g") {
+    return (intent.side === "yes" || intent.side === "no")
+      && intent.wagerCents === 500
+      && intent.limitPriceCents === 30;
+  }
+
+  return intent.side === "yes" && intent.limitPriceCents === 50;
 }
 
 export const ethDownfadeExecutionStore: EthBigBetExecutionStore = {
