@@ -1,6 +1,6 @@
 /** Explicit runtime ownership boundary for isolated ETH strategy services. */
 export const ETH_SERVICE_ROLES = [
-  "martingale", "jump", "reversal", "downfade_e", "downfade_f", "downfade_g",
+  "martingale", "jump", "reversal", "downfade_e", "downfade_f", "downfade_g", "downfade_h",
 ] as const;
 export type EthServiceRole = typeof ETH_SERVICE_ROLES[number];
 
@@ -27,5 +27,5 @@ export function serviceMayRunMartingale(
 export function serviceOwnsJump(role: EthServiceRole | null): boolean { return role === "jump"; }
 export function serviceOwnsReversal(role: EthServiceRole | null): boolean { return role === "reversal"; }
 export function serviceOwnsDownfade(role: EthServiceRole | null): boolean {
-  return role === "downfade_e" || role === "downfade_f" || role === "downfade_g";
+  return role === "downfade_e" || role === "downfade_f" || role === "downfade_g" || role === "downfade_h";
 }
