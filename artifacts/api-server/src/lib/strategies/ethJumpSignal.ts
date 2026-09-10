@@ -36,5 +36,5 @@ export function evaluateEthJumpSignal(input: EthJumpSignalInput): EthJumpSignalD
 }
 
 /** Service B owns a fixed big-bet amount; it never derives size from a ladder. */
-export const ETH_JUMP_WAGER_CENTS = 42_000;
+export const ETH_JUMP_WAGER_CENTS = 50_000;
 export const ETH_JUMP_ORDER_TAG = "eth-jump-v1";
