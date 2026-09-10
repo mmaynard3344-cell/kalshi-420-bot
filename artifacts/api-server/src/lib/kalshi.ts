@@ -72,6 +72,8 @@ export async function kalshiFetch<T>(
 const SERIES_CACHE_TTL_MS = 8_000;
 /** Enough to cover the remaining 15-minute ETH markets in a trading day. */
 const UNOPENED_MARKET_FETCH_LIMIT = 100;
+const ETH_15M_SERIES = "KXETH15M";
+const ETH_15M_BOUNDARY_MS = 15 * 60_000;
 
 interface SeriesCacheEntry {
   raw:       Record<string, unknown> | null;
@@ -111,7 +113,11 @@ export function selectNearestFutureUnopenedMarket(
  * Returns the raw (un-normalized) market object for the current open window of
  * a series, or null if none is found or the request fails.
  *
- * Coalesces concurrent callers and caches for 8 s.
+ * Coalesces concurrent callers and caches for 8 s. For ETH 15-minute open-market
+ * discovery, a cache entry fetched before the current wall-clock boundary is
+ * never allowed to survive across that boundary. That preserves coalescing while
+ * preventing a pre-boundary active ticker from being reused after the new market
+ * should be live.
  */
 export async function kalshiSeriesFetch(
   series: string,
@@ -119,12 +125,21 @@ export async function kalshiSeriesFetch(
 ): Promise<Record<string, unknown> | null> {
   const status = options.status ?? "open";
   const cacheKey = `${series}:${status}`;
+  const nowMs = Date.now();
   const cached = _seriesCache.get(cacheKey);
-  if (!options.forceFresh && cached && Date.now() - cached.fetchedAt < SERIES_CACHE_TTL_MS) return cached.raw;
+  const currentEthBoundaryMs = series === ETH_15M_SERIES && status === "open"
+    ? Math.floor(nowMs / ETH_15M_BOUNDARY_MS) * ETH_15M_BOUNDARY_MS
+    : null;
+  const cacheCrossedEthBoundary = currentEthBoundaryMs != null
+    && cached != null
+    && cached.fetchedAt < currentEthBoundaryMs;
+  const requiresFresh = options.forceFresh === true || cacheCrossedEthBoundary;
 
-  // A force-fresh caller never attaches to a pre-boundary normal request.
-  // Fresh callers still coalesce with one another via their separate key.
-  const inflightKey = options.forceFresh ? `${cacheKey}:fresh` : cacheKey;
+  if (!requiresFresh && cached && nowMs - cached.fetchedAt < SERIES_CACHE_TTL_MS) return cached.raw;
+
+  // A boundary-fresh/force-fresh caller never attaches to a pre-boundary normal
+  // request. Fresh callers still coalesce with one another via their separate key.
+  const inflightKey = requiresFresh ? `${cacheKey}:fresh` : cacheKey;
   const inflight = _seriesInflight.get(inflightKey);
   if (inflight) return inflight;
 
