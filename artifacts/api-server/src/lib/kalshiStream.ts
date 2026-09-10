@@ -10,12 +10,16 @@ export const KALSHI_WS_URL = "wss://external-api-ws.kalshi.com/trade-api/ws/v2";
 const SERIES            = ["KXETH15M"];
 // 120 s avoids systematic coincidence with the 45 s reconcile timer (LCM = 360 s
 // vs 180 s for 60 s), and the WS ping already keeps the connection alive between
-// refresh cycles. Window rollovers are also caught by the autoTrader reconcile.
+// refresh cycles. Wall-clock boundary probes below independently cover each ETH
+// 15-minute rollover, so this slower maintenance refresh remains safe.
 export const TICKER_REFRESH_MS = 120_000;
 const RECONNECT_DELAY_MS = 3_000;
 const PING_INTERVAL_MS  = 30_000; // keep idle connections alive
 // Stagger series requests in refreshTickers to avoid simultaneous Kalshi hits
 const SERIES_STAGGER_MS = 3_000;
+const ETH_BOUNDARY_INTERVAL_MS = 15 * 60_000;
+const ETH_BOUNDARY_FIRST_PROBE_OFFSET_MS = 350;
+const ETH_BOUNDARY_RETRY_OFFSETS_MS = [2_000, 4_000] as const;
 
 export type KalshiMarketLifecycleEvent = {
   ticker: string;
@@ -124,6 +128,31 @@ class KalshiStream extends EventEmitter {
     await this.refreshTickers();
     this.connect();
     setInterval(() => this.refreshTickers(), TICKER_REFRESH_MS);
+    this.scheduleBoundaryRefresh();
+  }
+
+  /**
+   * Independently refresh the active ETH market at every wall-clock 15-minute
+   * boundary. This does not depend on receiving an unopened-market or lifecycle
+   * event in advance, so an idle/stale WS cannot delay rollover discovery by a
+   * normal 120-second ticker-refresh phase. Two bounded retries cover the short
+   * period where Kalshi may not expose the new active ticker immediately.
+   */
+  private scheduleBoundaryRefresh() {
+    if (this.destroyed) return;
+    const now = Date.now();
+    const nextBoundaryMs = (Math.floor(now / ETH_BOUNDARY_INTERVAL_MS) + 1) * ETH_BOUNDARY_INTERVAL_MS;
+    const delayMs = Math.max(0, nextBoundaryMs + ETH_BOUNDARY_FIRST_PROBE_OFFSET_MS - now);
+    setTimeout(() => {
+      if (this.destroyed) return;
+      void this.refreshTickers();
+      for (const retryOffsetMs of ETH_BOUNDARY_RETRY_OFFSETS_MS) {
+        setTimeout(() => {
+          if (!this.destroyed) void this.refreshTickers();
+        }, retryOffsetMs);
+      }
+      this.scheduleBoundaryRefresh();
+    }, delayMs);
   }
 
   /** Immediately re-fetch active tickers and reconnect if they changed.
