@@ -28,7 +28,7 @@ async function readExactPriorStrike(currentOpenTimeMs: number): Promise<number |
   try {
     const response = await marketFetcher<{ markets?: Array<Record<string, unknown>> }>(
       "/markets",
-      { series_ticker: "KXETH15M", limit: 100 },
+      { series_ticker: "KXETH15M", status: "settled", limit: 100 },
     );
     const matches = (response.markets ?? []).filter((row) => {
       const openMs = typeof row["open_time"] === "string" ? Date.parse(row["open_time"] as string) : NaN;
