@@ -1,5 +1,6 @@
 import { addDecimalStrings, normalizeKalshiFill, type KalshiFillWire } from "../kalshiFillNormalizer.js";
 import { kalshiAuthFetch } from "../kalshiAuth.js";
+import { logger } from "../logger.js";
 import { settleEthBigBetOrder } from "./ethBigBetStore.js";
 
 export interface EthBigBetSettlementRow {
@@ -63,6 +64,44 @@ function orderFillCountExact(order: KalshiOrderWire): string | null {
 
 function exactOrderId(order: KalshiOrderWire): string | null {
   return typeof order.order_id === "string" && order.order_id.trim() ? order.order_id : null;
+}
+
+function safeError(error: unknown): string {
+  if (error instanceof Error) return `${error.name}: ${error.message}`;
+  return typeof error === "string" ? error : "unknown_error";
+}
+
+function fillEvidence(fill: KalshiFillWire, side: "yes" | "no", index: number) {
+  return {
+    index,
+    hasCountFp: fill.count_fp != null,
+    hasCount: fill.count != null,
+    count: fill.count_fp ?? fill.count ?? null,
+    hasHeldPriceDollars: side === "yes" ? fill.yes_price_dollars != null : fill.no_price_dollars != null,
+    hasHeldPriceLegacy: side === "yes" ? fill.yes_price != null : fill.no_price != null,
+    heldPrice: side === "yes"
+      ? (fill.yes_price_dollars ?? fill.yes_price ?? null)
+      : (fill.no_price_dollars ?? fill.no_price ?? null),
+    hasFeeDollars: fill.fee_cost_dollars != null,
+    hasFeeLegacy: fill.fee_cost != null,
+    fee: fill.fee_cost_dollars ?? fill.fee_cost ?? null,
+    fillId: typeof fill.fill_id === "string" ? fill.fill_id : null,
+  };
+}
+
+function logUnresolved(input: {
+  row: EthBigBetSettlementRow;
+  gate: string;
+  details?: Record<string, unknown>;
+}) {
+  logger.warn({
+    ticker: input.row.ticker,
+    side: input.row.side,
+    clientOrderId: input.row.id,
+    kalshiOrderId: input.row.kalshiOrderId,
+    gate: input.gate,
+    ...(input.details ?? {}),
+  }, "ETH big-bet settlement unresolved diagnostic");
 }
 
 async function resolveOrder(
@@ -131,22 +170,38 @@ export async function readEthBigBetSettlementEconomics(input: {
   let order: KalshiOrderWire;
   try {
     const resolved = await resolveOrder(input.row, authFetch);
-    if (!resolved) return null;
+    if (!resolved) {
+      logUnresolved({ row: input.row, gate: "order_not_uniquely_resolved" });
+      return null;
+    }
     order = resolved;
-  } catch {
+  } catch (error) {
+    logUnresolved({ row: input.row, gate: "order_fetch_failed", details: { error: safeError(error) } });
     return null;
   }
 
   const fillCountExact = orderFillCountExact(order);
-  if (fillCountExact == null) return null;
+  if (fillCountExact == null) {
+    logUnresolved({ row: input.row, gate: "order_fill_count_missing_or_invalid", details: { orderStatus: order.status ?? null, fillCount: order.fill_count ?? null, fillCountFp: order.fill_count_fp ?? null } });
+    return null;
+  }
   const authoritativeFilled = decimalToNumber(fillCountExact);
-  if (authoritativeFilled == null) return null;
+  if (authoritativeFilled == null) {
+    logUnresolved({ row: input.row, gate: "order_fill_count_not_numeric", details: { fillCountExact } });
+    return null;
+  }
   const orderId = exactOrderId(order);
-  if (!orderId) return null;
+  if (!orderId) {
+    logUnresolved({ row: input.row, gate: "order_id_missing" });
+    return null;
+  }
 
   if (authoritativeFilled === 0) {
     const status = typeof order.status === "string" ? order.status.toLowerCase() : "";
-    if (!ZERO_FILL_TERMINAL_ORDER_STATUSES.has(status)) return null;
+    if (!ZERO_FILL_TERMINAL_ORDER_STATUSES.has(status)) {
+      logUnresolved({ row: input.row, gate: "zero_fill_order_not_terminal", details: { orderId, orderStatus: status } });
+      return null;
+    }
     return {
       filledContracts: 0,
       actualNotionalCents: 0,
@@ -159,37 +214,66 @@ export async function readEthBigBetSettlementEconomics(input: {
   let fills: KalshiFillWire[] | null;
   try {
     fills = await fetchAllOrderFills(orderId, authFetch);
-  } catch {
+  } catch (error) {
+    logUnresolved({ row: input.row, gate: "fills_fetch_failed", details: { orderId, authoritativeFilled, error: safeError(error) } });
     return null;
   }
-  if (!fills || fills.length === 0) return null;
+  if (!fills || fills.length === 0) {
+    logUnresolved({ row: input.row, gate: "fills_missing_for_nonzero_order", details: { orderId, authoritativeFilled } });
+    return null;
+  }
 
   let contractsExact = "0";
   let costDollarsExact = "0";
   let feeDollarsExact = "0";
-  for (const fill of fills) {
+  for (let index = 0; index < fills.length; index++) {
+    const fill = fills[index];
     const normalized = normalizeKalshiFill(fill, input.row.side);
-    if (!normalized) return null;
+    if (!normalized) {
+      logUnresolved({
+        row: input.row,
+        gate: "fill_normalization_failed",
+        details: {
+          orderId,
+          authoritativeFilled,
+          fillsReturned: fills.length,
+          offendingFill: fillEvidence(fill, input.row.side, index),
+        },
+      });
+      return null;
+    }
     contractsExact = addDecimalStrings(contractsExact, normalized.contractsExact);
     costDollarsExact = addDecimalStrings(costDollarsExact, normalized.exactCostDollars);
     feeDollarsExact = addDecimalStrings(feeDollarsExact, normalized.exactFeeDollars);
   }
 
   const filledContracts = decimalToNumber(contractsExact);
-  if (filledContracts == null || Math.abs(filledContracts - authoritativeFilled) > 1e-9) return null;
+  if (filledContracts == null || Math.abs(filledContracts - authoritativeFilled) > 1e-9) {
+    logUnresolved({ row: input.row, gate: "fill_count_mismatch", details: { orderId, authoritativeFilled, fillsReturned: fills.length, normalizedContractsExact: contractsExact, normalizedFilledContracts: filledContracts } });
+    return null;
+  }
   const actualNotionalCents = dollarsToRoundedCents(costDollarsExact);
   const actualFeeCents = dollarsToRoundedCents(feeDollarsExact);
-  if (actualNotionalCents == null || actualFeeCents == null) return null;
+  if (actualNotionalCents == null || actualFeeCents == null) {
+    logUnresolved({ row: input.row, gate: "aggregate_dollars_invalid", details: { orderId, costDollarsExact, feeDollarsExact, actualNotionalCents, actualFeeCents } });
+    return null;
+  }
 
   const averagePriceCents = filledContracts > 0
     ? Math.round(actualNotionalCents / filledContracts)
     : null;
-  if (averagePriceCents == null || averagePriceCents < 0 || averagePriceCents > 100) return null;
+  if (averagePriceCents == null || averagePriceCents < 0 || averagePriceCents > 100) {
+    logUnresolved({ row: input.row, gate: "average_price_invalid", details: { orderId, filledContracts, actualNotionalCents, averagePriceCents } });
+    return null;
+  }
   const payoutCents = input.officialResult === input.row.side
     ? Math.round(filledContracts * 100)
     : 0;
   const realizedPnlCents = payoutCents - actualNotionalCents - actualFeeCents;
-  if (!Number.isSafeInteger(realizedPnlCents)) return null;
+  if (!Number.isSafeInteger(realizedPnlCents)) {
+    logUnresolved({ row: input.row, gate: "realized_pnl_not_safe_integer", details: { orderId, payoutCents, actualNotionalCents, actualFeeCents, realizedPnlCents } });
+    return null;
+  }
 
   return {
     filledContracts,
@@ -215,7 +299,8 @@ export async function reconcileEthBigBetAccountingForTicker(input: {
   let rows: EthBigBetSettlementRow[];
   try {
     rows = await input.store.listUnresolvedForTicker(input.ticker);
-  } catch {
+  } catch (error) {
+    logger.warn({ ticker: input.ticker, error: safeError(error) }, "ETH big-bet settlement unresolved diagnostic: store_list_failed");
     return { settled: 0, unresolved: 1 };
   }
   let settled = 0;
@@ -237,8 +322,12 @@ export async function reconcileEthBigBetAccountingForTicker(input: {
         settlementResult: input.officialResult,
       });
       if (wrote) settled++;
-      else unresolved++;
-    } catch {
+      else {
+        logUnresolved({ row, gate: "store_settle_returned_false", details: { officialResult: input.officialResult, economics } });
+        unresolved++;
+      }
+    } catch (error) {
+      logUnresolved({ row, gate: "store_settle_failed", details: { officialResult: input.officialResult, error: safeError(error) } });
       unresolved++;
     }
   }
