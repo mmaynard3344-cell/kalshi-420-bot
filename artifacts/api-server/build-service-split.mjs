@@ -30,6 +30,12 @@ async function buildAll() {
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-always-trade.mjs")], {
     stdio: "inherit",
   });
+  // Kalshi's status=open market endpoint currently omits the row-level status
+  // field. Retain the authoritative query status so Service A can recognize the
+  // returned current window as open without weakening any other metadata gate.
+  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-kalshi-open-status-proof.mjs")], {
+    stdio: "inherit",
+  });
   // WS ticker messages omit market status. Preserve the authoritative REST
   // snapshot status so Service A does not turn a live market into "unknown".
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-kalshi-stream-status-backfill.mjs")], {
