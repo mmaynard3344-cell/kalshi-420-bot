@@ -46,6 +46,12 @@ async function buildAll() {
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-single-exposure-proof.mjs")], {
     stdio: "inherit",
   });
+  // Keep settled historical fill-economics maintenance retriable without letting
+  // that maintenance block a fresh A window once the live unsettled ledger has
+  // independently and authoritatively proved there is no prior exposure.
+  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-historical-repair-nonblocking.mjs")], {
+    stdio: "inherit",
+  });
 
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
