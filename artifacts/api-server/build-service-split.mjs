@@ -30,6 +30,11 @@ async function buildAll() {
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-always-trade.mjs")], {
     stdio: "inherit",
   });
+  // WS ticker messages omit market status. Preserve the authoritative REST
+  // snapshot status so Service A does not turn a live market into "unknown".
+  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-kalshi-stream-status-backfill.mjs")], {
+    stdio: "inherit",
+  });
   // Temporary observability only: identify the exact fail-closed gate that
   // prevents Service A from entering a newly detected ETH window.
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-entry-gate-diagnostic.mjs")], {
