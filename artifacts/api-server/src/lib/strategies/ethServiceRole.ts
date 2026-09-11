@@ -8,6 +8,8 @@
  * Strategy state is never shared. Account-level capital may be coordinated by
  * a separate guard because all services can still draw from the same account.
  */
+import { getEthMartingaleBlockerStatus } from "./ethOnlyMartingale.js";
+
 export const ETH_SERVICE_ROLES = ["martingale", "jump", "reversal"] as const;
 export type EthServiceRole = typeof ETH_SERVICE_ROLES[number];
 
@@ -18,7 +20,26 @@ export function parseEthServiceRole(raw: string | undefined): EthServiceRole | n
 }
 
 export function currentEthServiceRole(): EthServiceRole | null {
-  return parseEthServiceRole(process.env["ETH_SERVICE_ROLE"]);
+  const role = parseEthServiceRole(process.env["ETH_SERVICE_ROLE"]);
+  if (role === "martingale") {
+    const blocker = getEthMartingaleBlockerStatus();
+    console.info("ETH Service A blocker diagnostic", {
+      code: blocker.code,
+      message: blocker.message,
+      retryScheduled: blocker.retryScheduled,
+      retryAttempt: blocker.retryAttempt,
+      ticker: blocker.ticker,
+      orderId: blocker.orderId,
+      outcome: blocker.outcome,
+      filledContracts: blocker.filledContracts,
+      requestedContracts: blocker.requestedContracts,
+      exchangeIndex: blocker.exchangeIndex,
+      availableBalanceCents: blocker.availableBalanceCents,
+      requiredBalanceCents: blocker.requiredBalanceCents,
+      balanceStale: blocker.balanceStale,
+    });
+  }
+  return role;
 }
 
 export function serviceOwnsMartingale(role: EthServiceRole | null): boolean {
