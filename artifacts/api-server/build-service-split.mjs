@@ -20,10 +20,11 @@ function resolveCommitSha() {
 
 async function buildAll() {
   // Service-split branches contain the canonical validated source directly.
-  // Apply only the read-only dashboard history pagination shim before bundling.
-  // It changes GET /trade/orders and GET /trade/fills pagination only; no
-  // evaluator, strategy, risk, reservation or order-placement path is touched.
+  // Apply only narrowly scoped build-time shims before bundling.
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-dashboard-history-pagination.mjs")], {
+    stdio: "inherit",
+  });
+  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-eth-gtc-cancel-endpoint-fix.mjs")], {
     stdio: "inherit",
   });
 
