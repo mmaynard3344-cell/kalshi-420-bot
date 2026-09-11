@@ -30,11 +30,14 @@ import {
   calculateEthMartingaleCostCents,
   calculateEthMartingaleSessionRealizedPnlCents,
   calculateEthPendingReservationReleaseCents,
+  ethMartingaleAttemptOwnsSequence,
   ETH_MARTINGALE_ACTIVE_GENERATION_STARTED_AT_MS,
   ETH_MARTINGALE_SESSION_STARTED_AT_MS,
   isEthMartingaleProofFenceForAttempt,
+  isEthMartingaleSequenceOwner,
   isActiveEthMartingaleGeneration,
   findOpenEthMartingalePosition,
+  nextEthMartingaleSequence,
   projectEthMartingaleLedgerExportRow,
   summarizeEthMartingaleLedgerExport,
   summarizeEthMartingaleOrders,
@@ -116,6 +119,9 @@ test("shared placement gateway preserves legacy zero, partial, and ambiguous lif
   const request = {
     state: market, side: "no" as const, step: 0, requestedPrincipalCents: 1500,
     requestedContracts: 30, easternDate: "2026-08-22",
+    expectedMartingaleState: {
+      easternDate: "2026-08-22", side: "no" as const, martingaleStep: 0, realizedPnlCents: 0,
+    },
   };
   for (const scenario of [
     { name: "zero fill", response: { order: { order_id: "zero", status: "resting", fill_count_fp: "0.00" } }, expected: ["reserve", "post_started", "post", "resting:0"] },
@@ -176,7 +182,7 @@ test("daily loss -250 boundary is enforced by the shared preflight-and-placement
 test("shared gateway uses an explicitly supplied side and step without changing legacy defaults", async () => {
   const restore = setEnabled();
   const now = Date.now();
-  let reserved: { side: string; step: number } | null = null;
+  let reserved: { side: string; step: number; expectedStep: number } | null = null;
   _setEthNoMartingaleDependenciesForTesting({
     now: () => now,
     isEthOrderSubmissionPermitted: () => true,
@@ -187,7 +193,7 @@ test("shared gateway uses an explicitly supplied side and step without changing 
         spentCents: 0, realizedPnlCents: 0,
       }),
       reserveEthMartingaleEntry: async (entry: any) => {
-        reserved = { side: entry.side, step: entry.martingaleStep };
+        reserved = { side: entry.side, step: entry.martingaleStep, expectedStep: entry.expectedState.martingaleStep };
         return true;
       },
     }),
@@ -197,7 +203,66 @@ test("shared gateway uses an explicitly supplied side and step without changing 
       state: openMarket("KXETH15M-candidate-overrides", now),
       side: "yes", step: 4, requestedPrincipalCents: 42_000,
     });
-    assert.deepEqual(reserved, { side: "yes", step: 4 });
+    assert.deepEqual(reserved, { side: "yes", step: 4, expectedStep: 0 });
+  } finally {
+    _setEthNoMartingaleDependenciesForTesting(null);
+    restore();
+  }
+});
+
+test("a stale Step 0 reservation after a Step 2 loss rolls back before POST, then a fresh evaluation uses Step 3", async () => {
+  const restore = setEnabled();
+  const now = Date.UTC(2026, 7, 25, 16, 0, 0);
+  const date = easternDay(new Date(now));
+  let authoritative = {
+    easternDate: date, side: "no" as "yes" | "no", martingaleStep: 0,
+    spentCents: 0, realizedPnlCents: 0,
+  };
+  const reservations: Array<{ step: number; expectedStep: number; principal: number }> = [];
+  let posts = 0;
+  let balanceReads = 0;
+  _setEthNoMartingaleDependenciesForTesting({
+    now: () => now,
+    isEthOrderSubmissionPermitted: () => true,
+    fetchExchangeBalance: async () => {
+      balanceReads++;
+      // The concurrently settled prior NO Step 2 / $60 loss advances the
+      // authoritative regular ladder while this evaluation is in preflight.
+      if (balanceReads === 1) {
+        authoritative = {
+          ...authoritative, martingaleStep: 3, realizedPnlCents: -6_000,
+        };
+      }
+      return { value: { balance: 1_000_000 }, stale: false };
+    },
+    authFetch: async () => { posts++; return { order: { order_id: "fresh-step-3", status: "resting", fill_count_fp: "0.00" } }; },
+    store: makeStore({
+      getEthMartingaleState: async () => ({ ...authoritative }),
+      reserveEthMartingaleEntry: async (entry: any) => {
+        reservations.push({
+          step: entry.martingaleStep, expectedStep: entry.expectedState.martingaleStep,
+          principal: entry.requestedContracts * entry.noPriceCents,
+        });
+        return entry.expectedState.easternDate === authoritative.easternDate
+          && entry.expectedState.side === authoritative.side
+          && entry.expectedState.martingaleStep === authoritative.martingaleStep
+          && entry.expectedState.realizedPnlCents === authoritative.realizedPnlCents
+          ? "reserved"
+          : "failed";
+      },
+    }),
+  } as any);
+  try {
+    await runEthPreflightAndPlacement({ state: openMarket("KXETH15M-stale-step-0", now) });
+    assert.deepEqual(reservations, [{ step: 0, expectedStep: 0, principal: 1_500 }]);
+    assert.equal(posts, 0, "failed stale reservation must never reach the exchange POST");
+
+    await runEthPreflightAndPlacement({ state: openMarket("KXETH15M-fresh-step-3", now) });
+    assert.deepEqual(reservations, [
+      { step: 0, expectedStep: 0, principal: 1_500 },
+      { step: 3, expectedStep: 3, principal: 12_000 },
+    ]);
+    assert.equal(posts, 1, "a fresh Step 3 evaluation may submit after the stale one rolled back");
   } finally {
     _setEthNoMartingaleDependenciesForTesting(null);
     restore();
@@ -505,9 +570,12 @@ test("ETH-only final entry boundary permanently rejects DOGE and BTC policy esca
 
 // ── principal ladder ──────────────────────────────────────────────────────────
 
-test("ETH uses exactly three principals [1500, 3000, 6000] and clamps at step 2", () => {
-  assert.deepEqual(ETH_PRINCIPALS_CENTS, [1500, 3000, 6000]);
-  assert.deepEqual([0, 1, 2, 3, 4].map(ethPrincipalForStep), [1500, 3000, 6000, 6000, 6000]);
+test("ETH uses exactly six principals and clamps at step 5", () => {
+  assert.deepEqual(ETH_PRINCIPALS_CENTS, [1500, 3000, 6000, 12000, 24000, 32000]);
+  assert.deepEqual(
+    [-1, 0, 1, 2, 3, 4, 5, 6].map(ethPrincipalForStep),
+    [1500, 1500, 3000, 6000, 12000, 24000, 32000, 32000],
+  );
 });
 
 // ── GTC payload correctness ───────────────────────────────────────────────────
@@ -705,11 +773,11 @@ test("each ETH entry evaluation obtains a fresh exchange balance instead of reus
   }
 });
 
-test("contracts = floor(principal / 50): step 0=30, step 1=60, step 2=120", () => {
-  // 1500/50=30, 3000/50=60, 6000/50=120
-  assert.equal(Math.floor(ethPrincipalForStep(0) / 50), 30);
-  assert.equal(Math.floor(ethPrincipalForStep(1) / 50), 60);
-  assert.equal(Math.floor(ethPrincipalForStep(2) / 50), 120);
+test("contracts = floor(principal / 50) across all six Regular rungs", () => {
+  assert.deepEqual(
+    [0, 1, 2, 3, 4, 5].map((step) => Math.floor(ethPrincipalForStep(step) / 50)),
+    [30, 60, 120, 240, 480, 640],
+  );
 });
 
 // ── GTC order is placed (evaluateEthNoMartingale flow) ────────────────────────
@@ -1910,7 +1978,7 @@ test("partial fill advances step and flips side from the official market result"
   assert.equal(nextSide, "yes", "a winning partial fill flips side");
 });
 
-test("zero-fill win flips side and resets the ETH ladder from the official result", async () => {
+test("zero-fill official win is recorded without changing Regular side/rung", async () => {
   const order = makeUnsettledOrder({
     id: "eth-zero-fill-win", side: "no", martingaleStep: 2,
     filledContracts: 0, outcome: "zero_fill",
@@ -1923,7 +1991,7 @@ test("zero-fill win flips side and resets the ETH ladder from the official resul
       listUnsettledEthMartingaleZeroFillOrders: async () => [order],
       advanceEthMartingaleLadderForZeroFill: async (id: string, result: string) => {
         transitions.push({ id, result });
-        nextState = { side: "yes", martingaleStep: 0 };
+        order.settlementResult = result as any;
         return true;
       },
     }),
@@ -1931,11 +1999,11 @@ test("zero-fill win flips side and resets the ETH ladder from the official resul
   try {
     await reconcileEthMartingaleZeroFillLadders();
     assert.deepEqual(transitions, [{ id: "eth-zero-fill-win", result: "no" }]);
-    assert.deepEqual(nextState, { side: "yes", martingaleStep: 0 });
+    assert.deepEqual(nextState, { side: "no", martingaleStep: 2 });
   } finally { _setEthNoMartingaleDependenciesForTesting(null); }
 });
 
-test("zero-fill loss keeps side and advances the ETH ladder from the official result", async () => {
+test("zero-fill official loss is recorded without changing Regular side/rung", async () => {
   const order = makeUnsettledOrder({
     id: "eth-zero-fill-loss", side: "yes", martingaleStep: 1,
     filledContracts: 0, outcome: "zero_fill",
@@ -1948,7 +2016,7 @@ test("zero-fill loss keeps side and advances the ETH ladder from the official re
       listUnsettledEthMartingaleZeroFillOrders: async () => [order],
       advanceEthMartingaleLadderForZeroFill: async (id: string, result: string) => {
         transitions.push({ id, result });
-        nextState = { side: "yes", martingaleStep: 2 };
+        order.settlementResult = result as any;
         return true;
       },
     }),
@@ -1956,7 +2024,7 @@ test("zero-fill loss keeps side and advances the ETH ladder from the official re
   try {
     await reconcileEthMartingaleZeroFillLadders();
     assert.deepEqual(transitions, [{ id: "eth-zero-fill-loss", result: "no" }]);
-    assert.deepEqual(nextState, { side: "yes", martingaleStep: 2 });
+    assert.deepEqual(nextState, { side: "yes", martingaleStep: 1 });
   } finally { _setEthNoMartingaleDependenciesForTesting(null); }
 });
 
@@ -2314,34 +2382,25 @@ test("restart: discovered fully executed $30 NO order persists its exchange iden
 
 // ── full fill advances the ladder ─────────────────────────────────────────────
 
-test("full_fill settlement advances ladder step and flips side (store contract)", () => {
-  // Validate the state machine logic: full fill → step=0 (win) or step+1 (loss), side flip on win.
-  // Use a helper to prevent TypeScript literal narrowing on the side/result comparisons.
-  const flipSideHelper = (s: "yes" | "no"): "yes" | "no" => s === "yes" ? "no" : "yes";
-  // step 0, side=no, result=no (win) → nextStep=0, nextSide=yes
-  {
-    const step = 0;
-    const side: "yes" | "no" = flipSideHelper("yes"); // ="no", but not narrowed
-    const result: "yes" | "no" = flipSideHelper("yes"); // ="no", but not narrowed
-    const won = result === side;
-    const nextStep = won ? 0 : step >= 2 ? 0 : step + 1;
-    const nextSide: "yes" | "no" = won ? flipSideHelper(side) : side;
-    assert.equal(won, true, "NO side + NO result = win");
-    assert.equal(nextStep, 0, "win resets step");
-    assert.equal(nextSide, "yes", "win flips side no→yes");
+test("Regular loss advances through all six steps and resets only after step 5", () => {
+  let state = { side: "no" as const, step: 0 };
+  for (const expectedStep of [1, 2, 3, 4, 5, 0]) {
+    state = nextEthMartingaleSequence(state.side, state.step, "yes") as typeof state;
+    assert.equal(state.side, "no", "loss never flips side");
+    assert.equal(state.step, expectedStep);
   }
-  // step 0, side=no, result=yes (loss) → nextStep=1, nextSide=no
-  {
-    const step = 0;
-    const side: "yes" | "no" = flipSideHelper("yes"); // ="no"
-    const result: "yes" | "no" = flipSideHelper("no"); // ="yes"
-    const won = result === side;
-    const nextStep = won ? 0 : step >= 2 ? 0 : step + 1;
-    const nextSide: "yes" | "no" = won ? flipSideHelper(side) : side;
-    assert.equal(won, false, "NO side + YES result = loss");
-    assert.equal(nextStep, 1, "loss increments step");
-    assert.equal(nextSide, "no", "loss keeps side");
+});
+
+test("Regular win from every rung flips side and resets to step 0", () => {
+  for (let step = 0; step <= 5; step++) {
+    assert.deepEqual(nextEthMartingaleSequence("no", step, "no"), { side: "yes", step: 0 });
+    assert.deepEqual(nextEthMartingaleSequence("yes", step, "yes"), { side: "no", step: 0 });
   }
+});
+
+test("step-5 loss resets to step 0 without flipping side", () => {
+  assert.deepEqual(nextEthMartingaleSequence("no", 5, "yes"), { side: "no", step: 0 });
+  assert.deepEqual(nextEthMartingaleSequence("yes", 5, "no"), { side: "yes", step: 0 });
 });
 
 test("full_fill reconciliation: settleEthMartingaleOrder called once when market resolves", async () => {
@@ -2768,19 +2827,35 @@ test("NO entry reserves with noPriceCents=50 and sends an ask GTC payload", asyn
 
 // ── step / side state machine ─────────────────────────────────────────────────
 
-test("step 1 uses $30 principal, step 2 uses $60 principal", () => {
-  assert.equal(ethPrincipalForStep(1), 3000);
-  assert.equal(ethPrincipalForStep(2), 6000);
+test("steps 1 through 5 use the complete six-step principal ladder", () => {
+  assert.deepEqual([1, 2, 3, 4, 5].map(ethPrincipalForStep), [3000, 6000, 12000, 24000, 32000]);
 });
 
-test("after three consecutive losses step resets to 0, side is unchanged", () => {
-  let step = 0;
-  const side = "no";
-  function applyLoss(s: number): number { return s >= 2 ? 0 : s + 1; }
-  step = applyLoss(step); assert.equal(step, 1);
-  step = applyLoss(step); assert.equal(step, 2);
-  step = applyLoss(step); assert.equal(step, 0, "step wraps to 0 after third loss");
-  assert.equal(side, "no", "side unchanged after losses");
+test("after six consecutive losses step resets to 0 and side is unchanged", () => {
+  let state = { side: "no" as const, step: 0 };
+  for (const expectedStep of [1, 2, 3, 4, 5, 0]) {
+    state = nextEthMartingaleSequence(state.side, state.step, "yes") as typeof state;
+    assert.equal(state.step, expectedStep);
+  }
+  assert.equal(state.side, "no");
+});
+
+test("chronology ownership rejects a late old loss and late old win once a newer filled owner exists", () => {
+  assert.equal(ethMartingaleAttemptOwnsSequence(30), true);
+  assert.equal(ethMartingaleAttemptOwnsSequence(1), true);
+  assert.equal(isEthMartingaleSequenceOwner("older-filled", "newer-filled"), false);
+  assert.equal(isEthMartingaleSequenceOwner("newer-filled", "newer-filled"), true);
+  // Whether the late old settlement is a win or a loss is irrelevant: it no
+  // longer owns side/rung after the newer real attempt exists.
+  assert.deepEqual(nextEthMartingaleSequence("no", 3, "yes"), { side: "no", step: 4 });
+  assert.deepEqual(nextEthMartingaleSequence("no", 3, "no"), { side: "yes", step: 0 });
+});
+
+test("zero-fill and pre-fill rejection are neutral and cannot displace a real chronology owner", () => {
+  assert.equal(ethMartingaleAttemptOwnsSequence(0), false);
+  assert.equal(ethMartingaleAttemptOwnsSequence(null), false);
+  assert.equal(ethMartingaleAttemptOwnsSequence(undefined), false);
+  assert.equal(isEthMartingaleSequenceOwner("filled-owner", "filled-owner"), true);
 });
 
 test("a win flips side yes→no and resets step to 0", () => {

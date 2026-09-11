@@ -3,7 +3,7 @@
  *
  * Architecture:
  *  - WebSocket (kalshiStream) is the PRIMARY trigger. Every incoming tick for
- *    a tracked market is merged into a local state cache and evaluated immediately.
+ *    a tracked market is merged into a localn state cache and evaluated immediately.
  *  - REST is the FALLBACK + RECONCILIATION path:
  *      • Runs automatically when the WS has been silent for >30 s or is disconnected.
  *      • Also runs on a fixed 45-second reconciliation interval regardless of WS health.
@@ -694,6 +694,9 @@ import {
   isEth420CandidateExecutionPermitted,
   observeEth420Candidate,
 } from "./strategies/eth420SixStepCandidate.js";
+import { runEthJumpServiceWhenExplicitlyEnabled } from "./strategies/ethJumpLiveRunner.js";
+import { runEthReversalServiceWhenExplicitlyEnabled } from "./strategies/ethReversalLiveRunner.js";
+import { currentEthServiceRole, serviceMayRunMartingale } from "./strategies/ethServiceRole.js";
 export type { WindowLogEntry } from "./windowLog";
 export { getWindowLog } from "./windowLog";
 
@@ -959,14 +962,44 @@ async function evaluate(
   // legacy 80¢ protective-exit path. Legacy cleanup runs only from the
   // restored-position monitor in index.ts and is never driven by this evaluator.
   if (isEthTicker(state.ticker)) {
-    await (_evaluateEthNoMartingaleImpl ?? evaluateEthNoMartingale)({
+    const ethServiceRole = currentEthServiceRole();
+    if (serviceMayRunMartingale(ethServiceRole)) {
+      await (_evaluateEthNoMartingaleImpl ?? evaluateEthNoMartingale)({
+        ticker: state.ticker,
+        exchangeIndex: state.exchangeIndex ?? null,
+        openTime: state.openTime,
+        closeTime: state.closeTime,
+        status: state.status,
+      });
+      await evaluateEth420Candidate(state, _timing);
+    }
+  const jumpOpenTimeMs = state.openTime == null ? null : Date.parse(state.openTime);
+  await runEthJumpServiceWhenExplicitlyEnabled({
+    store: tradeStore,
+    market: {
       ticker: state.ticker,
+      easternDate: jumpOpenTimeMs != null && Number.isFinite(jumpOpenTimeMs)
+        ? easternDay(new Date(jumpOpenTimeMs)) : easternDay(new Date()),
+      observedAtMs: Date.now(),
+      floorStrike: state.floorStrike ?? null,
+      openTimeMs: jumpOpenTimeMs,
+    },
+    exchangeIndex: state.exchangeIndex ?? null,
+  });
+    // Dormant wiring only. C shares the same market identity but has its own
+    // independent signal, ledger identity, and hard execution fence.
+    await runEthReversalServiceWhenExplicitlyEnabled({
+      store: tradeStore,
+      market: {
+        ticker: state.ticker,
+        easternDate: jumpOpenTimeMs != null && Number.isFinite(jumpOpenTimeMs)
+          ? easternDay(new Date(jumpOpenTimeMs)) : easternDay(new Date()),
+        observedAtMs: Date.now(),
+        floorStrike: state.floorStrike ?? null,
+        openTimeMs: jumpOpenTimeMs,
+      },
       exchangeIndex: state.exchangeIndex ?? null,
-      openTime: state.openTime,
-      closeTime: state.closeTime,
-      status: state.status,
     });
-    await evaluateEth420Candidate(state, _timing);
   }
   // The retired BTC/SOL/DOGE entry evaluator below is intentionally kept only
   // as historical source material. This unconditional production fence has no
@@ -3614,8 +3647,16 @@ async function restFetchSeries(
 async function restFetchAll(source: TriggerSource, isEthSettlementRetryPass = false): Promise<void> {
   const fetchStartMs = Date.now();
   await Promise.all(ACTIVE_ENTRY_SERIES.map((series) => restFetchSeries(series, source, fetchStartMs)));
-  const ethSettlementComplete = await reconcileEthMartingaleSettlements();
-  const ethExposure = await hasUnsettledEthMartingaleExposure();
+  const ethServiceRole = currentEthServiceRole();
+  const mayRunMartingale = serviceMayRunMartingale(ethServiceRole);
+  let ethSettlementComplete = true;
+  let ethExposure = false;
+  if (mayRunMartingale) {
+    ethSettlementComplete = await reconcileEthMartingaleSettlements();
+    // An unavailable exposure read is an unresolved exposure for retry
+    // purposes; do not coerce it into a safe-looking false value.
+    ethExposure = (await hasUnsettledEthMartingaleExposure()) ?? true;
+  }
 
   // A fetched next window may have been evaluated while the prior ETH GTC was
   // still unsettled. Revisit that exact in-memory market once reconciliation
@@ -3635,9 +3676,14 @@ async function restFetchAll(source: TriggerSource, isEthSettlementRetryPass = fa
   // remain correctly fenced by unresolved exposure, but must never turn into a
   // five-second polling loop; the normal reconciliation cadence can establish a
   // new one-shot retry later.
-  if ((!ethSettlementComplete || ethExposure !== false) && !isEthSettlementRetryPass) {
+   if (
+    mayRunMartingale &&
+    (!ethSettlementComplete || ethExposure !== false) &&
+    !isEthSettlementRetryPass
+  ) {
     armEthSettlementRetry(source);
   }
+
 }
 
 /** Configure the orchestration-only boundary scheduler with existing authority. */

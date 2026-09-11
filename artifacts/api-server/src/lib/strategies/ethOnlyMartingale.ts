@@ -1,9 +1,10 @@
 /**
  * Execution-only ETH strategy — KXETH15M series only.
  *
- * Three-step martingale. Principals: $15, $30, $60 (cents: 1500, 3000, 6000).
+ * Six-step martingale. Principals: $15, $30, $60, $120, $240, $320
+ * (cents: 1500, 3000, 6000, 12000, 24000, 32000).
  * Side starts "no" each ET day. After a win: side flips yes↔no, step=0.
- * After a loss: side unchanged, step increments; after step 2 it resets to 0.
+ * After a loss: side unchanged, step increments; after step 5 it resets to 0.
  * Daily state resets when the ET day changes (no timer).
  * Fail-closed if current day realized P&L ≤ -$250.00 (-25000 cents).
  *
@@ -51,9 +52,9 @@ export interface EthMarketState {
   status: string | null;
 }
 
-export const ETH_PRINCIPALS_CENTS = [1500, 3000, 6000] as const;
+export const ETH_PRINCIPALS_CENTS = [1500, 3000, 6000, 12000, 24000, 32000] as const;
 /** Loss stop: fail closed if realized daily P&L (even-money cents) is at or below this. */
-export const ETH_DAILY_LOSS_STOP_CENTS = -25_000;
+export const ETH_DAILY_LOSS_STOP_CENTS = -120_000;
 /** A pending row has not entered POST yet, so it can be released after this bound. */
 export const ETH_PENDING_RESERVATION_EXPIRY_MS = 60_000;
 /**
@@ -105,7 +106,7 @@ export function isEthMarketEligible(
 }
 
 export function ethPrincipalForStep(step: number): number {
-  return ETH_PRINCIPALS_CENTS[Math.max(0, Math.min(2, step))]!;
+  return ETH_PRINCIPALS_CENTS[Math.max(0, Math.min(5, step))]!;
 }
 
 /** Kalshi taker fee, rounded up to whole cents as charged by the exchange. */
@@ -665,6 +666,16 @@ export interface EthPlacementLifecycleRequest {
   requestedPrincipalCents: number;
   requestedContracts: number;
   easternDate: string;
+  /**
+   * Immutable sequence snapshot used by the durable reservation to reject an
+   * evaluation that became stale while its exchange preflight was running.
+   */
+  expectedMartingaleState: {
+    easternDate: string;
+    side: "yes" | "no";
+    martingaleStep: number;
+    realizedPnlCents: number;
+  };
 }
 
 export type EthPlacementLifecycleGateway = (
@@ -715,7 +726,7 @@ export type EthPreflightAndPlacementGateway = (
  */
 export const placeEthMartingaleGtcEntry: EthPlacementLifecycleGateway = async ({
   state, side, step, requestedPrincipalCents: _requestedPrincipalCents,
-  requestedContracts: contracts, easternDate: date,
+  requestedContracts: contracts, easternDate: date, expectedMartingaleState,
 }) => {
   const exchangeIndex = state.exchangeIndex!;
   const noPriceCents = ETH_GTC_LIMIT_PRICE_CENTS;
@@ -728,6 +739,7 @@ export const placeEthMartingaleGtcEntry: EthPlacementLifecycleGateway = async ({
     side,
     martingaleStep: step, noPriceCents,
     requestedContracts: contracts, reservedFeeCents,
+    expectedState: expectedMartingaleState,
     claimProofFence: proofMode,
   });
   if (reservation === "proof_already_claimed") {
@@ -892,17 +904,17 @@ export const runEthPreflightAndPlacement: EthPreflightAndPlacementGateway = asyn
 
     const date = easternDay(new Date(ethDependencies.now()));
 
-    // Day-change reset: sequence.easternDate mismatch means the store will reset on first
-    // reservation. Compute effective values for this fresh day.
-    const isNewDay = sequence.easternDate !== date;
-    const effectivePnl = requestedRealizedPnlCents == null
-      ? (isNewDay ? 0 : sequence.realizedPnlCents)
-      : Math.trunc(requestedRealizedPnlCents);
-    const effectiveStep = requestedStep == null
-      ? (isNewDay ? 0 : sequence.martingaleStep)
-      : Math.max(0, Math.trunc(requestedStep));
-    // Side also resets to "no" at the start of each fresh ET day.
-    const effectiveSide: "yes" | "no" = requestedSide ?? (isNewDay ? "no" : sequence.side);
+   // Day change resets daily accounting/risk only. The martingale sequence is continuous
+// across midnight ET, so side and rung always come from the durable sequence unless
+// an explicitly approved caller override is supplied.
+const isNewDay = sequence.easternDate !== date;
+const effectivePnl = requestedRealizedPnlCents == null
+  ? (isNewDay ? 0 : sequence.realizedPnlCents)
+  : Math.trunc(requestedRealizedPnlCents);
+const effectiveStep = requestedStep == null
+  ? sequence.martingaleStep
+  : Math.max(0, Math.trunc(requestedStep));
+const effectiveSide: "yes" | "no" = requestedSide ?? sequence.side;
 
     // Fail closed: loss stop
     if (effectivePnl <= dailyLossStopCents) {
@@ -918,8 +930,19 @@ export const runEthPreflightAndPlacement: EthPreflightAndPlacementGateway = asyn
     if (contracts < 1) return;
 
     const reservedFeeCents = ethTakerFeeCents(noPriceCents, contracts);
-    const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;
-    let exchangeBalance;
+
+const projectedFullLossPnlCents =
+  effectivePnl - requestedPrincipalCents - reservedFeeCents;
+
+if (projectedFullLossPnlCents < dailyLossStopCents) {
+  setEthBlockerStatus(
+    "daily_loss_stop",
+    "ETH entry is blocked because a full loss on this wager would exceed the daily loss limit",
+  );
+  return;
+}
+
+const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;    let exchangeBalance;
     try {
       exchangeBalance = await ethDependencies.fetchExchangeBalance(exchangeIndex);
     } catch (err) {
@@ -961,6 +984,12 @@ export const runEthPreflightAndPlacement: EthPreflightAndPlacementGateway = asyn
       state, side: effectiveSide, step: effectiveStep,
       requestedPrincipalCents,
       requestedContracts: contracts, easternDate: date,
+      expectedMartingaleState: {
+        easternDate: sequence.easternDate,
+        side: sequence.side,
+        martingaleStep: sequence.martingaleStep,
+        realizedPnlCents: sequence.realizedPnlCents,
+      },
     });
   } finally { active.delete(state.ticker); }
 };
@@ -995,7 +1024,7 @@ export async function getEthMartingalePriorOrderSideHints(): Promise<Array<{
       winNextSide: row.side === "yes" ? "no" : "yes",
       winNextStep: 0,
       lossNextSide: row.side,
-      lossNextStep: row.martingaleStep >= 2 ? 0 : row.martingaleStep + 1,
+      lossNextStep: row.martingaleStep >= 5 ? 0 : row.martingaleStep + 1,
       createdAtMs: row.createdAtMs,
     }));
 }

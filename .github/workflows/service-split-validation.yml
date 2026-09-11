@@ -1,0 +1,49 @@
+name: service-split-validation
+
+on:
+  push:
+    branches: [service-split-a-b-c]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: service-split-a-b-c
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Assert Service A/B cutover invariant
+        shell: python
+        run: |
+          from pathlib import Path
+          s = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts').read_text()
+          t = Path('artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.test.ts').read_text()
+          assert 'const effectiveWagerCents = normalWagerCents;' in s
+          assert 'sweetSpotTell ? Math.max(normalWagerCents, ETH_420_OVERRIDE_CENTS)' not in s
+          assert 'jump_signal_observed_service_b_owned' in s
+          assert 'assert.equal(atP95.effectiveWagerCents, 42000);' not in t
+          assert 'assert.equal(downJump.effectiveWagerCents, 42000);' not in t
+          assert 'test("qualifying jump keeps the step-0 carried side while using $420"' not in t
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Run service isolation tests
+        working-directory: artifacts/api-server
+        run: node scripts/run-service-split-tests.mjs
+      - name: Run existing six-step candidate harness
+        working-directory: artifacts/api-server
+        run: node scripts/run-eth420-six-step-candidate-test.mjs
+      - name: Build canonical service-split production bundle
+        working-directory: artifacts/api-server
+        run: node build-service-split.mjs

@@ -144,6 +144,32 @@ async function _reconcile(
     upsertMarketResultInSql(ticker, result);
     recordWindowSettlementInSql(ticker, result as "yes" | "no");
     wlSetSettlementResult(ticker, result as "yes" | "no");
+
+    // B/C settlement is accounting-only. It consumes the already-authoritative
+    // market result, never mutates martingale state, and must never interrupt
+    // the existing outcome reconciliation path if its own evidence is incomplete.
+    if (/^KXETH15M-/.test(ticker)) {
+      try {
+        const { reconcilePersistedEthBigBetsForTicker } = await import(
+          "./strategies/ethBigBetSettlementReconciler.js"
+        );
+        const bigBetAccounting = await reconcilePersistedEthBigBetsForTicker(
+          ticker,
+          result as "yes" | "no",
+        );
+        if (bigBetAccounting.settled > 0 || bigBetAccounting.unresolved > 0) {
+          logger.info(
+            { ticker, result, ...bigBetAccounting },
+            "B/C accounting sidecar processed authoritative ETH settlement",
+          );
+        }
+      } catch (err) {
+        logger.warn(
+          { err, ticker, result },
+          "B/C accounting sidecar unavailable; normal outcome reconciliation continues",
+        );
+      }
+    }
     if (process.env["PHASE4B_PASSIVE_CAPTURE_ENABLED"] === "true") {
       try {
         const { upsertPhase4BMarketOutcomeInSql } = await import("./tradeStore.js");

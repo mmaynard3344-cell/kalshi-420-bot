@@ -22,6 +22,19 @@ const testFiles = [
   "src/lib/ethBoundarySettlementOrchestrator.test.ts",
   "src/lib/eth420BoundarySettlementOrchestrator.test.ts",
   "src/lib/eth420RunawayResearch.test.ts",
+  "src/lib/strategies/ethServiceIsolation.test.ts",
+  "src/lib/strategies/ethServiceEnablementContract.test.ts",
+  "src/lib/strategies/ethBigBetLifecycle.test.ts",
+  "src/lib/strategies/ethBigBetExecutor.test.ts",
+  "src/lib/strategies/ethAccountCapitalGuard.test.ts",
+  "src/lib/strategies/ethBigBetCapitalFacts.test.ts",
+  "src/lib/strategies/ethBigBetCapitalPolicy.test.ts",
+  "src/lib/strategies/ethServiceACutover.test.ts",
+  "src/lib/strategies/ethJumpServiceRuntime.test.ts",
+  "src/lib/strategies/ethBigBetStore.test.ts",
+  "src/lib/strategies/ethJumpLiveRunner.test.ts",
+  "src/lib/strategies/ethReversalServiceRuntime.test.ts",
+  "src/lib/strategies/ethReversalLiveRunner.test.ts",
 ];
 
 const compiledTests = [];
@@ -62,7 +75,7 @@ run(process.execPath, ["scripts/run-trade-manual-order-boundary-test.mjs"]);
 run(process.execPath, ["scripts/run-eth420-live-market-test.mjs"]);
 run(process.execPath, ["scripts/run-eth420-boundary-research-test.mjs"]);
 // The dispatcher-boundary test uses pino, so run it with the dedicated
-// esbuild-plugin-pino runner.
+// JavaScript esbuild API. Pure historical guards remain safe here.
 run(process.execPath, ["scripts/run-autotrader-test.mjs"]);
 run(process.execPath, ["scripts/run-kalshi-lifecycle-transport-test.mjs"]);
 // The dashboard regression imports API models that use pino, so it needs the
