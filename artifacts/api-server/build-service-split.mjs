@@ -46,11 +46,6 @@ async function buildAll() {
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-single-exposure-proof.mjs")], {
     stdio: "inherit",
   });
-  // Temporary observability only: identify the exact fail-closed gate that
-  // prevents Service A from entering a newly detected ETH window.
-  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-entry-gate-diagnostic.mjs")], {
-    stdio: "inherit",
-  });
 
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
