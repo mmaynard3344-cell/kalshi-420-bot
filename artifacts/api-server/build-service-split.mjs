@@ -52,6 +52,12 @@ async function buildAll() {
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-historical-repair-nonblocking.mjs")], {
     stdio: "inherit",
   });
+  // Zero-fill settlement rows have no live contracts. If their maintenance queue
+  // is unavailable, continue its bounded retry but let only the authoritative
+  // unsettled-order ledger decide whether live Service A exposure blocks entry.
+  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-zero-fill-maintenance-nonblocking.mjs")], {
+    stdio: "inherit",
+  });
 
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
