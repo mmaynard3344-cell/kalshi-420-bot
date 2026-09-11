@@ -58,6 +58,12 @@ async function buildAll() {
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-zero-fill-maintenance-nonblocking.mjs")], {
     stdio: "inherit",
   });
+  // Diagnostic only: distinguish a global store-health block, an absent V2 state
+  // row, and a direct SQL error when Service A reads its required sequence state.
+  // This transform does not alter entry eligibility or fail-closed behavior.
+  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-sequence-state-diagnostics.mjs")], {
+    stdio: "inherit",
+  });
 
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
