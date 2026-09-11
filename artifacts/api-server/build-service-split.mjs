@@ -52,6 +52,12 @@ async function buildAll() {
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-historical-repair-nonblocking.mjs")], {
     stdio: "inherit",
   });
+  // Zero-fill settlement rows have no live contracts. If their maintenance queue
+  // is unavailable, continue its bounded retry but let only the authoritative
+  // unsettled-order ledger decide whether live Service A exposure blocks entry.
+  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-zero-fill-maintenance-nonblocking.mjs")], {
+    stdio: "inherit",
+  });
 
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
@@ -89,7 +95,7 @@ async function buildAll() {
 import __bannerPath from 'node:path';
 import __bannerUrl from 'node:url';
 globalThis.require = __bannerCrReq(import.meta.url);
-globalThis.__filename = __bannerUrl.fileURLToPath(import.meta.url);
+globalThis.__filename = __bannerUrl.fileURLToPath(globalThis.__filename);
 globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);`,
     },
   });
