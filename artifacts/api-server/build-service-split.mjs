@@ -41,6 +41,11 @@ async function buildAll() {
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-kalshi-stream-status-backfill.mjs")], {
     stdio: "inherit",
   });
+  // Consolidate Service A's live-exposure proof into reconciliation itself so a
+  // just-proven clean ledger is not immediately re-read and spuriously blocked.
+  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-single-exposure-proof.mjs")], {
+    stdio: "inherit",
+  });
   // Temporary observability only: identify the exact fail-closed gate that
   // prevents Service A from entering a newly detected ETH window.
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-entry-gate-diagnostic.mjs")], {
