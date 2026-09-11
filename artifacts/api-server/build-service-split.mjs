@@ -63,6 +63,11 @@ async function buildAll() {
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-orphan-claim-recovery.mjs")], {
     stdio: "inherit",
   });
+  // A reservation may report success only if the exact durable A order row was
+  // returned by INSERT and can be re-read under the same transaction lock.
+  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-reservation-row-proof.mjs")], {
+    stdio: "inherit",
+  });
   // Diagnostic only: distinguish a global store-health block, an absent V2 state
   // row, a direct SQL error, reservation rollback, and ticker-claim ownership.
   // This transform does not alter entry eligibility or fail-closed behavior.
