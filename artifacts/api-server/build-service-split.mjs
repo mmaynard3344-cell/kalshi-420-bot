@@ -20,10 +20,14 @@ function resolveCommitSha() {
 
 async function buildAll() {
   // Service-split branches contain the canonical validated source directly.
-  // Apply only the read-only dashboard history pagination shim before bundling.
-  // It changes GET /trade/orders and GET /trade/fills pagination only; no
-  // evaluator, strategy, risk, reservation or order-placement path is touched.
+  // Apply only explicit, narrowly-scoped production transforms before bundling.
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-dashboard-history-pagination.mjs")], {
+    stdio: "inherit",
+  });
+  // Service A is intentionally an always-trade martingale road. Remove only its
+  // daily-P&L entry stops; reconciliation, exposure, balance, market metadata,
+  // deduplication, durable reservation, and runtime kill-switch gates remain intact.
+  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-always-trade.mjs")], {
     stdio: "inherit",
   });
 
