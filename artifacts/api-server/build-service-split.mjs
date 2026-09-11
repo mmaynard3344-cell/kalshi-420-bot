@@ -30,6 +30,12 @@ async function buildAll() {
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-always-trade.mjs")], {
     stdio: "inherit",
   });
+  // The production database still contains a legacy BEFORE INSERT daily-loss
+  // trigger that silently suppresses Service A order rows. Remove only that
+  // obsolete A-specific trigger during idempotent schema startup.
+  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-remove-daily-loss-db-trigger.mjs")], {
+    stdio: "inherit",
+  });
   // Kalshi's status=open market endpoint currently omits the row-level status
   // field. Retain the authoritative query status so Service A can recognize the
   // returned current window as open without weakening any other metadata gate.
