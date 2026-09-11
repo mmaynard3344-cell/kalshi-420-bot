@@ -26,5 +26,11 @@ const postCount = source.split(postBefore).length - 1;
 if (postCount !== 1) throw new Error(`Service A diagnostics: expected one POST-start fence anchor, found ${postCount}`);
 source = source.replace(postBefore, postAfter);
 
+const reservationRollbackBefore = `  } catch (err) {\n    if (err instanceof EthMartingaleReservationRollback) return \"failed\";\n    _healthy = false; _lastErrorMsg = String(err); _degradedReason = \`eth.reserve failed: \${_lastErrorMsg}\`;`;
+const reservationRollbackAfter = `  } catch (err) {\n    if (err instanceof EthMartingaleReservationRollback) {\n      logger.warn({ ticker: params.ticker, id: params.id, reason: err.message, expectedState: params.expectedState },\n        \"eth: reservation rolled back without database outage\");\n      return \"failed\";\n    }\n    _healthy = false; _lastErrorMsg = String(err); _degradedReason = \`eth.reserve failed: \${_lastErrorMsg}\`;`;
+const reservationRollbackCount = source.split(reservationRollbackBefore).length - 1;
+if (reservationRollbackCount !== 1) throw new Error(`Service A diagnostics: expected one reservation rollback anchor, found ${reservationRollbackCount}`);
+source = source.replace(reservationRollbackBefore, reservationRollbackAfter);
+
 await writeFile(target, source, "utf8");
-console.log("Service A diagnostics applied: sequence state, live ledger health, and pre-POST fence failures are now distinct");
+console.log("Service A diagnostics applied: sequence state, live ledger health, pre-POST fence, and reservation rollback failures are now distinct");
