@@ -68,6 +68,11 @@ async function buildAll() {
   execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-reservation-row-proof.mjs")], {
     stdio: "inherit",
   });
+  // Historical coverage-audit reconstruction is observability only. Do not let
+  // that potentially long scan delay the execution-critical startup path.
+  execFileSync(process.execPath, [path.resolve(artifactDir, "scripts/apply-service-a-fast-safe-startup.mjs")], {
+    stdio: "inherit",
+  });
   // Diagnostic only: distinguish a global store-health block, an absent V2 state
   // row, a direct SQL error, reservation rollback, and ticker-claim ownership.
   // This transform does not alter entry eligibility or fail-closed behavior.
