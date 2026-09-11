@@ -29,7 +29,12 @@ export type EthDownfadeLiveOutcome =
 
 let storeReady: Promise<void> | null = null;
 async function ensureStoreReady(): Promise<void> {
-  storeReady ??= initEthDownfadeExecutionStore();
+  if (!storeReady) {
+    storeReady = initEthDownfadeExecutionStore().catch((error) => {
+      storeReady = null;
+      throw error;
+    });
+  }
   return storeReady;
 }
 
