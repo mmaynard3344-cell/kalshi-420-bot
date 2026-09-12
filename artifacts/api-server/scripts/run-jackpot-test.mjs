@@ -23,5 +23,11 @@ await build({
   },
   plugins: [esbuildPluginPino({ transports: ["pino-pretty"] })],
 });
-const result = spawnSync(process.execPath, ["--test", outfile], { stdio: "inherit", cwd: outdir });
+const result = spawnSync(process.execPath, ["--test", outfile], {
+  stdio: "inherit",
+  cwd: outdir,
+  // Pure Jackpot tests import the shared DB module but never execute a query.
+  // Supply an inert local URL so test discovery cannot read production secrets.
+  env: { ...process.env, DATABASE_URL: "postgresql://localhost:5432/jackpot_unit_test" },
+});
 process.exit(result.status ?? 1);
