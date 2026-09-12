@@ -19,7 +19,11 @@ const PING_INTERVAL_MS  = 30_000; // keep idle connections alive
 const SERIES_STAGGER_MS = 3_000;
 const ETH_BOUNDARY_INTERVAL_MS = 15 * 60_000;
 const ETH_BOUNDARY_FIRST_PROBE_OFFSET_MS = 350;
-const ETH_BOUNDARY_RETRY_OFFSETS_MS = [2_000, 4_000] as const;
+// Every retry must bypass the shared 8 s series cache.  The prior implementation
+// reused a stale post-boundary response at +2 s/+4 s, which could leave A on the
+// previous ticker until the 45 s reconcile.  These bounded fresh probes cover
+// short Kalshi catalog lag without changing any trading decision logic.
+const ETH_BOUNDARY_RETRY_OFFSETS_MS = [1_000, 2_000, 4_000, 8_000, 12_000, 20_000, 30_000, 45_000] as const;
 
 export type KalshiMarketLifecycleEvent = {
   ticker: string;
@@ -135,8 +139,8 @@ class KalshiStream extends EventEmitter {
    * Independently refresh the active ETH market at every wall-clock 15-minute
    * boundary. This does not depend on receiving an unopened-market or lifecycle
    * event in advance, so an idle/stale WS cannot delay rollover discovery by a
-   * normal 120-second ticker-refresh phase. Two bounded retries cover the short
-   * period where Kalshi may not expose the new active ticker immediately.
+   * normal 120-second ticker-refresh phase. Every boundary probe is force-fresh
+   * so a stale post-boundary cache entry cannot defeat the retries.
    */
   private scheduleBoundaryRefresh() {
     if (this.destroyed) return;
@@ -145,10 +149,10 @@ class KalshiStream extends EventEmitter {
     const delayMs = Math.max(0, nextBoundaryMs + ETH_BOUNDARY_FIRST_PROBE_OFFSET_MS - now);
     setTimeout(() => {
       if (this.destroyed) return;
-      void this.refreshTickers();
+      void this.refreshTickers(true);
       for (const retryOffsetMs of ETH_BOUNDARY_RETRY_OFFSETS_MS) {
         setTimeout(() => {
-          if (!this.destroyed) void this.refreshTickers();
+          if (!this.destroyed) void this.refreshTickers(true);
         }, retryOffsetMs);
       }
       this.scheduleBoundaryRefresh();
@@ -157,16 +161,17 @@ class KalshiStream extends EventEmitter {
 
   /** Immediately re-fetch active tickers and reconnect if they changed.
    *  Fire-and-forget — call without await from rollover handlers. */
-  async refreshTickers() {
+  async refreshTickers(forceFresh = false) {
     this._lastRefreshAtMs = Date.now();
     try {
       const tickers: string[] = [];
       for (let i = 0; i < SERIES.length; i++) {
         // Stagger per-series requests to avoid concurrent hits to Kalshi
         if (i > 0) await new Promise<void>((r) => setTimeout(r, SERIES_STAGGER_MS));
-        // Use shared kalshiSeriesFetch so this request coalesces with autoTrader
-        // REST fallback calls — preventing duplicate Kalshi hits at boundaries.
-        const raw = await kalshiSeriesFetch(SERIES[i]);
+        // Use shared kalshiSeriesFetch so normal callers still coalesce. Boundary
+        // probes opt into forceFresh so each retry reaches Kalshi instead of
+        // reusing the prior probe's cached old ticker.
+        const raw = await kalshiSeriesFetch(SERIES[i], forceFresh ? { forceFresh: true } : {});
         const t   = raw?.["ticker"] as string | undefined;
         if (t) {
           tickers.push(t);
@@ -188,7 +193,7 @@ class KalshiStream extends EventEmitter {
       const prev = [...this.activeTickers].sort().join(",");
       const next = [...tickers].sort().join(",");
       if (prev !== next) {
-        logger.info({ tickers }, "KalshiStream: tickers changed, reconnecting");
+        logger.info({ tickers, forceFresh }, "KalshiStream: tickers changed, reconnecting");
         this.activeTickers = tickers;
         // Prune dedupe entries for tickers no longer active (old windows)
         for (const t of this.lastEmittedTradeCents.keys()) {
