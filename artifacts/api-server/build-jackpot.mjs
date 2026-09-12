@@ -19,7 +19,9 @@ await esbuild({
   platform: "node",
   bundle: true,
   format: "esm",
-  outfile: path.resolve(distDir, "jackpotIndex.mjs"),
+  outdir: distDir,
+  entryNames: "[name]",
+  outExtension: { ".js": ".mjs" },
   logLevel: "info",
   define: { "process.env.COMMIT_SHA": JSON.stringify(resolveCommitSha()) },
   external: [
