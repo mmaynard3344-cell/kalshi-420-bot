@@ -1,7 +1,6 @@
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { captureOrderbook } from "../orderbookCapture.js";
-import { getKrakenPrices } from "../krakenPrices.js";
 import { kalshiSeriesFetch } from "../kalshi.js";
 import { logger } from "../logger.js";
 
@@ -50,6 +49,19 @@ function marketSnapshot(raw: RawMarket | null) {
   };
 }
 
+async function fetchFreshEthSpot(): Promise<{ eth: number; receiptMs: number } | null> {
+  try {
+    const response = await fetch("https://api.kraken.com/0/public/Ticker?pair=ETHUSD", { headers: { Accept: "application/json" } });
+    if (!response.ok) return null;
+    const data = await response.json() as { result?: { XETHZUSD?: { c?: string[] } } };
+    const eth = Number(data.result?.XETHZUSD?.c?.[0]);
+    if (!Number.isFinite(eth) || eth <= 0) return null;
+    return { eth, receiptMs: Date.now() };
+  } catch {
+    return null;
+  }
+}
+
 async function initTable(): Promise<void> {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS jackpot_preboundary_telemetry (
@@ -64,6 +76,7 @@ async function initTable(): Promise<void> {
       next_ticker TEXT,
       next_floor_strike DOUBLE PRECISION,
       spot_eth DOUBLE PRECISION,
+      spot_receipt_ms BIGINT,
       spot_to_next_strike_bps DOUBLE PRECISION,
       current_yes_bid_cents INTEGER,
       current_yes_ask_cents INTEGER,
@@ -82,6 +95,7 @@ async function initTable(): Promise<void> {
       quality TEXT NOT NULL,
       UNIQUE(boundary_ms, anchor)
     )`);
+  await db.execute(sql`ALTER TABLE jackpot_preboundary_telemetry ADD COLUMN IF NOT EXISTS spot_receipt_ms BIGINT`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS jackpot_preboundary_boundary_idx ON jackpot_preboundary_telemetry(boundary_ms, scheduled_at_ms)`);
 }
 
@@ -90,7 +104,7 @@ async function capture(anchor: string, scheduledAtMs: number, boundaryMs: number
   const [currentRaw, nextRaw, spot] = await Promise.all([
     kalshiSeriesFetch("KXETH15M", { status: "open", forceFresh: true }),
     kalshiSeriesFetch("KXETH15M", { status: "unopened", forceFresh: true }),
-    getKrakenPrices(capturedAtMs).catch(() => null),
+    fetchFreshEthSpot(),
   ]);
 
   const current = marketSnapshot(currentRaw);
@@ -109,7 +123,7 @@ async function capture(anchor: string, scheduledAtMs: number, boundaryMs: number
   if (!current || current.closeTimeMs !== boundaryMs) quality.push("current_market_mismatch_or_missing");
   if (!next || next.openTimeMs !== boundaryMs) quality.push("next_market_unavailable_preopen");
   if (next?.floorStrike == null) quality.push("next_strike_missing");
-  if (!spot || !Number.isFinite(spot.eth) || spot.eth <= 0) quality.push("spot_missing");
+  if (!spot) quality.push("spot_missing");
   if (capturedAtMs - scheduledAtMs > 1_500) quality.push("anchor_late");
 
   const spotEth = spot?.eth ?? null;
@@ -121,7 +135,7 @@ async function capture(anchor: string, scheduledAtMs: number, boundaryMs: number
     INSERT INTO jackpot_preboundary_telemetry (
       id, boundary_ms, anchor, scheduled_at_ms, captured_at_ms, lateness_ms,
       current_ticker, current_floor_strike, next_ticker, next_floor_strike,
-      spot_eth, spot_to_next_strike_bps,
+      spot_eth, spot_receipt_ms, spot_to_next_strike_bps,
       current_yes_bid_cents, current_yes_ask_cents, current_no_bid_cents, current_no_ask_cents,
       next_yes_bid_cents, next_yes_ask_cents, next_no_bid_cents, next_no_ask_cents,
       current_market_json, next_market_json,
@@ -130,7 +144,7 @@ async function capture(anchor: string, scheduledAtMs: number, boundaryMs: number
     ) VALUES (
       ${`${boundaryMs}:${anchor}`}, ${boundaryMs}, ${anchor}, ${scheduledAtMs}, ${capturedAtMs}, ${capturedAtMs - scheduledAtMs},
       ${current?.ticker ?? null}, ${current?.floorStrike ?? null}, ${next?.ticker ?? null}, ${next?.floorStrike ?? null},
-      ${spotEth}, ${spotToNextStrikeBps},
+      ${spotEth}, ${spot?.receiptMs ?? null}, ${spotToNextStrikeBps},
       ${current?.yesBidCents ?? null}, ${current?.yesAskCents ?? null}, ${current?.noBidCents ?? null}, ${current?.noAskCents ?? null},
       ${next?.yesBidCents ?? null}, ${next?.yesAskCents ?? null}, ${next?.noBidCents ?? null}, ${next?.noAskCents ?? null},
       ${currentRaw ? JSON.stringify(currentRaw) : null}::jsonb, ${nextRaw ? JSON.stringify(nextRaw) : null}::jsonb,
@@ -142,8 +156,8 @@ async function capture(anchor: string, scheduledAtMs: number, boundaryMs: number
   logger.info({
     service: "J", research: "preboundary", anchor, boundaryMs,
     currentTicker: current?.ticker ?? null, nextTicker: next?.ticker ?? null,
-    nextStrike: next?.floorStrike ?? null, spotEth, spotToNextStrikeBps,
-    quality: quality.join(",") || "complete",
+    nextStrike: next?.floorStrike ?? null, spotEth, spotReceiptMs: spot?.receiptMs ?? null,
+    spotToNextStrikeBps, quality: quality.join(",") || "complete",
   }, "Jackpot pre-boundary telemetry captured");
 }
 
@@ -175,5 +189,5 @@ export async function startJackpotPreboundaryResearch(): Promise<void> {
   await poll();
   const timer = setInterval(() => { void poll(); }, POLL_MS);
   timer.unref();
-  logger.info({ service: "J", research: "preboundary", anchors: JACKPOT_PREBOUNDARY_ANCHORS.map(([a]) => a) }, "Jackpot pre-boundary research collector started");
+  logger.info({ service: "J", research: "preboundary", anchors: JACKPOT_PREBOUNDARY_ANCHORS.map(([a]) => a), freshSpot: true }, "Jackpot pre-boundary research collector started");
 }
