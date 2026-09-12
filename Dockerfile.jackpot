@@ -1,0 +1,15 @@
+FROM node:24-bookworm-slim AS build
+
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+
+COPY . .
+RUN pnpm install --frozen-lockfile
+RUN cd artifacts/api-server && node scripts/run-jackpot-test.mjs && node build-jackpot.mjs
+
+FROM node:24-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build /app /app
+EXPOSE 8080
+CMD ["node", "--enable-source-maps", "./artifacts/api-server/dist/jackpotIndex.mjs"]
