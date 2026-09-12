@@ -1,6 +1,7 @@
 import http from "node:http";
 import { logger } from "./lib/logger.js";
 import { startJackpotService, JACKPOT_MAX_PRICE_CENTS, JACKPOT_WAGER_CENTS } from "./lib/strategies/ethJackpotService.js";
+import { startJackpotPreboundaryResearch } from "./lib/strategies/jackpotPreboundaryResearch.js";
 
 const port = Number(process.env["PORT"] ?? "8080");
 if (!Number.isInteger(port) || port <= 0) throw new Error("Jackpot requires a valid PORT");
@@ -8,6 +9,7 @@ if (!Number.isInteger(port) || port <= 0) throw new Error("Jackpot requires a va
 const liveEnabled = process.env["JACKPOT_LIVE_ENABLED"] === "true";
 let ready = false;
 let startupError: string | null = null;
+let preboundaryResearch = "not_started";
 
 const server = http.createServer((req, res) => {
   if (req.url === "/health") {
@@ -20,6 +22,7 @@ const server = http.createServer((req, res) => {
       live: liveEnabled,
       wager_cap_cents: JACKPOT_WAGER_CENTS,
       max_price_cents: JACKPOT_MAX_PRICE_CENTS,
+      preboundary_research: preboundaryResearch,
       startup_error: startupError,
       commit_sha: process.env["COMMIT_SHA"] ?? "unknown",
     }));
@@ -36,14 +39,19 @@ server.listen(port, "0.0.0.0", () => {
 if (!liveEnabled) {
   // A disabled Jackpot service is deliberately a true no-touch state: it does
   // not poll A, read/cancel A orders, capture candidate telemetry, or submit J.
-  // This makes the kill switch safe even though the live path legitimately
-  // cancels a proven-zero A order before replacing it with the Jackpot IOC.
   ready = true;
   logger.info({ service: "J", name: "Jackpot", live: false }, "Jackpot disabled; no A polling or order actions started");
 } else {
   void startJackpotService().then(() => {
     ready = true;
     logger.info({ service: "J", name: "Jackpot", live: true }, "Jackpot runtime ready");
+    preboundaryResearch = "starting";
+    void startJackpotPreboundaryResearch().then(() => {
+      preboundaryResearch = "running";
+    }).catch((err) => {
+      preboundaryResearch = "failed";
+      logger.error({ err, service: "J", research: "preboundary" }, "Jackpot pre-boundary collector failed to start");
+    });
   }).catch((err) => {
     startupError = err instanceof Error ? err.message : String(err);
     logger.error({ err }, "Jackpot startup failed");
