@@ -19,8 +19,8 @@ function resolveCommitSha() {
 }
 
 async function buildAll() {
-  // Service-split branches contain the canonical validated source directly.
-  // Do not re-apply the historical production source-rewrite patch chain here.
+  // G-only BTC15 branch: rewrite only the isolated G 40->60 runner before bundling.
+  execSync("node artifacts/api-server/scripts/apply-g-btc-4060.mjs", { stdio: "inherit" });
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
