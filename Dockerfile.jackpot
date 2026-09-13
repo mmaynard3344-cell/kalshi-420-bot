@@ -8,6 +8,9 @@ COPY . .
 # endpoint family as the authenticated order read. Preserve the existing
 # cancel-then-prove-zero fail-closed fence; change only the stale URL.
 RUN sed -i 's#/portfolio/events/orders/${encodeURIComponent(order.kalshiOrderId)}#/portfolio/orders/${encodeURIComponent(order.kalshiOrderId)}#' artifacts/api-server/src/lib/strategies/ethJackpotService.ts
+# J must continue observing an authoritative A zero-fill after an initial
+# no-trigger snapshot so a runaway that develops moments later is not missed.
+RUN node artifacts/api-server/scripts/apply-jackpot-reobserve-runaway.mjs
 RUN pnpm install --frozen-lockfile
 RUN cd artifacts/api-server && node scripts/run-jackpot-test.mjs && node build-jackpot.mjs
 
