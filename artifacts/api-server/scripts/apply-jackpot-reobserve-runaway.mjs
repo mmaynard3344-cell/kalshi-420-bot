@@ -1,0 +1,32 @@
+import fs from "node:fs";
+
+const path = "artifacts/api-server/src/lib/strategies/ethJackpotService.ts";
+let source = fs.readFileSync(path, "utf8");
+
+const constantsNeedle = `export const JACKPOT_CEILINGS = [50, 70, 75, 80, 85, 90, 95, 99] as const;\nconst SERVICE_STARTED_AT_MS = Date.now();`;
+const constantsReplacement = `export const JACKPOT_CEILINGS = [50, 70, 75, 80, 85, 90, 95, 99] as const;\nexport const JACKPOT_REOBSERVE_COOLDOWN_MS = 250;\nexport const JACKPOT_REOBSERVE_WINDOW_MS = 15 * 60_000;\nconst SERVICE_STARTED_AT_MS = Date.now();\n\nconst JACKPOT_REOBSERVABLE_REASONS = new Set([\n  "book_unavailable",\n  "depth_at_50",\n  "ask_not_runaway",\n  "ask_above_90",\n]);\n\nexport function shouldReobserveJackpotAttempt(input: {\n  status: string; reason: string | null; updatedAtMs: number; orderCreatedAtMs: number; nowMs: number;\n}): boolean {\n  return input.status === "no_trigger"\n    && input.reason != null\n    && JACKPOT_REOBSERVABLE_REASONS.has(input.reason)\n    && input.nowMs - input.updatedAtMs >= JACKPOT_REOBSERVE_COOLDOWN_MS\n    && input.nowMs - input.orderCreatedAtMs < JACKPOT_REOBSERVE_WINDOW_MS;\n}`;
+if (!source.includes(constantsNeedle)) throw new Error("Jackpot constants anchor not found");
+source = source.replace(constantsNeedle, constantsReplacement);
+
+const reserveNeedle = `async function reserveCandidate(order: JackpotAOrder): Promise<boolean> {\n  const result = await db.execute(sql\`\n    INSERT INTO jackpot_attempts (\n      a_order_id, ticker, intended_side, a_client_order_id, a_kalshi_order_id,\n      a_created_at_ms, detected_at_ms, trigger_status, updated_at_ms\n    ) VALUES (\n      \${order.id}, \${order.ticker}, \${order.side}, \${order.clientOrderId}, \${order.kalshiOrderId},\n      \${order.createdAtMs}, \${Date.now()}, 'observing', \${Date.now()}\n    ) ON CONFLICT (a_order_id) DO NOTHING\n    RETURNING a_order_id\`);\n  return (result as unknown as { rows: unknown[] }).rows.length === 1;\n}`;
+const reserveReplacement = `async function claimCandidateObservation(order: JackpotAOrder): Promise<"first" | "reobserve" | null> {\n  const now = Date.now();\n  const inserted = await db.execute(sql\`\n    INSERT INTO jackpot_attempts (\n      a_order_id, ticker, intended_side, a_client_order_id, a_kalshi_order_id,\n      a_created_at_ms, detected_at_ms, trigger_status, updated_at_ms\n    ) VALUES (\n      \${order.id}, \${order.ticker}, \${order.side}, \${order.clientOrderId}, \${order.kalshiOrderId},\n      \${order.createdAtMs}, \${now}, 'observing', \${now}\n    ) ON CONFLICT (a_order_id) DO NOTHING\n    RETURNING a_order_id\`);\n  if ((inserted as unknown as { rows: unknown[] }).rows.length === 1) return "first";\n\n  const existing = await db.execute(sql\`\n    SELECT trigger_status, trigger_reason, updated_at_ms\n    FROM jackpot_attempts WHERE a_order_id=\${order.id}\n  \`);\n  const row = (existing as unknown as { rows: Array<Record<string, unknown>> }).rows[0];\n  if (!row) return null;\n  const updatedAtMs = Number(row["updated_at_ms"]);\n  const status = String(row["trigger_status"] ?? "");\n  const reason = typeof row["trigger_reason"] === "string" ? row["trigger_reason"] : null;\n  if (!Number.isFinite(updatedAtMs) || !shouldReobserveJackpotAttempt({\n    status, reason, updatedAtMs, orderCreatedAtMs: order.createdAtMs, nowMs: now,\n  })) return null;\n\n  const claimed = await db.execute(sql\`\n    UPDATE jackpot_attempts\n    SET trigger_status='observing', updated_at_ms=\${now}\n    WHERE a_order_id=\${order.id}\n      AND trigger_status='no_trigger'\n      AND trigger_reason=\${reason}\n      AND updated_at_ms=\${updatedAtMs}\n    RETURNING a_order_id\n  \`);\n  return (claimed as unknown as { rows: unknown[] }).rows.length === 1 ? "reobserve" : null;\n}`;
+if (!source.includes(reserveNeedle)) throw new Error("Jackpot reserveCandidate anchor not found");
+source = source.replace(reserveNeedle, reserveReplacement);
+
+const processStartNeedle = `async function processCandidate(order: JackpotAOrder): Promise<void> {\n  if (!(await reserveCandidate(order))) return;`;
+const processStartReplacement = `async function processCandidate(order: JackpotAOrder): Promise<void> {\n  const observation = await claimCandidateObservation(order);\n  if (!observation) return;`;
+if (!source.includes(processStartNeedle)) throw new Error("Jackpot processCandidate start anchor not found");
+source = source.replace(processStartNeedle, processStartReplacement);
+
+const bookNeedle = `  const aParsed = parseKalshiOrderResponse(aRaw, order.requestedContracts);\n  const initialBook = await recordSnapshot(order, "a_ack", aRaw);\n  for (const offset of JACKPOT_TELEMETRY_OFFSETS_MS.slice(1)) {\n    setTimeout(() => { void recordSnapshot(order, \`a_ack_plus_\${offset}ms\`).catch((err) =>\n      logger.warn({ err, ticker: order.ticker, offset }, "Jackpot telemetry capture failed")); }, offset).unref();\n  }`;
+const bookReplacement = `  const aParsed = parseKalshiOrderResponse(aRaw, order.requestedContracts);\n  const initialBook = observation === "first"\n    ? await recordSnapshot(order, "a_ack", aRaw)\n    : await captureOrderbook(order.ticker, order.side, 99);\n  if (observation === "first") {\n    for (const offset of JACKPOT_TELEMETRY_OFFSETS_MS.slice(1)) {\n      setTimeout(() => { void recordSnapshot(order, \`a_ack_plus_\${offset}ms\`).catch((err) =>\n        logger.warn({ err, ticker: order.ticker, offset }, "Jackpot telemetry capture failed")); }, offset).unref();\n    }\n  }`;
+if (!source.includes(bookNeedle)) throw new Error("Jackpot initial book anchor not found");
+source = source.replace(bookNeedle, bookReplacement);
+
+const reasonNeedle = `      status: "no_trigger",\n      reason: aParsed.fillCount > 0 ? "a_filled" : bestAsk == null ? "book_unavailable" :\n        levels50.depthAtOrBetterContracts > 0 ? "depth_at_50" : bestAsk <= 50 ? "ask_not_runaway" : "ask_above_90",`;
+const reasonReplacement = `      status: "no_trigger",\n      reason: aParsed.fillCount > 0 ? "a_filled" :\n        (aParsed.orderStatus !== "resting" && aParsed.orderStatus !== "open") ? "a_not_resting" :\n        bestAsk == null ? "book_unavailable" : levels50.depthAtOrBetterContracts > 0 ? "depth_at_50" :\n        bestAsk <= 50 ? "ask_not_runaway" : "ask_above_90",`;
+if (!source.includes(reasonNeedle)) throw new Error("Jackpot no-trigger reason anchor not found");
+source = source.replace(reasonNeedle, reasonReplacement);
+
+fs.writeFileSync(path, source);
+console.log("Applied J runaway re-observation repair");
