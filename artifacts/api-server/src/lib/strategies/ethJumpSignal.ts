@@ -35,6 +35,13 @@ export function evaluateEthJumpSignal(input: EthJumpSignalInput): EthJumpSignalD
   return { fires: true, band: "p95_to_p99", side: input.carriedSide };
 }
 
-/** Service B owns a fixed big-bet amount; it never derives size from a ladder. */
-export const ETH_JUMP_WAGER_CENTS = 50_000;
+function positiveIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/** Service B owns a fixed big-bet amount; Railway can override it in cents. */
+export const ETH_JUMP_WAGER_CENTS = positiveIntegerEnv("ETH_B_WAGER_CENTS", 50_000);
 export const ETH_JUMP_ORDER_TAG = "eth-jump-v1";
