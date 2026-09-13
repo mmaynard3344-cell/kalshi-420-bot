@@ -14,6 +14,7 @@ function run(cmd, args) {
 
 async function main() {
   await run(process.execPath, ["kalshi-research-runner.mjs"]);
+  await run(process.execPath, ["kalshi-regime-analysis.mjs"]);
 
   const archive = path.resolve("./kalshi-100day-research.tar.gz");
   if (fs.existsSync(archive)) fs.unlinkSync(archive);
@@ -22,11 +23,18 @@ async function main() {
   const stat = fs.statSync(archive);
   console.error(`Archive ready: ${archive} (${stat.size} bytes)`);
 
+  const analysisPath = path.resolve("./kalshi-100day-research/regime-analysis.json");
   const port = Number(process.env.PORT || 3000);
   const server = http.createServer((req, res) => {
     if (req.url === "/" || req.url === "/health") {
       res.writeHead(200, { "content-type": "text/plain" });
-      res.end("kalshi research archive ready\nGET /kalshi-100day-research.tar.gz\n");
+      res.end("kalshi research archive ready\nGET /kalshi-100day-research.tar.gz\nGET /regime-analysis.json\n");
+      return;
+    }
+    if (req.url === "/regime-analysis.json" && fs.existsSync(analysisPath)) {
+      const s = fs.statSync(analysisPath);
+      res.writeHead(200, { "content-type": "application/json", "content-length": s.size, "cache-control": "no-store" });
+      fs.createReadStream(analysisPath).pipe(res);
       return;
     }
     if (req.url === "/kalshi-100day-research.tar.gz") {
