@@ -3,6 +3,13 @@ import type { EthBigBetOrderIntent, EthBigBetStrategy } from "./ethBigBetLifecyc
 export type EthDownfadeRole = "downfade_e" | "downfade_f" | "downfade_g";
 export type EthDownfadeBand = "p80_p90" | "p90_p95" | "probe_5m_30c";
 
+function positiveIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export interface EthDownfadeEvidence {
   ticker: string;
   marketOpenTimeMs: number;
@@ -29,7 +36,7 @@ export const ETH_DOWNFADE_CONFIG: Record<EthDownfadeRole, EthDownfadeConfig> = {
     role: "downfade_e",
     strategy: "downfade_p80_p90",
     band: "p80_p90",
-    wagerCents: 47_800,
+    wagerCents: positiveIntegerEnv("ETH_E_WAGER_CENTS", 47_800),
     orderTag: "eth-downfade-p80-p99-v2",
     lower: "p80",
     upper: "p90",
@@ -38,7 +45,7 @@ export const ETH_DOWNFADE_CONFIG: Record<EthDownfadeRole, EthDownfadeConfig> = {
     role: "downfade_f",
     strategy: "downfade_p90_p95",
     band: "p90_p95",
-    wagerCents: 41_200,
+    wagerCents: positiveIntegerEnv("ETH_F_WAGER_CENTS", 41_200),
     orderTag: "eth-downfade-p90-p99-v2",
     lower: "p90",
     upper: "p95",
