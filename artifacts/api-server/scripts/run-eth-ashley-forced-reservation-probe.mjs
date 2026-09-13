@@ -8,13 +8,14 @@ import esbuildPluginPino from "esbuild-plugin-pino";
 globalThis.require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outdir = "/tmp/eth-ashley-forced-reservation-probe";
-const outfile = path.join(outdir, "probe.mjs");
+const outfile = path.join(outdir, "ethAshleyForcedReservationProbe.mjs");
 await build({
   entryPoints: [path.join(root, "src/lib/strategies/ethAshleyForcedReservationProbe.ts")],
   platform: "node",
   bundle: true,
   format: "esm",
-  outfile,
+  outdir,
+  outExtension: { ".js": ".mjs" },
   logLevel: "warning",
   banner: { js: `import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);` },
   plugins: [esbuildPluginPino({ transports: ["pino-pretty"] })],
