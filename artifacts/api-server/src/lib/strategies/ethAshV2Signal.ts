@@ -1,11 +1,18 @@
 import type { EthBigBetOrderIntent } from "./ethBigBetLifecycle.js";
 
+function positiveIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 /** Optimized from the 2026-03-01 through 2026-08-25 canonical replay. */
 export const ETH_ASH_V2_DOWN_MIN_RATIO = 0.0060;
 export const ETH_ASH_V2_DOWN_MAX_RATIO = 0.0099;
 export const ETH_ASH_V2_UP_MIN_RATIO = 0.0050;
 export const ETH_ASH_V2_UP_MAX_RATIO = 0.0080;
-export const ETH_ASH_V2_WAGER_CENTS = 46_200;
+export const ETH_ASH_V2_WAGER_CENTS = positiveIntegerEnv("ETH_I_WAGER_CENTS", 46_200);
 export const ETH_ASH_V2_LIMIT_PRICE_CENTS = 50;
 export const ETH_ASH_V2_ENTRY_WINDOW_MS = 120_000;
 export const ETH_ASH_V2_ORDER_TAG = "eth-ash-v2-i-v1";
