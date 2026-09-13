@@ -4,6 +4,10 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 
 COPY . .
+# Surgical J-only fix: Kalshi order cancellation uses the same /portfolio/orders/{id}
+# endpoint family as the authenticated order read. Preserve the existing
+# cancel-then-prove-zero fail-closed fence; change only the stale URL.
+RUN sed -i 's#/portfolio/events/orders/${encodeURIComponent(order.kalshiOrderId)}#/portfolio/orders/${encodeURIComponent(order.kalshiOrderId)}#' artifacts/api-server/src/lib/strategies/ethJackpotService.ts
 RUN pnpm install --frozen-lockfile
 RUN cd artifacts/api-server && node scripts/run-jackpot-test.mjs && node build-jackpot.mjs
 
