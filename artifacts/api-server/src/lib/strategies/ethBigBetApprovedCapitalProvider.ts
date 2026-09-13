@@ -2,18 +2,10 @@ import type { EthAccountCapitalInput } from "./ethAccountCapitalGuard.js";
 import { readEthBigBetCapitalFacts } from "./ethBigBetCapitalFacts.js";
 import { buildEthBigBetCapitalBase } from "./ethBigBetCapitalPolicy.js";
 
-/** Existing production gate retained for one shadow-validation deployment. */
-export const ETH_BIG_BET_MARTINGALE_RESERVE_CENTS = 43_470;
-export const ETH_BIG_BET_SAFETY_RESERVE_CENTS = 51_750;
-export const ETH_BIG_BET_TOTAL_PROTECTED_BASE_CENTS =
-  ETH_BIG_BET_MARTINGALE_RESERVE_CENTS + ETH_BIG_BET_SAFETY_RESERVE_CENTS;
-
 function requiredPositiveIntegerEnv(name: string): number {
   const raw = process.env[name];
   const parsed = raw == null ? NaN : Number(raw);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(`Missing or invalid ${name}`);
-  }
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`Missing or invalid ${name}`);
   return parsed;
 }
 
@@ -44,24 +36,12 @@ export function deriveEthBigBetProtectedBaseFromLiveConfig(): {
   };
 }
 
-try {
-  const derived = deriveEthBigBetProtectedBaseFromLiveConfig();
-  console.info("ETH_BIG_BET_RESERVE_SHADOW", {
-    oldMartingaleReserveCents: ETH_BIG_BET_MARTINGALE_RESERVE_CENTS,
-    derivedMartingaleReserveCents: derived.martingaleReserveCents,
-    oldSafetyReserveCents: ETH_BIG_BET_SAFETY_RESERVE_CENTS,
-    derivedSafetyReserveCents: derived.safetyReserveCents,
-    oldProtectedBaseCents: ETH_BIG_BET_TOTAL_PROTECTED_BASE_CENTS,
-    derivedProtectedBaseCents: derived.totalProtectedBaseCents,
-    aMaxStepCents: derived.aMaxStepCents,
-    bWagerCents: derived.bWagerCents,
-    cWagerCents: derived.cWagerCents,
-  });
-} catch (error) {
-  console.error("ETH_BIG_BET_RESERVE_SHADOW_INVALID", {
-    message: error instanceof Error ? error.message : String(error),
-  });
-}
+const configuredReserve = deriveEthBigBetProtectedBaseFromLiveConfig();
+export const ETH_BIG_BET_MARTINGALE_RESERVE_CENTS = configuredReserve.martingaleReserveCents;
+export const ETH_BIG_BET_SAFETY_RESERVE_CENTS = configuredReserve.safetyReserveCents;
+export const ETH_BIG_BET_TOTAL_PROTECTED_BASE_CENTS = configuredReserve.totalProtectedBaseCents;
+
+console.info("ETH_BIG_BET_RESERVE_ACTIVE", configuredReserve);
 
 export async function readApprovedEthBigBetCapitalBase(
   exchangeIndex: number,
