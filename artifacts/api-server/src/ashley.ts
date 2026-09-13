@@ -12,10 +12,14 @@ import {
   ETH_ASHLEY_MIN_DECLINE_RATIO,
   ETH_ASHLEY_ORDER_TAG,
   ETH_ASHLEY_WAGER_CENTS,
+  buildEthAshleyIntent,
 } from "./lib/strategies/ethAshleySignal.js";
 import { currentEthServiceEnablement } from "./lib/strategies/ethServiceEnablementContract.js";
 import { currentEthServiceRole } from "./lib/strategies/ethServiceRole.js";
 import { runEthBigBetAccountingSweepSingleFlight } from "./lib/strategies/ethBigBetAccountingSweep.js";
+import { ethDownfadeExecutionStore } from "./lib/strategies/ethDownfadeExecutionStore.js";
+import { ethBigBetCapitalRiskCents, ethBigBetContracts, ethBigBetOrderId } from "./lib/strategies/ethBigBetLifecycle.js";
+import { readApprovedEthBigBetCapitalBase } from "./lib/strategies/ethBigBetApprovedCapitalProvider.js";
 
 const POLL_MS = 2_000;
 const ACCOUNTING_SWEEP_MS = 5 * 60_000;
@@ -26,6 +30,80 @@ const rawPort = process.env["PORT"];
 if (!rawPort) throw new Error("PORT environment variable is required");
 const port = Number(rawPort);
 if (!Number.isInteger(port) || port <= 0) throw new Error(`Invalid PORT value: ${rawPort}`);
+
+async function runForcedHReservationProbe(): Promise<void> {
+  const now = Date.now();
+  const ticker = `KXETH15M-PROBEH-${now}`;
+  const intent = buildEthAshleyIntent({
+    ticker,
+    marketOpenTimeMs: now - 30_000,
+    currentStrike: 992,
+    priorStrike: 1000,
+    moveRatio: -0.008,
+    declineRatio: 0.008,
+    ageMs: 30_000,
+  });
+  if (!intent) {
+    logger.error({ ticker }, "FORCED_H_RESERVATION_PROBE qualification_failed");
+    return;
+  }
+  const capital = await readApprovedEthBigBetCapitalBase(2);
+  if (!capital) {
+    logger.error({ ticker }, "FORCED_H_RESERVATION_PROBE capital_base_unavailable");
+    return;
+  }
+  const requestedContracts = ethBigBetContracts(intent.wagerCents, intent.limitPriceCents);
+  const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
+  const orderId = ethBigBetOrderId(intent);
+  let reservation: "reserved" | "capital_blocked" | "reservation_failed" = "reservation_failed";
+  let cleanupAcknowledged = false;
+  let remainingUnresolvedSyntheticRow = false;
+  try {
+    reservation = await ethDownfadeExecutionStore.reserveEthBigBetOrder({
+      orderId,
+      intent,
+      requestedContracts,
+      requestedRiskCents,
+      capital,
+      reservedAtMs: Date.now(),
+    });
+  } finally {
+    if (reservation === "reserved") {
+      cleanupAcknowledged = await ethDownfadeExecutionStore.acknowledgeEthBigBetOrder({
+        orderId,
+        exchangeOrderId: null,
+        status: "rejected",
+        acknowledgedAtMs: Date.now(),
+      });
+    }
+    const unresolved = await ethDownfadeExecutionStore.listUnresolvedEthBigBetOrderIds(intent.strategy);
+    remainingUnresolvedSyntheticRow = unresolved.includes(orderId);
+    logger.info({
+      ticker,
+      orderId,
+      qualified: true,
+      intent: {
+        strategy: intent.strategy,
+        orderTag: intent.orderTag,
+        side: intent.side,
+        wagerCents: intent.wagerCents,
+        limitPriceCents: intent.limitPriceCents,
+      },
+      capital: {
+        availableBalanceCents: capital.availableBalanceCents,
+        martingaleReserveCents: capital.martingaleReserveCents,
+        safetyReserveCents: capital.safetyReserveCents,
+        otherBigBetReservedCents: capital.otherBigBetReservedCents,
+      },
+      requestedContracts,
+      requestedRiskCents,
+      reservation,
+      cleanupAcknowledged,
+      remainingUnresolvedSyntheticRow,
+      exchangeSubmitCalled: false,
+    }, "FORCED_H_RESERVATION_PROBE");
+  }
+}
 
 async function evaluateCurrentMarket(): Promise<void> {
   if (pollInFlight || stopping) return;
@@ -90,6 +168,8 @@ app.listen(port, "0.0.0.0", async () => {
     logger.error({ role, enablement }, "Ashley H startup fence closed — live runner not armed");
     return;
   }
+
+  await runForcedHReservationProbe();
 
   void evaluateCurrentMarket();
   const pollTimer = setInterval(() => { void evaluateCurrentMarket(); }, POLL_MS);
