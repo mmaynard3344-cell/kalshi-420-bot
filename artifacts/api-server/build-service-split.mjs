@@ -26,7 +26,12 @@ async function buildAll() {
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    // Keep the normal API entrypoint for A-F/H-I compatibility and also build
+    // the isolated G 40->60 runner. The runtime wrapper selects exactly one.
+    entryPoints: [
+      path.resolve(artifactDir, "src/index.ts"),
+      path.resolve(artifactDir, "src/g4060ScalpIndex.ts"),
+    ],
     platform: "node",
     bundle: true,
     format: "esm",
