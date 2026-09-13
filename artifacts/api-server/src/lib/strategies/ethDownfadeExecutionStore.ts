@@ -13,6 +13,9 @@ const DOWNFADE_STRATEGIES = new Set([
   "ash_v2_i",
 ]);
 
+/** Last-line sanity ceiling for Service I config drift. The live wager still comes from ETH_I_WAGER_CENTS. */
+const ETH_ASH_V2_MAX_WAGER_CENTS = 50_000;
+
 type DbLike = {
   execute: (query: unknown) => Promise<unknown>;
   transaction: <T>(fn: (tx: DbLike) => Promise<T>) => Promise<T>;
@@ -75,7 +78,7 @@ function validIntent(intent: EthBigBetOrderIntent): boolean {
   }
   if (intent.strategy === "ash_v2_i") {
     return (intent.side === "yes" || intent.side === "no")
-      && intent.wagerCents === 1_500
+      && intent.wagerCents <= ETH_ASH_V2_MAX_WAGER_CENTS
       && intent.limitPriceCents === 50;
   }
 
