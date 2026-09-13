@@ -2,17 +2,66 @@ import type { EthAccountCapitalInput } from "./ethAccountCapitalGuard.js";
 import { readEthBigBetCapitalFacts } from "./ethBigBetCapitalFacts.js";
 import { buildEthBigBetCapitalBase } from "./ethBigBetCapitalPolicy.js";
 
-/**
- * Explicitly approved reserve policy for the staged B/C services.
- *
- * These values do not enable execution. B and C retain independent hard code
- * fences. The provider is read only and returns null on any unavailable,
- * stale, or malformed account evidence.
- */
+/** Existing production gate retained for one shadow-validation deployment. */
 export const ETH_BIG_BET_MARTINGALE_RESERVE_CENTS = 43_470;
 export const ETH_BIG_BET_SAFETY_RESERVE_CENTS = 51_750;
 export const ETH_BIG_BET_TOTAL_PROTECTED_BASE_CENTS =
   ETH_BIG_BET_MARTINGALE_RESERVE_CENTS + ETH_BIG_BET_SAFETY_RESERVE_CENTS;
+
+function requiredPositiveIntegerEnv(name: string): number {
+  const raw = process.env[name];
+  const parsed = raw == null ? NaN : Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`Missing or invalid ${name}`);
+  }
+  return parsed;
+}
+
+function withFeeHeadroom(principalCents: number): number {
+  return Math.ceil(principalCents * 1.035);
+}
+
+export function deriveEthBigBetProtectedBaseFromLiveConfig(): {
+  martingaleReserveCents: number;
+  safetyReserveCents: number;
+  totalProtectedBaseCents: number;
+  aMaxStepCents: number;
+  bWagerCents: number;
+  cWagerCents: number;
+} {
+  const aMaxStepCents = requiredPositiveIntegerEnv("ETH_MARTINGALE_MAX_STEP_CENTS");
+  const bWagerCents = requiredPositiveIntegerEnv("ETH_B_WAGER_CENTS");
+  const cWagerCents = requiredPositiveIntegerEnv("ETH_C_WAGER_CENTS");
+  const martingaleReserveCents = withFeeHeadroom(aMaxStepCents);
+  const safetyReserveCents = withFeeHeadroom(Math.max(bWagerCents, cWagerCents));
+  return {
+    martingaleReserveCents,
+    safetyReserveCents,
+    totalProtectedBaseCents: martingaleReserveCents + safetyReserveCents,
+    aMaxStepCents,
+    bWagerCents,
+    cWagerCents,
+  };
+}
+
+try {
+  const derived = deriveEthBigBetProtectedBaseFromLiveConfig();
+  console.info("ETH_BIG_BET_RESERVE_SHADOW", {
+    oldMartingaleReserveCents: ETH_BIG_BET_MARTINGALE_RESERVE_CENTS,
+    derivedMartingaleReserveCents: derived.martingaleReserveCents,
+    oldSafetyReserveCents: ETH_BIG_BET_SAFETY_RESERVE_CENTS,
+    derivedSafetyReserveCents: derived.safetyReserveCents,
+    oldProtectedBaseCents: ETH_BIG_BET_TOTAL_PROTECTED_BASE_CENTS,
+    derivedProtectedBaseCents: derived.totalProtectedBaseCents,
+    aMaxStepCents: derived.aMaxStepCents,
+    bWagerCents: derived.bWagerCents,
+    cWagerCents: derived.cWagerCents,
+  });
+} catch (error) {
+  console.error("ETH_BIG_BET_RESERVE_SHADOW_INVALID", {
+    message: error instanceof Error ? error.message : String(error),
+  });
+}
 
 export async function readApprovedEthBigBetCapitalBase(
   exchangeIndex: number,
