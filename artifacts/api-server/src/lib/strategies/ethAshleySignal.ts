@@ -1,9 +1,16 @@
 import type { EthBigBetOrderIntent } from "./ethBigBetLifecycle.js";
 
+function positiveIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 /** Frozen from the 2026-03-01 through 2026-08-25 canonical replay. */
 export const ETH_ASHLEY_MIN_DECLINE_RATIO = 0.0070;
 export const ETH_ASHLEY_MAX_DECLINE_RATIO = 0.0095;
-export const ETH_ASHLEY_WAGER_CENTS = 22_000;
+export const ETH_ASHLEY_WAGER_CENTS = positiveIntegerEnv("ETH_H_WAGER_CENTS", 22_000);
 export const ETH_ASHLEY_LIMIT_PRICE_CENTS = 50;
 export const ETH_ASHLEY_ENTRY_WINDOW_MS = 120_000;
 export const ETH_ASHLEY_ORDER_TAG = "eth-ashley-h-v1";
