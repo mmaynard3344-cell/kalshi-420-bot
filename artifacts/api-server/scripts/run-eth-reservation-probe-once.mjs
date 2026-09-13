@@ -4,47 +4,24 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 
 const apiDir = path.resolve("artifacts/api-server");
-const entry = "/tmp/eth-reservation-probe-entry.ts";
-const outfile = "/tmp/eth-reservation-probe-entry.cjs";
-
-const ticker = "KXETH15M-26SEP131745-45";
-const marketOpenTimeMs = Date.parse("2026-09-13T21:45:00.000Z");
-const orderTag = "diagnostic-reservation-probe-v1";
+const entry = "/tmp/eth-reservation-probe-cleanup-entry.ts";
+const outfile = "/tmp/eth-reservation-probe-cleanup-entry.cjs";
+const orderId = "KXETH15M-26SEP131745-45:diagnostic-reservation-probe-v1";
 
 const source = `
-import { reserveEthBigBetIntentWithCapital } from ${JSON.stringify(path.join(apiDir, "src/lib/strategies/ethBigBetStore.ts"))};
-import { ethBigBetCapitalRiskCents, ethBigBetOrderId } from ${JSON.stringify(path.join(apiDir, "src/lib/strategies/ethBigBetLifecycle.ts"))};
-
+import { markEthBigBetRejected } from ${JSON.stringify(path.join(apiDir, "src/lib/strategies/ethBigBetStore.ts"))};
 async function main() {
-  const intent = {
-    strategy: "jump" as const,
-    orderTag: ${JSON.stringify(orderTag)},
-    ticker: ${JSON.stringify(ticker)},
-    side: "no" as const,
-    wagerCents: 100,
-    limitPriceCents: 50,
-    marketOpenTimeMs: ${marketOpenTimeMs},
-  };
-  const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
-  const orderId = ethBigBetOrderId(intent);
-  const capital = {
-    availableBalanceCents: 100_000_000,
-    martingaleReserveCents: 0,
-    safetyReserveCents: 0,
-  };
-  console.log("ETH_RESERVATION_PROBE_START", { orderId, intent, requestedRiskCents, capital });
   try {
-    const result = await reserveEthBigBetIntentWithCapital({ intent, capital, requestedRiskCents });
-    console.log("ETH_RESERVATION_PROBE_RESULT", { result, orderId, strategy: intent.strategy, orderTag: intent.orderTag, ticker: intent.ticker });
+    const cleaned = await markEthBigBetRejected(${JSON.stringify(orderId)});
+    console.log("ETH_RESERVATION_PROBE_CLEANUP", { orderId: ${JSON.stringify(orderId)}, cleaned });
   } catch (err) {
-    console.error("ETH_RESERVATION_PROBE_THROWN", {
+    console.error("ETH_RESERVATION_PROBE_CLEANUP_THROWN", {
       message: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : null,
     });
     process.exitCode = 2;
   }
 }
-
 void main();
 `;
 
