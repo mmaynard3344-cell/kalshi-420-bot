@@ -7,7 +7,14 @@
  *
  * This module deliberately owns no martingale state and performs no I/O.
  */
-export const ETH_REVERSAL_WAGER_CENTS = 38_200;
+function positiveIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export const ETH_REVERSAL_WAGER_CENTS = positiveIntegerEnv("ETH_C_WAGER_CENTS", 38_200);
 export const ETH_REVERSAL_SIDE = "yes" as const;
 export const ETH_REVERSAL_ORDER_TAG = "eth-no3-reversal-v1";
 export const ETH_REVERSAL_MIN_NO_STREAK = 3;
