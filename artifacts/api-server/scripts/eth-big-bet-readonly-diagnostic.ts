@@ -12,17 +12,17 @@ async function main(): Promise<void> {
              settlement_result, realized_pnl_cents,
              created_at_ms, updated_at_ms
       FROM eth_big_bet_orders
-      WHERE status NOT IN ('rejected','settled')
-         OR id = 'KXETH15M-26SEP131830-30:eth-jump-v1'
+      WHERE strategy IN ('jump','reversal')
+        AND status NOT IN ('rejected','settled')
       ORDER BY created_at_ms ASC
     `);
     return result.rows as Array<Record<string, unknown>>;
   });
 
-  console.log("ETH_BIG_BET_READONLY_DIAGNOSTIC", {
+  console.log(`ETH_BIG_BET_READONLY_DIAGNOSTIC ${JSON.stringify({
     ethBWagerCents: process.env["ETH_B_WAGER_CENTS"] ?? null,
-    unresolvedOrTargetCount: rows.length,
-  });
+    unresolvedCount: rows.length,
+  })}`);
 
   for (const row of rows) {
     const id = String(row["id"] ?? "");
@@ -57,7 +57,9 @@ async function main(): Promise<void> {
       exchangeByClient = { error: err instanceof Error ? err.message : String(err) };
     }
 
-    const kalshiOrderId = typeof row["kalshi_order_id"] === "string" ? row["kalshi_order_id"] : null;
+    const kalshiOrderId = typeof row["kalshi_order_id"] === "string" && row["kalshi_order_id"]
+      ? row["kalshi_order_id"]
+      : null;
     if (kalshiOrderId) {
       try {
         const raw = await kalshiAuthFetch<{ order?: Record<string, unknown> }>(
@@ -82,37 +84,27 @@ async function main(): Promise<void> {
       }
     }
 
-    console.log("ETH_BIG_BET_ROW", {
+    const payload = {
       id,
       strategy: row["strategy"],
-      orderTag: row["order_tag"],
       ticker,
-      marketOpenTimeMs: row["market_open_time_ms"],
-      side: row["side"],
-      wagerCents: row["wager_cents"],
-      limitPriceCents: row["limit_price_cents"],
-      requestedContracts: row["requested_contracts"],
-      calculatedRiskCents: risk,
       kalshiOrderId,
       status: row["status"],
-      filledContracts: row["filled_contracts"],
-      actualNotionalCents: row["actual_notional_cents"],
-      actualFeeCents: row["actual_fee_cents"],
-      fillPriceCents: row["fill_price_cents"],
-      settlementResult: row["settlement_result"],
-      realizedPnlCents: row["realized_pnl_cents"],
       createdAtMs: row["created_at_ms"],
-      updatedAtMs: row["updated_at_ms"],
+      calculatedRiskCents: risk,
+      wagerCents: row["wager_cents"],
+      limitPriceCents: row["limit_price_cents"],
       exchangeByClient,
       exchangeById,
-    });
+    };
+    console.log(`ETH_BIG_BET_ROW ${JSON.stringify(payload)}`);
   }
 }
 
 void main().catch((err) => {
-  console.error("ETH_BIG_BET_READONLY_DIAGNOSTIC_THROWN", {
+  console.error(`ETH_BIG_BET_READONLY_DIAGNOSTIC_THROWN ${JSON.stringify({
     message: err instanceof Error ? err.message : String(err),
     stack: err instanceof Error ? err.stack : null,
-  });
+  })}`);
   process.exitCode = 2;
 });
