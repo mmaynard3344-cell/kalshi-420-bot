@@ -22,7 +22,8 @@ const SOURCES = {
   I: '4238ef48a2e5aeb5667f62da3598a83646259414',
 };
 
-const stakes = { B:50000, C:38200, D:14600, E:47800, F:41200, H:22000, I:46200 };
+// Research-only temporary sizing scenario: B-I fixed at $100 each; G excluded. A remains unchanged.
+const stakes = { B:10000, C:10000, D:10000, E:10000, F:10000, H:10000, I:10000 };
 const aStakes = [1500,3000,6000,12000,24000,32000];
 
 function pct(sorted,p){ if(!sorted.length) return null; const i=(sorted.length-1)*p, lo=Math.floor(i), hi=Math.ceil(i); return lo===hi?sorted[lo]:sorted[lo]+(sorted[hi]-sorted[lo])*(i-lo); }
@@ -44,7 +45,6 @@ if(rows.length<5000) throw new Error(`insufficient market data: ${rows.length}`)
 const end=rows.at(-1).t;
 const scoreStart=end-SCORE_DAYS*DAY;
 
-// Exact adjacent signed/absolute moves. A missing 15-minute market never becomes a synthetic large move.
 for(let i=0;i<rows.length;i++){
   const r=rows[i], p=rows[i-1];
   if(p && r.t-p.t===QTR){ r.signedMove=(r.floor-p.floor)/p.floor; r.absMove=Math.abs(r.signedMove); r.prior=p; }
@@ -54,7 +54,6 @@ for(let i=0;i<rows.length;i++){
 function trailingBands(t){
   const start=t-HISTORY_DAYS*DAY;
   const m=[];
-  // Move's current market must lie in prior 28 days and strictly before candidate.
   for(const r of rows){ if(r.t>=t) break; if(r.t>=start && r.absMove!=null) m.push(r.absMove); }
   m.sort((a,b)=>a-b);
   if(m.length<MIN_HISTORY) return {n:m.length,p80:null,p90:null,p95:null,p99:null};
@@ -79,61 +78,50 @@ function addTrade(service,r,side,wager,extra={}){
   return pc;
 }
 
-// Chronological replay. B snapshots A's carried side before A's current-market settlement changes it.
 for(let i=0;i<rows.length;i++){
   const r=rows[i];
   if(r.result!=='yes'&&r.result!=='no') continue;
   const day=etDay(r.t);
   if(a.day!==day){ a={day,side:'no',step:0}; }
   const aSideBefore=a.side;
-  const aStepBefore=a.step;
   const bands=(r.t>=scoreStart || r.t>=scoreStart-HISTORY_DAYS*DAY) ? trailingBands(r.t) : null;
   const prev3=i>=3 ? rows.slice(i-3,i) : [];
   const prev3No=prev3.length===3 && prev3.every((x,j)=>x.result==='no' && (j===0? x.t===r.t-3*QTR : x.t===prev3[j-1].t+QTR));
 
-  // A: always-trade theoretical 50c full-fill replay; no daily P&L stop (production A always-trade transform).
   if(r.t>=scoreStart){
     const wager=aStakes[a.step];
     addTrade('A',r,a.side,wager,{step:a.step});
   }
 
-  // B: p95 <= absolute adjacent move < p99, carried side from A.
   if(r.absMove!=null && bands?.p95!=null && r.absMove>=bands.p95 && r.absMove<bands.p99){
     addTrade('B',r,aSideBefore,stakes.B,{move:r.absMove,p95:bands.p95,p99:bands.p99});
   }
-  // C: three prior adjacent NO + p95-p99, always YES.
   if(prev3No && r.absMove!=null && bands?.p95!=null && r.absMove>=bands.p95 && r.absMove<bands.p99){
     addTrade('C',r,'yes',stakes.C,{move:r.absMove,p95:bands.p95,p99:bands.p99});
   }
-  // D: same 3-NO condition, upper half of p95-p99, always YES.
   if(prev3No && r.absMove!=null && bands?.p95!=null){
     const upper=bands.p95+(bands.p99-bands.p95)/2;
     if(r.absMove>=upper && r.absMove<bands.p99) addTrade('D',r,'yes',stakes.D,{move:r.absMove,p95:bands.p95,p99:bands.p99,upperBandFloor:upper});
   }
-  // E/F: DOWN only; E p80-p90, F p90-p95; both fade with YES.
   if(r.signedMove!=null && r.signedMove<0 && bands?.p80!=null){
     const m=Math.abs(r.signedMove);
     if(m>=bands.p80 && m<bands.p90) addTrade('E',r,'yes',stakes.E,{move:m,p80:bands.p80,p90:bands.p90});
     if(m>=bands.p90 && m<bands.p95) addTrade('F',r,'yes',stakes.F,{move:m,p90:bands.p90,p95:bands.p95});
   }
-  // H Ashley: DOWN 0.70% inclusive to 0.95% exclusive, first-120s opening-strike rule; YES.
   if(r.signedMove!=null && r.signedMove<0){
     const d=-r.signedMove;
     if(d>=0.0070 && d<0.0095) addTrade('H',r,'yes',stakes.H,{move:d});
   }
-  // I Ash V2: DOWN 0.60%-0.99% -> YES; UP 0.50%-0.80% -> NO.
   if(r.signedMove!=null){
     if(r.signedMove<0){ const d=-r.signedMove; if(d>=0.0060&&d<0.0099) addTrade('I',r,'yes',stakes.I,{move:d}); }
     else if(r.signedMove>0){ const u=r.signedMove; if(u>=0.0050&&u<0.0080) addTrade('I',r,'no',stakes.I,{move:u}); }
   }
 
-  // Advance A after current market settles, regardless of score-window boundary, so B side/state stays causal.
   const aWin=r.result===a.side;
   if(aWin){ a.side=a.side==='yes'?'no':'yes'; a.step=0; }
   else { a.step=a.step<5?a.step+1:0; }
 }
 
-// Build portfolio curve market-by-market so simultaneous service bets settle together.
 const byT=new Map(); for(const t of trades){ if(!byT.has(t.t)) byT.set(t.t,[]); byT.get(t.t).push(t); }
 for(const [t,ts] of [...byT.entries()].sort((a,b)=>a[0]-b[0])){
   portfolio += ts.reduce((s,x)=>s+x.pnl_cents,0); portfolioPeak=Math.max(portfolioPeak,portfolio); portfolioMaxDD=Math.max(portfolioMaxDD,portfolioPeak-portfolio);
@@ -145,7 +133,7 @@ const days=[...daily.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([date
 const dailyTotals=days.map(d=>d.total);
 const report={
   generated_at:new Date().toISOString(),
-  methodology:'Theoretical full fill at 50c for every qualifying signal; 50c Kalshi fee estimate; no liquidity/queue/zero-fill/slippage modeling. G excluded.',
+  methodology:'Research-only temporary sizing: B,C,D,E,F,H,I fixed at $100 each; A unchanged; G excluded. Theoretical full fill at 50c for every qualifying signal; 50c Kalshi fee estimate; no liquidity/queue/zero-fill/slippage/capital-block modeling.',
   source_commits:SOURCES,
   raw_market_window:{start:new Date(rows[0].t).toISOString(),end:new Date(end).toISOString(),usable_markets:rows.length},
   scored_window:{start:new Date(scoreStart).toISOString(),end:new Date(end).toISOString(),days:SCORE_DAYS},
