@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   JACKPOT_MAX_PRICE_CENTS,
+  JACKPOT_REOBSERVE_COOLDOWN_MS,
+  JACKPOT_REOBSERVE_WINDOW_MS,
   JACKPOT_WAGER_CENTS,
   jackpotContracts,
   jackpotWireOrder,
+  shouldReobserveJackpotAttempt,
   shouldTriggerJackpot,
   sweepQuote,
 } from "./ethJackpotService.js";
@@ -30,6 +33,39 @@ test("Jackpot triggers only on authoritative A zero fill with runaway book", () 
     exchangeFillCount: 0, fillCountProvided: false, orderStatus: "resting",
     bestAskCents: 61, depthAt50Contracts: 0,
   }), false, "missing authoritative fill count fails closed");
+});
+
+test("Jackpot re-observes a still-live zero-fill candidate after an initial no-trigger", () => {
+  const now = 1_000_000;
+  assert.equal(shouldReobserveJackpotAttempt({
+    status: "no_trigger", reason: "ask_not_runaway",
+    updatedAtMs: now - JACKPOT_REOBSERVE_COOLDOWN_MS,
+    orderCreatedAtMs: now - 2_000, nowMs: now,
+  }), true);
+  assert.equal(shouldReobserveJackpotAttempt({
+    status: "no_trigger", reason: "depth_at_50",
+    updatedAtMs: now - JACKPOT_REOBSERVE_COOLDOWN_MS,
+    orderCreatedAtMs: now - 2_000, nowMs: now,
+  }), true);
+  assert.equal(shouldReobserveJackpotAttempt({
+    status: "no_trigger", reason: "a_filled",
+    updatedAtMs: now - 5_000, orderCreatedAtMs: now - 5_000, nowMs: now,
+  }), false, "an A fill is terminal for J");
+  assert.equal(shouldReobserveJackpotAttempt({
+    status: "blocked", reason: "a_cancel_not_proven_zero_fill",
+    updatedAtMs: now - 5_000, orderCreatedAtMs: now - 5_000, nowMs: now,
+  }), false, "blocked safety states are never re-opened");
+  assert.equal(shouldReobserveJackpotAttempt({
+    status: "no_trigger", reason: "ask_not_runaway",
+    updatedAtMs: now - JACKPOT_REOBSERVE_COOLDOWN_MS + 1,
+    orderCreatedAtMs: now - 2_000, nowMs: now,
+  }), false, "cooldown prevents a read storm");
+  assert.equal(shouldReobserveJackpotAttempt({
+    status: "no_trigger", reason: "ask_not_runaway",
+    updatedAtMs: now - 10_000,
+    orderCreatedAtMs: now - JACKPOT_REOBSERVE_WINDOW_MS,
+    nowMs: now,
+  }), false, "re-observation cannot outlive the 15-minute market window");
 });
 
 test("Jackpot validation size cannot exceed $10 at the 90c ceiling", () => {
