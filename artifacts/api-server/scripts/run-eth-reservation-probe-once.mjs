@@ -54,7 +54,7 @@ try {
     outfile,
     sourcemap: false,
     logLevel: "silent",
-    packages: "external",
+    external: ["pg-native"],
   });
   await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`);
 } finally {
