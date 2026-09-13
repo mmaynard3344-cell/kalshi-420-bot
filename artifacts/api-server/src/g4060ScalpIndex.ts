@@ -309,6 +309,8 @@ async function submitReserved(order: GOrder): Promise<void> {
       UPDATE eth_g_4060_orders SET status='submission_unknown', updated_at_ms=${Date.now()},
         last_error=${String(err)} WHERE id=${order.id}
     `);
+    logger.warn({ err, ticker: order.ticker, side: order.side, role: order.role,
+      priceCents: order.limitPriceCents, contracts: order.requestedContracts }, "G 40-60 order submission failed");
   }
 }
 
@@ -437,22 +439,73 @@ async function reconcileCycle(cycle: GCycle): Promise<void> {
   }
 }
 
+async function discoverRawCurrentMarket(): Promise<Record<string, unknown> | null> {
+  const publicRaw = await kalshiSeriesFetch(SERIES, { forceFresh: true });
+  if (publicRaw) return publicRaw;
+
+  logger.warn({ series: SERIES }, "G 40-60 public market discovery returned no active market; trying authenticated fallback");
+  const response = await kalshiAuthFetch<{ markets?: Array<Record<string, unknown>> }>(
+    "GET",
+    `/markets?series_ticker=${encodeURIComponent(SERIES)}&status=open&limit=20`,
+    undefined,
+    { readPriority: "normal" },
+  );
+  const now = Date.now();
+  const candidates = (response.markets ?? [])
+    .filter((market) => typeof market["ticker"] === "string" && /^KXETH15M-/.test(String(market["ticker"])))
+    .map((market) => ({
+      market,
+      openMs: typeof market["open_time"] === "string" ? Date.parse(market["open_time"]) : NaN,
+      closeMs: typeof market["close_time"] === "string" ? Date.parse(market["close_time"]) : NaN,
+    }))
+    .filter(({ openMs, closeMs }) => Number.isFinite(closeMs) && closeMs > now
+      && (!Number.isFinite(openMs) || openMs <= now))
+    .sort((a, b) => a.closeMs - b.closeMs);
+  return candidates[0]?.market ?? null;
+}
+
 async function discoverAndArmCurrentMarket(): Promise<void> {
-  if (!executionEnabled()) return;
-  const raw = await kalshiSeriesFetch(SERIES, { forceFresh: true });
-  if (!raw) return;
+  if (!executionEnabled()) {
+    logger.warn({ role: currentEthServiceRole(), liveEnabled: process.env["ETH_G_40_60_LIVE_ENABLED"] },
+      "G 40-60 discovery skipped because execution is disabled");
+    return;
+  }
+
+  let raw: Record<string, unknown> | null = null;
+  try {
+    raw = await discoverRawCurrentMarket();
+  } catch (err) {
+    logger.warn({ err, series: SERIES }, "G 40-60 market discovery request failed");
+    return;
+  }
+  if (!raw) {
+    logger.warn({ series: SERIES }, "G 40-60 no active ETH15 market found");
+    return;
+  }
+
   const market = normalizeMarket(raw);
   const ticker = typeof market["ticker"] === "string" ? market["ticker"] : null;
   const close = typeof market["close_time"] === "string" ? Date.parse(market["close_time"]) : NaN;
   const exchangeIndex = Number(market["exchange_index"]);
-  if (!ticker || !/^KXETH15M-/.test(ticker) || !Number.isFinite(close)
-    || !Number.isInteger(exchangeIndex) || exchangeIndex < 0 || Date.now() >= close - BOUNDARY_CANCEL_LEAD_MS) return;
+  const invalid: string[] = [];
+  if (!ticker || !/^KXETH15M-/.test(ticker)) invalid.push("ticker");
+  if (!Number.isFinite(close)) invalid.push("close_time");
+  if (!Number.isInteger(exchangeIndex) || exchangeIndex < 0) invalid.push("exchange_index");
+  if (Number.isFinite(close) && Date.now() >= close - BOUNDARY_CANCEL_LEAD_MS) invalid.push("market_closed");
+  if (invalid.length > 0) {
+    logger.warn({ ticker, close, exchangeIndex, invalid,
+      rawExchangeIndex: raw["exchange_index"], rawStatus: raw["status"] },
+      "G 40-60 discovered market failed validation");
+    return;
+  }
 
   await Promise.all([
-    ensureCycle(ticker, "yes", close, exchangeIndex),
-    ensureCycle(ticker, "no", close, exchangeIndex),
+    ensureCycle(ticker!, "yes", close, exchangeIndex),
+    ensureCycle(ticker!, "no", close, exchangeIndex),
   ]);
-  const [yes, no] = await Promise.all([loadCycle(ticker, "yes"), loadCycle(ticker, "no")]);
+  const [yes, no] = await Promise.all([loadCycle(ticker!, "yes"), loadCycle(ticker!, "no")]);
+  logger.info({ ticker, close, exchangeIndex, yesCycle: Boolean(yes), noCycle: Boolean(no) },
+    "G 40-60 active market armed");
   await Promise.all([yes ? ensureEntry(yes) : Promise.resolve(), no ? ensureEntry(no) : Promise.resolve()]);
 }
 
