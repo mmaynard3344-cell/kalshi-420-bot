@@ -51,14 +51,36 @@ async function allUnresolvedRiskCents(tx: DbLike): Promise<number | null> {
 
 /** E/F/G share the capital ledger with B/C while keeping strategy+market order identity separate. */
 export async function initEthDownfadeExecutionStore(): Promise<void> {
-  await initEthBigBetStore();
-  const db = await getDb();
-  await db.execute(sql`ALTER TABLE eth_big_bet_orders DROP CONSTRAINT IF EXISTS eth_big_bet_orders_strategy_check`);
-  await db.execute(sql`
-    ALTER TABLE eth_big_bet_orders
-    ADD CONSTRAINT eth_big_bet_orders_strategy_check
-    CHECK (strategy IN ('jump', 'reversal', 'downfade_p80_p90', 'downfade_p90_p95', 'downfade_p95_p99', 'probe_g'))
-  `);
+  try {
+    await initEthBigBetStore();
+    const db = await getDb();
+    await db.execute(sql`ALTER TABLE eth_big_bet_orders DROP CONSTRAINT IF EXISTS eth_big_bet_orders_strategy_check`);
+    await db.execute(sql`
+      ALTER TABLE eth_big_bet_orders
+      ADD CONSTRAINT eth_big_bet_orders_strategy_check
+      CHECK (strategy IN ('jump', 'reversal', 'downfade_p80_p90', 'downfade_p90_p95', 'downfade_p95_p99', 'probe_g'))
+    `);
+  } catch (err) {
+    const error = err as {
+      message?: unknown;
+      code?: unknown;
+      detail?: unknown;
+      constraint?: unknown;
+      table?: unknown;
+      schema?: unknown;
+      stack?: unknown;
+    };
+    console.error("ethDownfadeExecutionStore: init failed", {
+      message: typeof error?.message === "string" ? error.message : String(err),
+      code: typeof error?.code === "string" ? error.code : null,
+      detail: typeof error?.detail === "string" ? error.detail : null,
+      constraint: typeof error?.constraint === "string" ? error.constraint : null,
+      table: typeof error?.table === "string" ? error.table : null,
+      schema: typeof error?.schema === "string" ? error.schema : null,
+      stack: typeof error?.stack === "string" ? error.stack : null,
+    });
+    throw err;
+  }
 }
 
 function validIntent(intent: EthBigBetOrderIntent): boolean {
