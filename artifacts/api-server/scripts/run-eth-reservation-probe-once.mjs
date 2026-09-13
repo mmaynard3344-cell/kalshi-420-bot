@@ -3,30 +3,30 @@ import { writeFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
+const rootDir = path.resolve(".");
 const apiDir = path.resolve("artifacts/api-server");
 const entry = "/tmp/eth-big-bet-unresolved-diagnostic-entry.ts";
 const outfile = "/tmp/eth-big-bet-unresolved-diagnostic-entry.cjs";
 
 const source = `
-import { sql } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { withBoundedReadOnlyClient } from ${JSON.stringify(path.join(rootDir, "lib/db/src/index.ts"))};
 import { kalshiAuthFetch } from ${JSON.stringify(path.join(apiDir, "src/lib/kalshiAuth.ts"))};
 import { ethBigBetCapitalRiskCents } from ${JSON.stringify(path.join(apiDir, "src/lib/strategies/ethBigBetLifecycle.ts"))};
 
 async function main() {
-  const all = await db.execute(sql\`
-    SELECT id, strategy, order_tag, ticker, market_open_time_ms, side,
+  const rows = await withBoundedReadOnlyClient(10000, async (client) => {
+    const result = await client.query(`SELECT id, strategy, order_tag, ticker, market_open_time_ms, side,
            wager_cents, limit_price_cents, requested_contracts,
            kalshi_order_id, status, filled_contracts,
            actual_notional_cents, actual_fee_cents, fill_price_cents,
            settlement_result, realized_pnl_cents,
            created_at_ms, updated_at_ms
-    FROM eth_big_bet_orders
-    WHERE status NOT IN ('rejected','settled')
-       OR id = 'KXETH15M-26SEP131830-30:eth-jump-v1'
-    ORDER BY created_at_ms ASC
-  \`);
-  const rows = Array.isArray((all as any).rows) ? (all as any).rows : [];
+      FROM eth_big_bet_orders
+      WHERE status NOT IN ('rejected','settled')
+         OR id = 'KXETH15M-26SEP131830-30:eth-jump-v1'
+      ORDER BY created_at_ms ASC`);
+    return result.rows;
+  });
   console.log("ETH_BIG_BET_READONLY_DIAGNOSTIC", {
     ethBWagerCents: process.env.ETH_B_WAGER_CENTS ?? null,
     unresolvedOrTargetCount: rows.length,
@@ -37,17 +37,17 @@ async function main() {
     const risk = Number.isSafeInteger(wager) && Number.isSafeInteger(limit)
       ? ethBigBetCapitalRiskCents(wager, limit)
       : null;
-    let exchangeByClient: any = null;
-    let exchangeById: any = null;
+    let exchangeByClient = null;
+    let exchangeById = null;
     try {
-      const raw = await kalshiAuthFetch<any>(
+      const raw = await kalshiAuthFetch(
         "GET",
-        \`/portfolio/orders?client_order_id=\${encodeURIComponent(String(row.id))}&ticker=\${encodeURIComponent(String(row.ticker))}&limit=100\`,
+        `/portfolio/orders?client_order_id=${encodeURIComponent(String(row.id))}&ticker=${encodeURIComponent(String(row.ticker))}&limit=100`,
       );
       const matches = Array.isArray(raw?.orders)
-        ? raw.orders.filter((o: any) => o?.client_order_id === row.id && o?.ticker === row.ticker)
+        ? raw.orders.filter((o) => o?.client_order_id === row.id && o?.ticker === row.ticker)
         : [];
-      exchangeByClient = matches.map((o: any) => ({
+      exchangeByClient = matches.map((o) => ({
         order_id: o?.order_id ?? null,
         client_order_id: o?.client_order_id ?? null,
         ticker: o?.ticker ?? null,
@@ -64,7 +64,7 @@ async function main() {
     }
     if (typeof row.kalshi_order_id === "string" && row.kalshi_order_id) {
       try {
-        const raw = await kalshiAuthFetch<any>("GET", \`/portfolio/orders/\${encodeURIComponent(row.kalshi_order_id)}\`);
+        const raw = await kalshiAuthFetch("GET", `/portfolio/orders/${encodeURIComponent(row.kalshi_order_id)}`);
         const o = raw?.order ?? raw;
         exchangeById = {
           order_id: o?.order_id ?? null,
