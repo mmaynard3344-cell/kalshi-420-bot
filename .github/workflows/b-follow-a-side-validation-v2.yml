@@ -28,9 +28,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm run typecheck
-      - name: Run service isolation tests
-        working-directory: artifacts/api-server
-        run: node scripts/run-service-split-tests.mjs
       - name: Build canonical service-split production bundle
         working-directory: artifacts/api-server
         run: node build-service-split.mjs
+      - name: Run service isolation tests
+        working-directory: artifacts/api-server
+        run: node scripts/run-service-split-tests.mjs
