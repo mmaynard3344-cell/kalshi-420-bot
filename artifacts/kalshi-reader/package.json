@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
-    "build": "node scripts/apply-daily-pnl-summary.mjs && node scripts/apply-recent-eth-orders.mjs && node scripts/apply-recent-eth-settlement.mjs && node scripts/apply-current-open-trade.mjs && node scripts/apply-consolidated-live-trade.mjs && node scripts/apply-current-position-net.mjs && node scripts/apply-fill-limit-10000.mjs && node scripts/apply-actual-today-pnl.mjs && node scripts/apply-actual-fill-dashboard.mjs && node scripts/apply-actual-ledger-v2.mjs && node scripts/apply-actual-ledger-v3.mjs && node scripts/apply-pnl-runtime.mjs && node scripts/apply-unified-operations.mjs && node scripts/apply-operations-audit-cleanup.mjs && node scripts/apply-operations-route-proof.mjs && node scripts/apply-dashboard-runtime-sanitizer.mjs && node scripts/apply-pnl-economic-side.mjs && node scripts/apply-authoritative-pnl.mjs && node scripts/apply-all-service-pnl.mjs && node scripts/apply-shared-account-pnl.mjs && node scripts/apply-sequence-audit.mjs && node scripts/apply-dashboard-no-cache.mjs && node scripts/apply-pnl-0827-cutoff.mjs && node scripts/apply-final-kalshi-side.mjs && node scripts/apply-exchange-truth-ledger.mjs && node scripts/apply-final-exchange-pnl.mjs && node scripts/apply-bet-count-only.mjs && vite build --config vite.config.ts",
+    "build": "node scripts/apply-daily-pnl-summary.mjs && node scripts/apply-recent-eth-orders.mjs && node scripts/apply-recent-eth-settlement.mjs && node scripts/apply-current-open-trade.mjs && node scripts/apply-consolidated-live-trade.mjs && node scripts/apply-current-position-net.mjs && node scripts/apply-fill-limit-10000.mjs && node scripts/apply-actual-today-pnl.mjs && node scripts/apply-actual-fill-dashboard.mjs && node scripts/apply-actual-ledger-v2.mjs && node scripts/apply-actual-ledger-v3.mjs && node scripts/apply-pnl-runtime.mjs && node scripts/apply-unified-operations.mjs && node scripts/apply-operations-audit-cleanup.mjs && node scripts/apply-operations-route-proof.mjs && node scripts/apply-dashboard-runtime-sanitizer.mjs && node scripts/apply-pnl-economic-side.mjs && node scripts/apply-authoritative-pnl.mjs && node scripts/apply-all-service-pnl.mjs && node scripts/apply-shared-account-pnl.mjs && node scripts/apply-sequence-audit.mjs && node scripts/apply-dashboard-no-cache.mjs && node scripts/apply-pnl-0827-cutoff.mjs && node scripts/apply-final-kalshi-side.mjs && node scripts/apply-exchange-truth-ledger.mjs && node scripts/apply-final-exchange-pnl.mjs && node scripts/apply-bet-count-only.mjs && node scripts/patch-g-reversal-log.mjs && vite build --config vite.config.ts",
     "serve": "node server.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -55,7 +55,7 @@
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "catalog:",
-    "input-otp": "^1.4.2",
+    "input-otp": "^1.4.0",
     "lucide-react": "catalog:",
     "next-themes": "^0.4.6",
     "react": "catalog:",
