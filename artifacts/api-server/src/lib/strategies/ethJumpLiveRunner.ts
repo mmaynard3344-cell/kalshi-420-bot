@@ -10,12 +10,8 @@ import { evaluateEthAccountCapital } from "./ethAccountCapitalGuard.js";
 import { readApprovedEthBigBetCapitalBase } from "./ethBigBetApprovedCapitalProvider.js";
 import { currentEthServiceEnablement } from "./ethServiceEnablementContract.js";
 import { currentEthServiceRole, serviceOwnsJump } from "./ethServiceRole.js";
+import { scheduleEthSignalEvidence } from "./ethSignalEvidenceLedger.js";
 
-/**
- * Service B code-side approval. Runtime execution still requires the exact
- * jump role, the matching live environment flag, and a valid enablement
- * contract. Environment misconfiguration therefore remains fail-closed.
- */
 export const ETH_JUMP_SERVICE_EXECUTION_APPROVED = true;
 
 export function isEthJumpServiceExecutionPermitted(role = currentEthServiceRole()): boolean {
@@ -29,25 +25,13 @@ export function isEthJumpServiceExecutionPermitted(role = currentEthServiceRole(
 
 type JumpEvidenceStore = Parameters<typeof prepareEthJumpServiceIntent>[0]["store"];
 type EthJumpLiveOutcome =
-  | "disabled"
-  | "no_signal"
-  | "capital_unavailable"
-  | "capital_blocked"
-  | "routing_unavailable"
-  | "storage_unavailable"
-  | "submitted"
-  | "blocked_duplicate"
-  | "blocked_invalid_size"
-  | "reservation_failed"
-  | "submission_unknown"
-  | "rejected";
+  | "disabled" | "no_signal" | "capital_unavailable" | "capital_blocked"
+  | "routing_unavailable" | "storage_unavailable" | "submitted"
+  | "blocked_duplicate" | "blocked_invalid_size" | "reservation_failed"
+  | "submission_unknown" | "rejected";
 
 let storeReady: Promise<void> | null = null;
-
-async function ensureStoreReady(): Promise<void> {
-  storeReady ??= initEthBigBetStore();
-  return storeReady;
-}
+async function ensureStoreReady(): Promise<void> { storeReady ??= initEthBigBetStore(); return storeReady; }
 
 export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
   store: JumpEvidenceStore;
@@ -60,19 +44,24 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
   let signalRejectionReason: string | null = null;
 
   const finish = <T extends EthJumpLiveOutcome>(outcome: T, rejectionReason: string | null = null): T => {
-    logger.info({
+    const reason = rejectionReason ?? signalRejectionReason;
+    logger.info({ ticker: input.market.ticker, currentMove, p95, p99, outcome, rejectionReason: reason }, "ETH Jump evaluation");
+    scheduleEthSignalEvidence({
+      serviceRole: "jump_b",
       ticker: input.market.ticker,
+      marketOpenTimeMs: input.market.openTimeMs,
+      observedAtMs: input.market.observedAtMs,
+      currentFloorStrike: input.market.floorStrike,
       currentMove,
       p95,
       p99,
+      rejectionReason: reason,
       outcome,
-      rejectionReason: rejectionReason ?? signalRejectionReason,
-    }, "ETH Jump evaluation");
+    });
     return outcome;
   };
 
   if (!isEthJumpServiceExecutionPermitted()) return finish("disabled", "execution_not_permitted");
-
   const intent = await prepareEthJumpServiceIntent({
     store: input.store,
     market: input.market,
@@ -84,59 +73,23 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
     },
   });
   if (!intent) return finish("no_signal");
-
-  if (input.exchangeIndex == null || !Number.isInteger(input.exchangeIndex) || input.exchangeIndex < 0) {
-    return finish("routing_unavailable", "invalid_exchange_index");
-  }
-
-  // Capital facts query eth_big_bet_orders, so the dedicated B/C ledger must
-  // exist before the fail-closed capital provider attempts that read.
-  try {
-    await ensureStoreReady();
-  } catch {
-    return finish("storage_unavailable", "execution_store_unavailable");
-  }
-
+  if (input.exchangeIndex == null || !Number.isInteger(input.exchangeIndex) || input.exchangeIndex < 0) return finish("routing_unavailable", "invalid_exchange_index");
+  try { await ensureStoreReady(); } catch { return finish("storage_unavailable", "execution_store_unavailable"); }
   const capitalBase = await readApprovedEthBigBetCapitalBase(input.exchangeIndex);
   if (!capitalBase) return finish("capital_unavailable", "capital_base_unavailable");
-
   const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
   if (requestedRiskCents < 1) return finish("capital_unavailable", "invalid_requested_risk");
-
   const capital = evaluateEthAccountCapital({ ...capitalBase, requestedRiskCents });
-  if (!capital.allowed) {
-    return finish(
-      capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked",
-      capital.reason,
-    );
-  }
-
+  if (!capital.allowed) return finish(capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked", capital.reason);
   const exchange = createEthBigBetKalshiSubmitter(input.exchangeIndex);
   if (!exchange) return finish("routing_unavailable", "exchange_route_unavailable");
-
-  const outcome = await submitEthBigBetIntent({
-    intent,
-    store: ethBigBetExecutionStore,
-    exchange,
-    capital: capitalBase,
-    requestedRiskCents,
-  });
-
-  const rejectionReason = outcome === "submitted"
-    ? null
-    : outcome === "blocked_duplicate"
-      ? "duplicate_strategy_market"
-      : outcome === "blocked_invalid_size"
-        ? "invalid_order_size"
-        : outcome === "capital_blocked"
-          ? "capital_guard_blocked"
-          : outcome === "reservation_failed"
-            ? "durable_reservation_failed"
-            : outcome === "submission_unknown"
-              ? "exchange_submission_unknown"
-              : outcome === "rejected"
-                ? "exchange_rejected_reason_not_exposed_by_executor"
-                : outcome;
-
+  const outcome = await submitEthBigBetIntent({ intent, store: ethBigBetExecutionStore, exchange, capital: capitalBase, requestedRiskCents });
+  const rejectionReason = outcome === "submitted" ? null
+    : outcome === "blocked_duplicate" ? "duplicate_strategy_market"
+    : outcome === "blocked_invalid_size" ? "invalid_order_size"
+    : outcome === "capital_blocked" ? "capital_guard_blocked"
+    : outcome === "reservation_failed" ? "durable_reservation_failed"
+    : outcome === "submission_unknown" ? "exchange_submission_unknown"
+    : outcome === "rejected" ? "exchange_rejected_reason_not_exposed_by_executor" : outcome;
   return finish(outcome, rejectionReason);
 }
