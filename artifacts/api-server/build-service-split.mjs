@@ -19,15 +19,13 @@ function resolveCommitSha() {
 }
 
 async function buildAll() {
-  // G-only BTC15 branch: rewrite only the isolated G 40->60 runner before bundling.
-  execSync("node artifacts/api-server/scripts/apply-g-btc-4060.mjs", { stdio: "inherit" });
   const commitSha = resolveCommitSha();
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
     // Keep the normal API entrypoint for A-F/H-I compatibility and also build
-    // the isolated G 40->60 runner. The runtime wrapper selects exactly one.
+    // the isolated Service G ETH streak-reversal runner. The runtime wrapper selects exactly one.
     entryPoints: [
       path.resolve(artifactDir, "src/index.ts"),
       path.resolve(artifactDir, "src/g4060ScalpIndex.ts"),
@@ -49,7 +47,7 @@ async function buildAll() {
       "protobufjs", "onnxruntime-node", "@tensorflow/*", "@prisma/client", "@mikro-orm/*",
       "@grpc/*", "@swc/*", "@aws-sdk/*", "@azure/*", "@opentelemetry/*", "@google-cloud/*",
       "@google/*", "googleapis", "firebase-admin", "@parcel/watcher", "@sentry/profiling-node",
-      "@tree-sitter/*", "aws-sdk", "classic-level", "dd-trace", "ffi-napi", "grpc", "hiredis",
+      "aws-sdk", "classic-level", "dd-trace", "ffi-napi", "grpc", "hiredis",
       "kerberos", "leveldown", "miniflare", "mysql2", "newrelic", "odbc", "piscina", "realm",
       "ref-napi", "rocksdb", "sass-embedded", "sequelize", "serialport", "snappy", "tinypool",
       "usb", "workerd", "wrangler", "zeromq", "zeromq-prebuilt", "playwright", "puppeteer",
