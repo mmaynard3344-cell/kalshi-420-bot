@@ -1,0 +1,32 @@
+name: b-follow-a-side-validation-v2
+
+on:
+  push:
+    branches: [test/b-follow-a-side-ci-v2]
+
+permissions:
+  contents: read
+
+env:
+  ETH_B_WAGER_CENTS: "42000"
+  ETH_MARTINGALE_MAX_STEP_CENTS: "32000"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Run service isolation tests
+        working-directory: artifacts/api-server
+        run: node scripts/run-service-split-tests.mjs
