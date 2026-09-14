@@ -97,9 +97,8 @@ async function unresolvedCapitalRiskCents(tx: DbLike): Promise<number | null> {
   return total;
 }
 
-/** Dedicated B/C/D schema. It has no foreign key or lifecycle dependency on
- * Service A's martingale table. Strategy+ticker uniqueness blocks only an
- * exact same-service duplicate, so B, C, and D may all own the same market. */
+/** Dedicated B-I shared ledger. Strategy+ticker uniqueness blocks only an exact
+ * same-service duplicate; independent strategies may own the same market. */
 export async function initEthBigBetStore(): Promise<void> {
   const db = await getDb();
   await db.execute(sql`
@@ -127,10 +126,15 @@ export async function initEthBigBetStore(): Promise<void> {
       UNIQUE (order_tag, ticker)
     )
   `);
-  // Existing production tables were created before Service D existed. Widen
-  // only the strategy CHECK; every existing uniqueness/capital guard remains.
-  await db.execute(sql`ALTER TABLE eth_big_bet_orders DROP CONSTRAINT IF EXISTS eth_big_bet_orders_strategy_check`);
-  await db.execute(sql`ALTER TABLE eth_big_bet_orders ADD CONSTRAINT eth_big_bet_orders_strategy_check CHECK (strategy IN ('jump', 'reversal', 'breakout_reversal'))`);
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(42015001)`);
+    await tx.execute(sql`ALTER TABLE eth_big_bet_orders DROP CONSTRAINT IF EXISTS eth_big_bet_orders_strategy_check`);
+    await tx.execute(sql`
+      ALTER TABLE eth_big_bet_orders
+      ADD CONSTRAINT eth_big_bet_orders_strategy_check
+      CHECK (strategy IN ('jump', 'reversal', 'breakout_reversal', 'downfade_p80_p90', 'downfade_p90_p95', 'downfade_p95_p99', 'probe_g', 'ash_v2_i'))
+    `);
+  });
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS eth_big_bet_orders_unresolved_idx
       ON eth_big_bet_orders (strategy, status, created_at_ms)
@@ -138,7 +142,6 @@ export async function initEthBigBetStore(): Promise<void> {
   `);
 }
 
-/** Atomic exact-market reservation retained for storage-focused tests/tools. */
 export async function reserveEthBigBetIntent(intent: EthBigBetOrderIntent): Promise<boolean> {
   if (!validateEthBigBetIntentForStorage(intent)) return false;
   const db = await getDb();
@@ -163,12 +166,6 @@ export async function reserveEthBigBetIntent(intent: EthBigBetOrderIntent): Prom
   });
 }
 
-/**
- * Cross-process B/C/D admission fence. The advisory transaction lock serializes
- * separate Railway services on the same Postgres database. Under that lock we
- * recompute unresolved big-bet fee-inclusive risk, rerun the shared capital
- * guard, and only then insert the new reservation.
- */
 export async function reserveEthBigBetIntentWithCapital(params: {
   intent: EthBigBetOrderIntent;
   capital: Omit<EthAccountCapitalInput, "requestedRiskCents">;
@@ -189,11 +186,7 @@ export async function reserveEthBigBetIntentWithCapital(params: {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(42015000)`);
       const otherBigBetReservedCents = await unresolvedCapitalRiskCents(tx);
       if (otherBigBetReservedCents == null) return "reservation_failed";
-      const capital = evaluateEthAccountCapital({
-        ...params.capital,
-        otherBigBetReservedCents,
-        requestedRiskCents: params.requestedRiskCents,
-      });
+      const capital = evaluateEthAccountCapital({ ...params.capital, otherBigBetReservedCents, requestedRiskCents: params.requestedRiskCents });
       if (!capital.allowed) return "capital_blocked";
       const result = await tx.execute(sql`
         INSERT INTO eth_big_bet_orders
@@ -215,10 +208,7 @@ export async function reserveEthBigBetIntentWithCapital(params: {
   }
 }
 
-export async function acknowledgeEthBigBetSubmission(params: {
-  id: string;
-  kalshiOrderId: string;
-}): Promise<boolean> {
+export async function acknowledgeEthBigBetSubmission(params: { id: string; kalshiOrderId: string; }): Promise<boolean> {
   if (!params.id || !params.kalshiOrderId) return false;
   const db = await getDb();
   const result = await db.execute(sql`
@@ -234,10 +224,8 @@ export async function markEthBigBetSubmissionUnknown(id: string): Promise<boolea
   if (!id) return false;
   const db = await getDb();
   const result = await db.execute(sql`
-    UPDATE eth_big_bet_orders
-    SET status='submission_unknown', updated_at_ms=${Date.now()}
-    WHERE id=${id} AND status='reserved'
-    RETURNING id
+    UPDATE eth_big_bet_orders SET status='submission_unknown', updated_at_ms=${Date.now()}
+    WHERE id=${id} AND status='reserved' RETURNING id
   `);
   return ((result as { rows?: unknown[] }).rows ?? []).length === 1;
 }
@@ -247,22 +235,15 @@ export async function markEthBigBetRejected(id: string): Promise<boolean> {
   const db = await getDb();
   const result = await db.execute(sql`
     UPDATE eth_big_bet_orders
-    SET status='rejected', filled_contracts=0, realized_pnl_cents=0,
-        updated_at_ms=${Date.now()}
-    WHERE id=${id} AND status IN ('reserved', 'submission_unknown')
-    RETURNING id
+    SET status='rejected', filled_contracts=0, realized_pnl_cents=0, updated_at_ms=${Date.now()}
+    WHERE id=${id} AND status IN ('reserved', 'submission_unknown') RETURNING id
   `);
   return ((result as { rows?: unknown[] }).rows ?? []).length === 1;
 }
 
 export async function settleEthBigBetOrder(params: {
-  id: string;
-  filledContracts: number;
-  actualNotionalCents: number;
-  actualFeeCents: number;
-  fillPriceCents: number | null;
-  settlementResult: EthBigBetSide;
-  realizedPnlCents: number;
+  id: string; filledContracts: number; actualNotionalCents: number; actualFeeCents: number;
+  fillPriceCents: number | null; settlementResult: EthBigBetSide; realizedPnlCents: number;
 }): Promise<boolean> {
   if (!params.id
     || !Number.isFinite(params.filledContracts) || params.filledContracts < 0
@@ -274,13 +255,10 @@ export async function settleEthBigBetOrder(params: {
   const db = await getDb();
   const result = await db.execute(sql`
     UPDATE eth_big_bet_orders
-    SET status='settled', filled_contracts=${params.filledContracts},
-        actual_notional_cents=${params.actualNotionalCents},
-        actual_fee_cents=${params.actualFeeCents}, fill_price_cents=${params.fillPriceCents},
-        settlement_result=${params.settlementResult}, realized_pnl_cents=${params.realizedPnlCents},
-        updated_at_ms=${Date.now()}
-    WHERE id=${params.id} AND status IN ('submitted', 'submission_unknown')
-    RETURNING id
+    SET status='settled', filled_contracts=${params.filledContracts}, actual_notional_cents=${params.actualNotionalCents},
+        actual_fee_cents=${params.actualFeeCents}, fill_price_cents=${params.fillPriceCents}, settlement_result=${params.settlementResult},
+        realized_pnl_cents=${params.realizedPnlCents}, updated_at_ms=${Date.now()}
+    WHERE id=${params.id} AND status IN ('submitted', 'submission_unknown') RETURNING id
   `);
   return ((result as { rows?: unknown[] }).rows ?? []).length === 1;
 }
@@ -288,17 +266,7 @@ export async function settleEthBigBetOrder(params: {
 export async function listUnresolvedEthBigBetOrderIds(strategy?: EthBigBetStrategy): Promise<string[]> {
   const db = await getDb();
   const result = strategy
-    ? await db.execute(sql`
-        SELECT id FROM eth_big_bet_orders
-        WHERE strategy=${strategy} AND status NOT IN ('rejected', 'settled')
-        ORDER BY created_at_ms ASC
-      `)
-    : await db.execute(sql`
-        SELECT id FROM eth_big_bet_orders
-        WHERE status NOT IN ('rejected', 'settled')
-        ORDER BY created_at_ms ASC
-      `);
-  return ((result as { rows?: Array<Record<string, unknown>> }).rows ?? [])
-    .map((row) => String(row["id"] ?? ""))
-    .filter(Boolean);
+    ? await db.execute(sql`SELECT id FROM eth_big_bet_orders WHERE strategy=${strategy} AND status NOT IN ('rejected', 'settled') ORDER BY created_at_ms ASC`)
+    : await db.execute(sql`SELECT id FROM eth_big_bet_orders WHERE status NOT IN ('rejected', 'settled') ORDER BY created_at_ms ASC`);
+  return ((result as { rows?: Array<Record<string, unknown>> }).rows ?? []).map((row) => String(row["id"] ?? "")).filter(Boolean);
 }
