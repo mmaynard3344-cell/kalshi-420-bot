@@ -9,12 +9,8 @@ import { readApprovedEthBigBetCapitalBase } from "./ethBigBetApprovedCapitalProv
 import { initEthBigBetStore } from "./ethBigBetStore.js";
 import { prepareEthBreakoutReversalServiceIntent } from "./ethBreakoutReversalRuntime.js";
 import { currentEthServiceRole, serviceOwnsReversal } from "./ethServiceRole.js";
+import { scheduleEthSignalEvidence } from "./ethSignalEvidenceLedger.js";
 
-/**
- * Service D execution is explicitly approved. Runtime execution still requires
- * the isolated reversal role, the exact Service D live flag, and both Service C
- * and Jump live flags to remain off on this service.
- */
 export const ETH_BREAKOUT_REVERSAL_SERVICE_EXECUTION_APPROVED = true;
 
 export function isEthReversalServiceExecutionPermitted(role = currentEthServiceRole()): boolean {
@@ -27,32 +23,14 @@ export function isEthReversalServiceExecutionPermitted(role = currentEthServiceR
 
 type BreakoutReversalEvidenceStore = Parameters<typeof prepareEthBreakoutReversalServiceIntent>[0]["store"];
 type BreakoutReversalOutcome =
-  | "disabled"
-  | "no_signal"
-  | "capital_unavailable"
-  | "capital_blocked"
-  | "routing_unavailable"
-  | "storage_unavailable"
-  | "submitted"
-  | "blocked_duplicate"
-  | "blocked_invalid_size"
-  | "reservation_failed"
-  | "submission_unknown"
-  | "rejected";
+  | "disabled" | "no_signal" | "capital_unavailable" | "capital_blocked"
+  | "routing_unavailable" | "storage_unavailable" | "submitted"
+  | "blocked_duplicate" | "blocked_invalid_size" | "reservation_failed"
+  | "submission_unknown" | "rejected";
 
 let storeReady: Promise<void> | null = null;
+async function ensureStoreReady(): Promise<void> { storeReady ??= initEthBigBetStore(); return storeReady; }
 
-async function ensureStoreReady(): Promise<void> {
-  storeReady ??= initEthBigBetStore();
-  return storeReady;
-}
-
-/**
- * The function name is retained because autoTrader already calls this isolated
- * service hook on the Service C branch. On service-d-breakout-reversal the hook
- * is deliberately repurposed to Service D only; Service C remains untouched on
- * its own service-c-100 branch.
- */
 export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
   store: BreakoutReversalEvidenceStore;
   market: Eth420CandidateMarket;
@@ -66,30 +44,26 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
   let upperBandFloor: number | null = null;
   let signalRejectionReason: string | null = null;
 
-  const finish = <T extends BreakoutReversalOutcome>(
-    outcome: T,
-    rejectionReason: string | null = null,
-  ): T => {
-    logger.info(
-      {
-        ticker: input.market.ticker,
-        priorOutcomes,
-        consecutiveNoOutcomes,
-        currentMove,
-        p95,
-        p99,
-        upperBandFloor,
-        outcome,
-        rejectionReason,
-      },
-      "ETH Breakout Reversal evaluation",
-    );
+  const finish = <T extends BreakoutReversalOutcome>(outcome: T, rejectionReason: string | null = null): T => {
+    const reason = rejectionReason ?? signalRejectionReason;
+    logger.info({ ticker: input.market.ticker, priorOutcomes, consecutiveNoOutcomes, currentMove, p95, p99, upperBandFloor, outcome, rejectionReason: reason }, "ETH Breakout Reversal evaluation");
+    scheduleEthSignalEvidence({
+      serviceRole: "breakout_reversal_d",
+      ticker: input.market.ticker,
+      marketOpenTimeMs: input.market.openTimeMs,
+      observedAtMs: input.market.observedAtMs,
+      currentFloorStrike: input.market.floorStrike,
+      currentMove,
+      p95,
+      p99,
+      rejectionReason: reason,
+      outcome,
+      evidence: { priorOutcomes, consecutiveNoOutcomes, upperBandFloor },
+    });
     return outcome;
   };
 
-  if (!isEthReversalServiceExecutionPermitted()) {
-    return finish("disabled", "execution_not_permitted");
-  }
+  if (!isEthReversalServiceExecutionPermitted()) return finish("disabled", "execution_not_permitted");
   const { getWindowLog } = await import("../windowLog.js");
   const intent = await prepareEthBreakoutReversalServiceIntent({
     store: input.store,
@@ -106,36 +80,16 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
     },
   });
   if (!intent) return finish("no_signal", signalRejectionReason ?? "signal_not_qualified");
-  if (input.exchangeIndex == null || !Number.isInteger(input.exchangeIndex) || input.exchangeIndex < 0) {
-    return finish("routing_unavailable", "invalid_exchange_index");
-  }
+  if (input.exchangeIndex == null || !Number.isInteger(input.exchangeIndex) || input.exchangeIndex < 0) return finish("routing_unavailable", "invalid_exchange_index");
   const capitalBase = await readApprovedEthBigBetCapitalBase(input.exchangeIndex);
   if (!capitalBase) return finish("capital_unavailable", "capital_base_unavailable");
   const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
   if (requestedRiskCents < 1) return finish("capital_unavailable", "invalid_requested_risk");
   const capital = evaluateEthAccountCapital({ ...capitalBase, requestedRiskCents });
-  if (!capital.allowed) {
-    return finish(
-      capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked",
-      capital.reason,
-    );
-  }
+  if (!capital.allowed) return finish(capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked", capital.reason);
   const exchange = createEthBigBetKalshiSubmitter(input.exchangeIndex);
   if (!exchange) return finish("routing_unavailable", "exchange_route_unavailable");
-  try {
-    await ensureStoreReady();
-  } catch {
-    return finish("storage_unavailable", "execution_store_unavailable");
-  }
-  const outcome = await submitEthBigBetIntent({
-    intent,
-    store: ethBigBetExecutionStore,
-    exchange,
-    capital: capitalBase,
-    requestedRiskCents,
-  });
-  return finish(
-    outcome,
-    outcome === "submitted" ? null : outcome === "rejected" ? "exchange_rejected_reason_not_exposed_by_executor" : outcome,
-  );
+  try { await ensureStoreReady(); } catch { return finish("storage_unavailable", "execution_store_unavailable"); }
+  const outcome = await submitEthBigBetIntent({ intent, store: ethBigBetExecutionStore, exchange, capital: capitalBase, requestedRiskCents });
+  return finish(outcome, outcome === "submitted" ? null : outcome === "rejected" ? "exchange_rejected_reason_not_exposed_by_executor" : outcome);
 }
