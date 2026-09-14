@@ -24,6 +24,12 @@ function pct(a, p) {
   const i = (s.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
   return lo === hi ? s[lo] : s[lo] + (s[hi] - s[lo]) * (i - lo);
 }
+function percentileRank(v, a) {
+  if (!a.length || v == null) return null;
+  let le = 0;
+  for (const x of a) if (x <= v) le++;
+  return 100 * le / a.length;
+}
 function summarize(moves) {
   if (!moves.length) return null;
   const abs = moves.map(m => Math.abs(m.ret));
@@ -89,26 +95,47 @@ for(let i=1;i<=dayMoves.length;i++) {
 }
 const maxLen=Math.max(...streaks.map(s=>s.length));
 const maxStreaks=streaks.filter(s=>s.length===maxLen);
+
+const rollingSameLen=[];
+for(let i=0;i+maxLen<=dayMoves.length;i++) {
+  const w=dayMoves.slice(i,i+maxLen);
+  let contiguous=true;
+  for(let j=1;j<w.length;j++) if(w[j].t-w[j-1].t!==INTERVAL_MS) contiguous=false;
+  if (!contiguous) continue;
+  const s=summarize(w);
+  rollingSameLen.push({start_et:s.start_et,end_et:s.end_et,summary:s});
+}
+
 const analyses=maxStreaks.map((s,idx)=>{
   const set=new Set(s.moves.map(m=>m.ticker));
   const outside=dayMoves.filter(m=>!set.has(m.ticker));
   const before=dayMoves.filter(m=>m.t<s.moves[0].t);
   const after=dayMoves.filter(m=>m.t>s.moves[s.moves.length-1].t);
+  const streakSummary=summarize(s.moves);
+  const fullSummary=summarize(dayMoves);
+  const prefixes=[];
+  for(let k=2;k<=s.moves.length;k++) prefixes.push({length:k,...summarize(s.moves.slice(0,k))});
+  const fields=['efficiency','mean_abs15_pct','median_abs15_pct','net_pct','path_pct','range_pct','max_abs15_pct'];
+  const rollingRanks={};
+  for(const f of fields) rollingRanks[`${f}_percentile_vs_same_length_windows`]=percentileRank(streakSummary[f],rollingSameLen.map(w=>w.summary[f]));
   return {
     index:idx+1,
     side:s.side,
     length:s.length,
     tickers:s.moves.map(m=>m.ticker),
-    streak:summarize(s.moves),
+    streak:streakSummary,
+    prefixes,
     before:summarize(before),
     after:summarize(after),
     outside:summarize(outside),
+    rolling_same_length_windows:rollingSameLen.length,
+    rolling_ranks:rollingRanks,
     versus_full_day:{
-      mean_abs_ratio: summarize(s.moves).mean_abs15_pct / summarize(dayMoves).mean_abs15_pct,
-      median_abs_ratio: summarize(s.moves).median_abs15_pct / summarize(dayMoves).median_abs15_pct,
-      efficiency_delta: summarize(s.moves).efficiency - summarize(dayMoves).efficiency,
-      path_share: summarize(s.moves).path_pct / summarize(dayMoves).path_pct,
-      range_share: summarize(s.moves).range_pct / summarize(dayMoves).range_pct,
+      mean_abs_ratio: streakSummary.mean_abs15_pct / fullSummary.mean_abs15_pct,
+      median_abs_ratio: streakSummary.median_abs15_pct / fullSummary.median_abs15_pct,
+      efficiency_delta: streakSummary.efficiency - fullSummary.efficiency,
+      path_share: streakSummary.path_pct / fullSummary.path_pct,
+      range_share: streakSummary.range_pct / fullSummary.range_pct,
     }
   };
 });
