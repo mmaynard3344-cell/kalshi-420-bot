@@ -12,6 +12,7 @@ const LIMIT_PRICE_CENTS = 50;
 const PRINCIPALS_CENTS = [10_000, 20_000, 40_000] as const;
 const CONTRACTS = [200, 400, 800] as const;
 const POLL_MS = 2_000;
+const ENTRY_WINDOW_MS = 90_000;
 const CANCEL_AFTER_CLOSE_MS = 1_000;
 const TERMINAL = new Set(["filled", "executed", "canceled", "cancelled", "expired", "rejected"]);
 
@@ -273,7 +274,7 @@ async function settleOrder(order: GOrder, result: OutcomeSide): Promise<void> {
     `);
     if (rows(claim).length !== 1) return;
 
-    if (order.filledContracts <= 0) return; // zero fill = no attempt; retain side and rung.
+    if (order.filledContracts <= 0) return;
     if (won) {
       await tx.execute(sql`
         UPDATE eth_g_streak_reversal_state
@@ -439,7 +440,7 @@ async function tick(): Promise<void> {
     if (!newEntriesEnabled()) return;
 
     const market = await discoverCurrentMarket();
-    if (!market || Date.now() < market.openMs) return;
+    if (!market || Date.now() < market.openMs || Date.now() > market.openMs + ENTRY_WINDOW_MS) return;
     let state = await loadState();
 
     if (state.ladderSide == null) {
@@ -468,6 +469,7 @@ async function main(): Promise<void> {
     limitPriceCents: LIMIT_PRICE_CENTS,
     principalsCents: PRINCIPALS_CENTS,
     contracts: CONTRACTS,
+    entryWindowMs: ENTRY_WINDOW_MS,
     trigger: "exactly_two_same_side_settlements_then_opposite",
     progression: "100-200-400_same_side_on_losses_reset_on_win_or_step3_loss",
   }, "Service G ETH streak reversal runner started");
@@ -491,6 +493,7 @@ async function main(): Promise<void> {
         limit_price_cents: LIMIT_PRICE_CENTS,
         principals_cents: PRINCIPALS_CENTS,
         contracts: CONTRACTS,
+        entry_window_ms: ENTRY_WINDOW_MS,
         ladder_side: state.ladderSide,
         ladder_step: state.step,
         unresolved_orders: outstanding.length,
