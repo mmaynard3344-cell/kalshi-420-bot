@@ -49,16 +49,21 @@ async function allUnresolvedRiskCents(tx: DbLike): Promise<number | null> {
   return total;
 }
 
-/** E/F/G share the capital ledger with B/C while keeping strategy+market order identity separate. */
+/** E/F/G/H/I share the capital ledger with B/C/D. The schema rewrite is
+ * serialized and canonical so no service can narrow another service's strategy
+ * set or race a same-name ADD CONSTRAINT. */
 export async function initEthDownfadeExecutionStore(): Promise<void> {
   await initEthBigBetStore();
   const db = await getDb();
-  await db.execute(sql`ALTER TABLE eth_big_bet_orders DROP CONSTRAINT IF EXISTS eth_big_bet_orders_strategy_check`);
-  await db.execute(sql`
-    ALTER TABLE eth_big_bet_orders
-    ADD CONSTRAINT eth_big_bet_orders_strategy_check
-    CHECK (strategy IN ('jump', 'reversal', 'downfade_p80_p90', 'downfade_p90_p95', 'downfade_p95_p99', 'probe_g'))
-  `);
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(42015001)`);
+    await tx.execute(sql`ALTER TABLE eth_big_bet_orders DROP CONSTRAINT IF EXISTS eth_big_bet_orders_strategy_check`);
+    await tx.execute(sql`
+      ALTER TABLE eth_big_bet_orders
+      ADD CONSTRAINT eth_big_bet_orders_strategy_check
+      CHECK (strategy IN ('jump', 'reversal', 'breakout_reversal', 'downfade_p80_p90', 'downfade_p90_p95', 'downfade_p95_p99', 'probe_g', 'ash_v2_i'))
+    `);
+  });
 }
 
 function validIntent(intent: EthBigBetOrderIntent): boolean {
@@ -105,11 +110,7 @@ export const ethDownfadeExecutionStore: EthBigBetExecutionStore = {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(42015000)`);
         const otherBigBetReservedCents = await allUnresolvedRiskCents(tx);
         if (otherBigBetReservedCents == null) return "reservation_failed";
-        const capital = evaluateEthAccountCapital({
-          ...input.capital,
-          otherBigBetReservedCents,
-          requestedRiskCents: input.requestedRiskCents,
-        });
+        const capital = evaluateEthAccountCapital({ ...input.capital, otherBigBetReservedCents, requestedRiskCents: input.requestedRiskCents });
         if (!capital.allowed) return "capital_blocked";
         const result = await tx.execute(sql`
           INSERT INTO eth_big_bet_orders
