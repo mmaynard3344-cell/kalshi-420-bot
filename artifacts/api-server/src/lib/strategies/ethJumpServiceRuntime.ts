@@ -5,6 +5,14 @@ import type { EthBigBetOrderIntent } from "./ethBigBetLifecycle.js";
 import { kalshiFetch } from "../kalshi.js";
 
 type JumpEvidenceStore = Parameters<typeof prepareEth420CandidateDecision>[0];
+type MartingaleStateSnapshot = {
+  easternDate: string;
+  side: "yes" | "no";
+  martingaleStep: number;
+  spentCents: number;
+  realizedPnlCents: number;
+};
+type MartingaleStateReader = () => Promise<MartingaleStateSnapshot | null>;
 const ETH_15M_MS = 15 * 60_000;
 const JUMP_DIRECT_MOVE_RETRY_MS = 5_000;
 
@@ -25,6 +33,14 @@ export function _setEthJumpMarketFetcherForTesting(fetcher: JumpMarketFetcher | 
   jumpMarketFetcher = fetcher ?? kalshiFetch;
   directMoveCache.clear();
   directMoveLastAttemptMs.clear();
+}
+
+async function readProductionMartingaleState(): Promise<MartingaleStateSnapshot | null> {
+  // Deliberately loaded only at the qualifying decision boundary. This keeps the
+  // signal-preparation module storage-agnostic for tests while production still
+  // performs getEthMartingaleState() as a fresh durable read on every Jump.
+  const { getEthMartingaleState } = await import("../tradeStore.js");
+  return getEthMartingaleState();
 }
 
 function positiveStrike(raw: Record<string, unknown> | null | undefined): number | null {
@@ -107,19 +123,23 @@ function jumpBandReason(currentMove: number | null, p95: number | null, p99: num
 /**
  * Service B's read-only signal-preparation seam.
  *
- * It deliberately reuses the existing authoritative rolling-28-day evidence
- * preparation so A and B cannot drift on p95/p99 or carried-side semantics.
- * If that shared evidence path cannot produce the current adjacent move, B
- * obtains only that missing datum directly from Kalshi's current + immediately
- * prior market metadata. B never saves, advances, resets, or settles A state.
+ * Rolling p95/p99 and adjacent-move evidence are reused from the existing
+ * candidate preparation path. Direction is intentionally separate: a qualifying
+ * Jump snapshots Service A's authoritative martingale side with a fresh durable
+ * read immediately before intent construction. Candidate state is never used as
+ * a directional fallback. If A's side is unavailable, malformed, or from a
+ * different Eastern day, B fails closed and emits no intent.
  *
- * This function performs no exchange submission and no B-order persistence.
+ * B never saves, advances, resets, or settles A state. This function performs
+ * no exchange submission and no B-order persistence.
  */
 export async function prepareEthJumpServiceIntent(input: {
   store: JumpEvidenceStore;
   market: Eth420CandidateMarket;
   role?: ReturnType<typeof currentEthServiceRole>;
   onEvaluation?: (observation: EthJumpEvaluationObservation) => void;
+  /** Test seam; production uses a fresh durable reader at this exact boundary. */
+  readMartingaleState?: MartingaleStateReader;
 }): Promise<EthBigBetOrderIntent | null> {
   const role = input.role === undefined ? currentEthServiceRole() : input.role;
   if (!serviceOwnsJump(role)) {
@@ -141,20 +161,41 @@ export async function prepareEthJumpServiceIntent(input: {
   const p95 = prepared.decision.p95;
   const p99 = prepared.decision.p99;
 
+  // Preserve the existing statistical contract and rejection reasons without
+  // doing an unnecessary A-state read for non-qualifying markets.
+  const preIntentRejectionReason = !/^KXETH15M-/.test(input.market.ticker)
+    ? "invalid_ticker"
+    : jumpBandReason(currentMove, p95, p99);
+  if (preIntentRejectionReason !== "intent_rejected") {
+    input.onEvaluation?.({ currentMove, p95, p99, rejectionReason: preIntentRejectionReason });
+    return null;
+  }
+
+  let aState: MartingaleStateSnapshot | null;
+  try {
+    aState = await (input.readMartingaleState ?? readProductionMartingaleState)();
+  } catch {
+    input.onEvaluation?.({ currentMove, p95, p99, rejectionReason: "martingale_side_unavailable" });
+    return null;
+  }
+
+  if (!aState
+    || aState.easternDate !== input.market.easternDate
+    || (aState.side !== "yes" && aState.side !== "no")) {
+    input.onEvaluation?.({ currentMove, p95, p99, rejectionReason: "martingale_side_unavailable" });
+    return null;
+  }
+
   const intent = buildEthJumpOrderIntent({
     ticker: input.market.ticker,
     marketOpenTimeMs: input.market.openTimeMs!,
-    carriedSide: prepared.state.side,
+    carriedSide: aState.side,
     currentMove,
     p95,
     p99,
   });
 
-  const rejectionReason = intent
-    ? null
-    : !/^KXETH15M-/.test(input.market.ticker)
-      ? "invalid_ticker"
-      : jumpBandReason(currentMove, p95, p99);
+  const rejectionReason = intent ? null : "intent_rejected";
 
   input.onEvaluation?.({
     currentMove,
