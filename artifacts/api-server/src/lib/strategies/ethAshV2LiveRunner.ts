@@ -10,111 +10,11 @@ import { readApprovedEthBigBetCapitalBase } from "./ethBigBetApprovedCapitalProv
 import { currentEthServiceEnablement } from "./ethServiceEnablementContract.js";
 import { currentEthServiceRole } from "./ethServiceRole.js";
 import { ETH_ASH_V2_WAGER_CENTS } from "./ethAshV2Signal.js";
+import { scheduleEthSignalEvidence } from "./ethSignalEvidenceLedger.js";
 
 export const ETH_ASH_V2_SERVICE_EXECUTION_APPROVED = true;
-
-export type EthAshV2LiveOutcome =
-  | "disabled"
-  | "no_signal"
-  | "capital_unavailable"
-  | "capital_blocked"
-  | "routing_unavailable"
-  | "storage_unavailable"
-  | "submitted"
-  | "blocked_duplicate"
-  | "blocked_invalid_size"
-  | "reservation_failed"
-  | "submission_unknown"
-  | "rejected";
-
-let storeReady: Promise<void> | null = null;
-async function ensureStoreReady(): Promise<void> {
-  storeReady ??= initEthDownfadeExecutionStore();
-  return storeReady;
-}
-
-export function isEthAshV2ExecutionPermitted(): boolean {
-  const role = currentEthServiceRole();
-  const enablement = currentEthServiceEnablement();
-  return ETH_ASH_V2_SERVICE_EXECUTION_APPROVED
-    && role === "ash_v2_i"
-    && enablement.valid
-    && enablement.mode === "ash_v2_live_requested"
-    && process.env["ETH_ASH_V2_SERVICE_LIVE_ENABLED"] === "true";
-}
-
-export async function runEthAshV2WhenExplicitlyEnabled(input: {
-  market: Eth420CandidateMarket;
-  exchangeIndex: number | null | undefined;
-}): Promise<EthAshV2LiveOutcome> {
-  let currentStrike: number | null = null;
-  let priorStrike: number | null = null;
-  let moveRatio: number | null = null;
-  let ageMs: number | null = null;
-  let signalRejectionReason: string | null = null;
-
-  const finish = <T extends EthAshV2LiveOutcome>(outcome: T, rejectionReason: string | null = null): T => {
-    logger.info({
-      serviceRole: currentEthServiceRole(),
-      serviceName: "Ash V2",
-      serviceLetter: "I",
-      wagerCents: ETH_ASH_V2_WAGER_CENTS,
-      ticker: input.market.ticker,
-      currentStrike,
-      priorStrike,
-      moveRatio,
-      ageMs,
-      outcome,
-      rejectionReason: rejectionReason ?? signalRejectionReason,
-    }, "ETH Ash V2 I evaluation");
-    return outcome;
-  };
-
-  if (!isEthAshV2ExecutionPermitted()) return finish("disabled", "execution_not_permitted");
-
-  const intent = await prepareEthAshV2Intent({
-    market: input.market,
-    onEvaluation: (observation) => {
-      currentStrike = observation.currentStrike;
-      priorStrike = observation.priorStrike;
-      moveRatio = observation.moveRatio;
-      ageMs = observation.ageMs;
-      signalRejectionReason = observation.rejectionReason;
-    },
-  });
-  if (!intent) return finish("no_signal");
-
-  if (input.exchangeIndex == null || !Number.isInteger(input.exchangeIndex) || input.exchangeIndex < 0) {
-    return finish("routing_unavailable", "invalid_exchange_index");
-  }
-
-  try { await ensureStoreReady(); }
-  catch { return finish("storage_unavailable", "execution_store_unavailable"); }
-
-  const capitalBase = await readApprovedEthBigBetCapitalBase(input.exchangeIndex);
-  if (!capitalBase) return finish("capital_unavailable", "capital_base_unavailable");
-  const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
-  if (requestedRiskCents < 1) return finish("capital_unavailable", "invalid_requested_risk");
-  const capital = evaluateEthAccountCapital({ ...capitalBase, requestedRiskCents });
-  if (!capital.allowed) {
-    return finish(capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked", capital.reason);
-  }
-
-  const exchange = createEthBigBetKalshiSubmitter(input.exchangeIndex);
-  if (!exchange) return finish("routing_unavailable", "exchange_route_unavailable");
-  const outcome = await submitEthBigBetIntent({
-    intent,
-    store: ethDownfadeExecutionStore,
-    exchange,
-    capital: capitalBase,
-    requestedRiskCents,
-  });
-  const rejectionReason = outcome === "submitted" ? null
-    : outcome === "blocked_duplicate" ? "duplicate_strategy_market"
-    : outcome === "blocked_invalid_size" ? "invalid_order_size"
-    : outcome === "capital_blocked" ? "capital_guard_blocked"
-    : outcome === "reservation_failed" ? "durable_reservation_failed"
-    : outcome === "submission_unknown" ? "exchange_submission_unknown"
-    : outcome === "rejected" ? "exchange_rejected_reason_not_exposed_by_executor" : outcome;
-  return finish(outcome, rejectionReason);
-}
+export type EthAshV2LiveOutcome = "disabled"|"no_signal"|"capital_unavailable"|"capital_blocked"|"routing_unavailable"|"storage_unavailable"|"submitted"|"blocked_duplicate"|"blocked_invalid_size"|"reservation_failed"|"submission_unknown"|"rejected";
+let storeReady: Promise<void>|null=null;
+async function ensureStoreReady():Promise<void>{if(!storeReady){storeReady=initEthDownfadeExecutionStore().catch(error=>{storeReady=null;throw error;});}return storeReady;}
+export function isEthAshV2ExecutionPermitted():boolean{const role=currentEthServiceRole(),enablement=currentEthServiceEnablement();return ETH_ASH_V2_SERVICE_EXECUTION_APPROVED&&role==="ash_v2_i"&&enablement.valid&&enablement.mode==="ash_v2_live_requested"&&process.env["ETH_ASH_V2_SERVICE_LIVE_ENABLED"]==="true";}
+export async function runEthAshV2WhenExplicitlyEnabled(input:{market:Eth420CandidateMarket;exchangeIndex:number|null|undefined;}):Promise<EthAshV2LiveOutcome>{let currentStrike:number|null=null,priorStrike:number|null=null,moveRatio:number|null=null,ageMs:number|null=null,signalRejectionReason:string|null=null;const finish=<T extends EthAshV2LiveOutcome>(outcome:T,rejectionReason:string|null=null):T=>{const reason=rejectionReason??signalRejectionReason;logger.info({serviceRole:currentEthServiceRole(),serviceName:"Ash V2",serviceLetter:"I",wagerCents:ETH_ASH_V2_WAGER_CENTS,ticker:input.market.ticker,currentStrike,priorStrike,moveRatio,ageMs,outcome,rejectionReason:reason},"ETH Ash V2 I evaluation");scheduleEthSignalEvidence({serviceRole:"ash_v2_i",ticker:input.market.ticker,marketOpenTimeMs:input.market.openTimeMs,observedAtMs:input.market.observedAtMs,currentFloorStrike:currentStrike??input.market.floorStrike,priorFloorStrike:priorStrike,currentMove:moveRatio,direction:moveRatio==null?null:moveRatio<0?"down":moveRatio>0?"up":"flat",rejectionReason:reason,outcome,evidence:{ageMs}});return outcome;};if(!isEthAshV2ExecutionPermitted())return finish("disabled","execution_not_permitted");const intent=await prepareEthAshV2Intent({market:input.market,onEvaluation:o=>{currentStrike=o.currentStrike;priorStrike=o.priorStrike;moveRatio=o.moveRatio;ageMs=o.ageMs;signalRejectionReason=o.rejectionReason;}});if(!intent)return finish("no_signal");if(input.exchangeIndex==null||!Number.isInteger(input.exchangeIndex)||input.exchangeIndex<0)return finish("routing_unavailable","invalid_exchange_index");try{await ensureStoreReady();}catch{return finish("storage_unavailable","execution_store_unavailable");}const capitalBase=await readApprovedEthBigBetCapitalBase(input.exchangeIndex);if(!capitalBase)return finish("capital_unavailable","capital_base_unavailable");const requestedRiskCents=ethBigBetCapitalRiskCents(intent.wagerCents,intent.limitPriceCents);if(requestedRiskCents<1)return finish("capital_unavailable","invalid_requested_risk");const capital=evaluateEthAccountCapital({...capitalBase,requestedRiskCents});if(!capital.allowed)return finish(capital.reason==="invalid_input"?"capital_unavailable":"capital_blocked",capital.reason);const exchange=createEthBigBetKalshiSubmitter(input.exchangeIndex);if(!exchange)return finish("routing_unavailable","exchange_route_unavailable");const outcome=await submitEthBigBetIntent({intent,store:ethDownfadeExecutionStore,exchange,capital:capitalBase,requestedRiskCents});const reason=outcome==="submitted"?null:outcome==="blocked_duplicate"?"duplicate_strategy_market":outcome==="blocked_invalid_size"?"invalid_order_size":outcome==="capital_blocked"?"capital_guard_blocked":outcome==="reservation_failed"?"durable_reservation_failed":outcome==="submission_unknown"?"exchange_submission_unknown":outcome==="rejected"?"exchange_rejected_reason_not_exposed_by_executor":outcome;return finish(outcome,reason);}
