@@ -9,6 +9,7 @@ permissions:
 
 env:
   ETH_B_WAGER_CENTS: "42000"
+  ETH_C_WAGER_CENTS: "50000"
   ETH_MARTINGALE_MAX_STEP_CENTS: "32000"
 
 jobs:
@@ -30,3 +31,6 @@ jobs:
       - name: Run service isolation tests
         working-directory: artifacts/api-server
         run: node scripts/run-service-split-tests.mjs
+      - name: Build canonical service-split production bundle
+        working-directory: artifacts/api-server
+        run: node build-service-split.mjs
