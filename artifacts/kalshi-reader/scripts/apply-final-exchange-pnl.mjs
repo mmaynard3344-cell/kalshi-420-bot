@@ -24,8 +24,8 @@ else if (!runtime.includes(fillPaint)) {
 
 // Restrict financial P&L to known bot exchange orders. This prevents manual ETH
 // activity from being mislabeled as Service A while still allowing every bot
-// service A-G and the legacy 420 namespace to reconcile from Kalshi itself.
-const botHelper = "const botOrder=r=>{const c=String(r?.client_order_id??r?.clientOrderId??'');return c.startsWith('eth-yes-')||c.startsWith('eth-no-')||c.endsWith(':eth-jump-v1')||c.endsWith(':eth-no3-reversal-v1')||c.endsWith(':eth-no3-upperband-v1')||c.endsWith(':eth-downfade-p80-p99-v2')||c.endsWith(':eth-downfade-p90-p99-v2')||c.endsWith(':eth-probe-g-5m-30c-v1')||c.endsWith(':eth420-live-v1')};\n";
+// service A-I and the legacy 420 namespace to reconcile from Kalshi itself.
+const botHelper = "const botOrder=r=>{const c=String(r?.client_order_id??r?.clientOrderId??'');return c.startsWith('eth-yes-')||c.startsWith('eth-no-')||c.endsWith(':eth-jump-v1')||c.endsWith(':eth-no3-reversal-v1')||c.endsWith(':eth-no3-upperband-v1')||c.endsWith(':eth-downfade-p80-p99-v2')||c.endsWith(':eth-downfade-p90-p99-v2')||c.endsWith(':eth-probe-g-5m-30c-v1')||c.endsWith(':eth-ashley-h-v1')||c.endsWith(':eth-ash-v2-i-v1')||c.endsWith(':eth420-live-v1')};\n";
 if (!runtime.includes('const botOrder=r=>')) {
   const anchor = 'function summarize(fs,idx){';
   if (!runtime.includes(anchor)) throw new Error('Final exchange P&L summarize anchor not found');
@@ -93,8 +93,9 @@ runtime = runtime.replaceAll('Kalshi exchange-proven ledger · same source as da
 runtime = runtime.replaceAll('Durable all-service ledger · same source as daily loss guard.','Kalshi exchange fills only · settled bot orders.');
 runtime = runtime.replaceAll('Existing frontend-accessible ledger only.','Kalshi exchange fills only · settled bot orders.');
 
-// Build must fail if any later/older path can still override financial totals or
-// collapse a provisional transaction into an authoritative zero fill.
+// Build must fail if any later/older path can still override financial totals,
+// collapse a provisional transaction into an authoritative zero fill, or omit
+// either of the newer H/I exchange namespaces from the final bot filter.
 if (runtime.includes("fetch('/api/diagnostics/account-pnl'")) throw new Error('Account-P&L endpoint still overrides final dashboard totals');
 if (runtime.includes('summary(account.days)')) throw new Error('DB account days still override final dashboard totals');
 if (!runtime.includes('if(!botOrder(parent))continue;')) throw new Error('Bot exchange-order filter missing');
@@ -107,6 +108,8 @@ if (!runtime.includes(reportedFallback)) throw new Error('Transaction unknown fi
 if (runtime.includes(zeroFallback)) throw new Error('Transaction unknown fill still collapses to zero');
 if (!runtime.includes("confirmedZero=filled===0&&(os==='CANCELED'||os==='CANCELLED')")) throw new Error('Confirmed zero-fill state is not cancellation-gated');
 if (runtime.includes('LOCAL INTENT · NO KALSHI FILL')) throw new Error('False local-intent zero-fill label survived finalizer');
+if (!runtime.includes(":eth-ashley-h-v1")) throw new Error('Service H exchange namespace missing from final bot filter');
+if (!runtime.includes(":eth-ash-v2-i-v1")) throw new Error('Service I exchange namespace missing from final bot filter');
 
 // Regression proof for the exact observed economics: NO fill at 44c settling NO
 // must be positive, while the same fill settling YES must be negative.
