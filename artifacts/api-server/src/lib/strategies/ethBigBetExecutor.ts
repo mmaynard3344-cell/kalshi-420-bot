@@ -41,17 +41,46 @@ export interface EthBigBetExchangeSubmitter {
   }): Promise<EthBigBetSubmitResult>;
 }
 
+const ACK_RETRY_DELAYS_MS = [0, 250, 1_000] as const;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
- * Stateless B/C submission seam. It deliberately has no martingale-state input
+ * A Kalshi response is not considered durably represented until the shared
+ * ledger row has been updated successfully. This closes the gap where an order
+ * could be real on the exchange while the local row remained only `reserved`.
+ */
+async function acknowledgeDurably(
+  store: EthBigBetExecutionStore,
+  input: Parameters<EthBigBetExecutionStore["acknowledgeEthBigBetOrder"]>[0],
+): Promise<boolean> {
+  for (let attempt = 0; attempt < ACK_RETRY_DELAYS_MS.length; attempt++) {
+    const delay = ACK_RETRY_DELAYS_MS[attempt]!;
+    if (delay > 0) await sleep(delay);
+    try {
+      if (await store.acknowledgeEthBigBetOrder({ ...input, acknowledgedAtMs: Date.now() })) return true;
+    } catch {
+      // Retry a transient durable-store failure. The exchange order is never
+      // resubmitted here, so retries cannot create a duplicate Kalshi order.
+    }
+  }
+  return false;
+}
+
+/**
+ * Stateless B-I submission seam. It deliberately has no martingale-state input
  * or settlement dependency. An unresolved earlier market is allowed; only the
  * exact same strategy+market identity can suppress a duplicate submission.
  *
  * Capital admission is repeated atomically by the production store under a
- * shared B/C database lock before the durable reservation is inserted. This
- * closes the cross-process stale-snapshot race between independent services.
+ * shared database lock before the durable reservation is inserted.
  *
  * Any thrown/ambiguous POST remains submission_unknown. Only an explicit,
- * authoritative exchange rejection may be persisted as rejected.
+ * authoritative exchange rejection may be persisted as rejected. An accepted
+ * exchange response is reported as `submitted` only after its exchange order ID
+ * is durably attached to the reserved parent row.
  */
 export async function submitEthBigBetIntent(input: {
   intent: EthBigBetOrderIntent;
@@ -90,24 +119,35 @@ export async function submitEthBigBetIntent(input: {
       limitPriceCents: input.intent.limitPriceCents,
     });
     if (submitted.kind === "accepted") {
-      await input.store.acknowledgeEthBigBetOrder({
+      const acknowledged = await acknowledgeDurably(input.store, {
         orderId,
         exchangeOrderId: submitted.exchangeOrderId,
         status: "submitted",
         acknowledgedAtMs: Date.now(),
       });
-      return "submitted";
+      if (acknowledged) return "submitted";
+
+      // The exchange accepted the order but durable linkage failed. Do not
+      // falsely report `submitted`; retain a fail-closed unresolved parent that
+      // can be recovered later by immutable client_order_id.
+      await acknowledgeDurably(input.store, {
+        orderId,
+        exchangeOrderId: null,
+        status: "submission_unknown",
+        acknowledgedAtMs: Date.now(),
+      });
+      return "submission_unknown";
     }
     if (submitted.kind === "rejected") {
-      await input.store.acknowledgeEthBigBetOrder({
+      const acknowledged = await acknowledgeDurably(input.store, {
         orderId,
         exchangeOrderId: null,
         status: "rejected",
         acknowledgedAtMs: Date.now(),
       });
-      return "rejected";
+      return acknowledged ? "rejected" : "submission_unknown";
     }
-    await input.store.acknowledgeEthBigBetOrder({
+    await acknowledgeDurably(input.store, {
       orderId,
       exchangeOrderId: null,
       status: "submission_unknown",
@@ -115,7 +155,7 @@ export async function submitEthBigBetIntent(input: {
     });
     return "submission_unknown";
   } catch {
-    await input.store.acknowledgeEthBigBetOrder({
+    await acknowledgeDurably(input.store, {
       orderId,
       exchangeOrderId: null,
       status: "submission_unknown",
