@@ -4,13 +4,13 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 
 COPY . .
-# Surgical J-only fix: Kalshi order cancellation uses the same /portfolio/orders/{id}
-# endpoint family as the authenticated order read. Preserve the existing
-# cancel-then-prove-zero fail-closed fence; change only the stale URL.
-RUN sed -i 's#/portfolio/events/orders/${encodeURIComponent(order.kalshiOrderId)}#/portfolio/orders/${encodeURIComponent(order.kalshiOrderId)}#' artifacts/api-server/src/lib/strategies/ethJackpotService.ts
 # J must continue observing an authoritative A zero-fill after an initial
 # no-trigger snapshot so a runaway that develops moments later is not missed.
 RUN node artifacts/api-server/scripts/apply-jackpot-reobserve-runaway.mjs
+# J-only repair: migrate stale order calls to the current V2 order endpoints and
+# discover only the exact next 15-minute boundary market before the window opens.
+# Run this after the re-observation patch so stale V1 paths cannot be reintroduced.
+RUN node artifacts/api-server/scripts/apply-jackpot-v2-repair.mjs
 RUN pnpm install --frozen-lockfile
 RUN cd artifacts/api-server && node scripts/run-jackpot-test.mjs && node build-jackpot.mjs
 
