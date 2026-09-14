@@ -10,6 +10,7 @@ import { evaluateEthAccountCapital } from "./ethAccountCapitalGuard.js";
 import { readApprovedEthBigBetCapitalBase } from "./ethBigBetApprovedCapitalProvider.js";
 import { currentEthServiceEnablement } from "./ethServiceEnablementContract.js";
 import { currentEthServiceRole } from "./ethServiceRole.js";
+import { scheduleEthSignalEvidence } from "./ethSignalEvidenceLedger.js";
 
 export const ETH_DOWNFADE_SERVICE_EXECUTION_APPROVED = true;
 export type EthDownfadeLiveOutcome = "disabled"|"no_signal"|"capital_unavailable"|"capital_blocked"|"routing_unavailable"|"storage_unavailable"|"submitted"|"blocked_duplicate"|"blocked_invalid_size"|"reservation_failed"|"submission_unknown"|"rejected";
@@ -32,7 +33,12 @@ export function isEthDownfadeServiceExecutionPermitted(role = currentEthServiceR
 
 export async function runEthDownfadeServiceWhenExplicitlyEnabled(input:{market:Eth420CandidateMarket;exchangeIndex:number|null|undefined;}):Promise<EthDownfadeLiveOutcome>{
   const role=currentEthServiceRole(); let currentMove:number|null=null,direction:string|null=null,p80:number|null=null,p90:number|null=null,p95:number|null=null,p99:number|null=null,validObservationCount=0; let signalRejectionReason:string|null=null;
-  const finish=<T extends EthDownfadeLiveOutcome>(outcome:T,rejectionReason:string|null=null):T=>{logger.info({serviceRole:role,wagerCents:isEthDownfadeRole(role)?ETH_DOWNFADE_CONFIG[role].wagerCents:null,ticker:input.market.ticker,currentMove,direction,p80,p90,p95,p99,validObservationCount,outcome,rejectionReason:rejectionReason??signalRejectionReason},"ETH Downfade evaluation");return outcome;};
+  const finish=<T extends EthDownfadeLiveOutcome>(outcome:T,rejectionReason:string|null=null):T=>{
+    const reason=rejectionReason??signalRejectionReason;
+    logger.info({serviceRole:role,wagerCents:isEthDownfadeRole(role)?ETH_DOWNFADE_CONFIG[role].wagerCents:null,ticker:input.market.ticker,currentMove,direction,p80,p90,p95,p99,validObservationCount,outcome,rejectionReason:reason},"ETH Downfade evaluation");
+    scheduleEthSignalEvidence({serviceRole:String(role),ticker:input.market.ticker,marketOpenTimeMs:input.market.openTimeMs,observedAtMs:input.market.observedAtMs,currentFloorStrike:input.market.floorStrike,currentMove,direction,p80,p90,p95,p99,sampleCount:validObservationCount,rejectionReason:reason,outcome});
+    return outcome;
+  };
   if(!isEthDownfadeServiceExecutionPermitted(role))return finish("disabled","execution_not_permitted");
   const intent=await prepareEthDownfadeServiceIntent({role,market:input.market,onEvaluation:(observation)=>{currentMove=observation.currentMove;direction=observation.direction;p80=observation.p80;p90=observation.p90;p95=observation.p95;p99=observation.p99;validObservationCount=observation.validObservationCount;signalRejectionReason=observation.rejectionReason;}});
   if(!intent)return finish("no_signal");
