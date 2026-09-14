@@ -140,12 +140,24 @@ const analyses=maxStreaks.map((s,idx)=>{
   };
 });
 
+const fullDaySummary=summarize(dayMoves);
+const recent1hMoves=dayMoves.slice(-4);
+const recent1hSummary=summarize(recent1hMoves);
 const report={
   generated_at:new Date().toISOString(),
   date_et:targetDate,
   through_et:etTime(dayMoves[dayMoves.length-1].t + INTERVAL_MS),
   completed_markets:dayMoves.length,
-  full_day_so_far:summarize(dayMoves),
+  full_day_so_far:fullDaySummary,
+  recent_1h:recent1hSummary,
+  recent_1h_vs_day:{
+    mean_abs_ratio: recent1hSummary.mean_abs15_pct / fullDaySummary.mean_abs15_pct,
+    median_abs_ratio: recent1hSummary.median_abs15_pct / fullDaySummary.median_abs15_pct,
+    efficiency_ratio: fullDaySummary.efficiency ? recent1hSummary.efficiency / fullDaySummary.efficiency : null,
+    efficiency_delta: recent1hSummary.efficiency - fullDaySummary.efficiency,
+    reversal_rate_delta: recent1hSummary.reversal_rate - fullDaySummary.reversal_rate,
+    net_pct_delta: recent1hSummary.net_pct - fullDaySummary.net_pct,
+  },
   max_streak_length:maxLen,
   max_streak_count:maxStreaks.length,
   max_streaks:analyses,
