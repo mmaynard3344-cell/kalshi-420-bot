@@ -53,19 +53,38 @@ if (runtime.includes(validationOld)) runtime = runtime.replace(validationOld, va
 else if (!runtime.includes(validationNew)) throw new Error('Fill-side validation anchor not found');
 
 // TRANSACTION ECONOMICS:
-// Once an exchange fill is joined, its economic side is authoritative for the
-// transaction row. The order object's side may describe a quote/order encoding
-// and must not override the fill-side economics used to calculate P&L.
+// A joined exchange fill is authoritative for the transaction row's economic
+// side. Before a fill is joined, use outcome_side for display when available;
+// raw order side can describe quote/order encoding rather than economic YES/NO.
 const txnSideOld = "const f=fm.get(oid(o)),t=ms(o),s=side(o),filled=";
-const txnSideNew = "const f=fm.get(oid(o)),t=ms(o),s=f?.side||side(o),filled=";
+const txnSideDisplay = "const f=fm.get(oid(o)),t=ms(o),s=orderSide(o),filled=";
+const txnSideNew = "const f=fm.get(oid(o)),t=ms(o),s=f?.side||orderSide(o),filled=";
 if (runtime.includes(txnSideOld)) runtime = runtime.replace(txnSideOld, txnSideNew);
+else if (runtime.includes(txnSideDisplay)) runtime = runtime.replace(txnSideDisplay, txnSideNew);
 else if (!runtime.includes(txnSideNew)) throw new Error('Transaction fill-side anchor not found');
 
-// A transaction without a joined Kalshi fill is diagnostic only. It cannot
-// contribute realized P&L, fees, principal, settlement, or an execution label.
-runtime = runtime.replace(/filled=f\?f\.contracts:(?:reported|orderFilled)\(o\)/g, 'filled=f?f.contracts:0');
-runtime = runtime.replace(/\$\{esc\(status\(o\)\|\|'—'\)\}/g, "${esc(f?(status(o)||'—'):'LOCAL INTENT · NO KALSHI FILL')}");
-runtime = runtime.replace(/\$\{esc\(orderStatus\(o\)\|\|'—'\)\}/g, "${esc(f?(orderStatus(o)||'—'):'LOCAL INTENT · NO KALSHI FILL')}");
+// Missing joined-fill evidence is not an authoritative zero fill. Preserve the
+// exchange order's reported fill count when present; otherwise keep null so the
+// UI can render Pending. Only a canceled/cancelled order with an explicit zero
+// count is labeled NO FILL.
+const zeroFallback = 'filled=f?f.contracts:0';
+const reportedFallback = 'filled=f?f.contracts:reported(o)';
+if (runtime.includes(zeroFallback)) runtime = runtime.replace(zeroFallback, reportedFallback);
+else if (!runtime.includes(reportedFallback)) throw new Error('Transaction pending-fill anchor not found');
+
+const settleOld = "av=f?.contracts?Math.round(f.principalCents/f.contracts):null,settle=f?.result?f.result.toUpperCase():(filled==null?'PENDING':filled===0?'NO FILL':'PENDING'),pnl=f?.netCents??null;";
+const settleLegacy = "av=f?.contracts?Math.round(f.principalCents/f.contracts):null,settle=f?.result?f.result.toUpperCase():(filled===0?'NO FILL':'PENDING'),pnl=f?.netCents??null;";
+const settleNew = "av=f?.contracts?Math.round(f.principalCents/f.contracts):null,os=status(o),confirmedZero=filled===0&&(os==='CANCELED'||os==='CANCELLED'),settle=f?.result?f.result.toUpperCase():(confirmedZero?'NO FILL':'PENDING'),pnl=f?.netCents??null;";
+if (runtime.includes(settleOld)) runtime = runtime.replace(settleOld, settleNew);
+else if (runtime.includes(settleLegacy)) runtime = runtime.replace(settleLegacy, settleNew);
+else if (!runtime.includes(settleNew)) throw new Error('Transaction settlement-state anchor not found');
+
+const localIntentStatus = "${esc(f?(status(o)||'—'):'LOCAL INTENT · NO KALSHI FILL')}";
+const rawStatus = "${esc(status(o)||'—')}";
+const renderedStatus = "${esc(os||'—')}";
+if (runtime.includes(localIntentStatus)) runtime = runtime.replace(localIntentStatus, renderedStatus);
+else if (runtime.includes(rawStatus)) runtime = runtime.replace(rawStatus, renderedStatus);
+else if (!runtime.includes(renderedStatus)) throw new Error('Transaction status anchor not found');
 
 // Remove stale wording that implies the dashboard is reading the DB loss-guard
 // ledger. The dashboard now reads direct exchange fills; the loss guard remains
@@ -74,7 +93,8 @@ runtime = runtime.replaceAll('Kalshi exchange-proven ledger · same source as da
 runtime = runtime.replaceAll('Durable all-service ledger · same source as daily loss guard.','Kalshi exchange fills only · settled bot orders.');
 runtime = runtime.replaceAll('Existing frontend-accessible ledger only.','Kalshi exchange fills only · settled bot orders.');
 
-// Build must fail if any later/older path can still override financial totals.
+// Build must fail if any later/older path can still override financial totals or
+// collapse a provisional transaction into an authoritative zero fill.
 if (runtime.includes("fetch('/api/diagnostics/account-pnl'")) throw new Error('Account-P&L endpoint still overrides final dashboard totals');
 if (runtime.includes('summary(account.days)')) throw new Error('DB account days still override final dashboard totals');
 if (!runtime.includes('if(!botOrder(parent))continue;')) throw new Error('Bot exchange-order filter missing');
@@ -82,9 +102,11 @@ if (!runtime.includes("dataset.accountPnl='kalshi-fills'")) throw new Error('Fin
 if (!runtime.includes(fillOnlySide)) throw new Error('Financial P&L is not fill-side authoritative');
 if (runtime.includes('linkedSide=side(linked)')) throw new Error('Parent-order side still overrides exchange fill side');
 if (!runtime.includes(validationNew)) throw new Error('Invalid exchange fill side is not fail-closed');
-if (!runtime.includes("s=f?.side||side(o)")) throw new Error('Transaction rows are not fill-side authoritative');
-if (/filled=f\?f\.contracts:(?:reported|orderFilled)\(o\)/.test(runtime)) throw new Error('Local fill fallback survived final exchange P&L stage');
-if (/\$\{esc\((?:status|orderStatus)\(o\)\|\|'—'\)\}/.test(runtime)) throw new Error('Unguarded local status survived final exchange P&L stage');
+if (!runtime.includes("s=f?.side||orderSide(o)")) throw new Error('Transaction rows are not economic-side authoritative');
+if (!runtime.includes(reportedFallback)) throw new Error('Transaction unknown fill state is not preserved');
+if (runtime.includes(zeroFallback)) throw new Error('Transaction unknown fill still collapses to zero');
+if (!runtime.includes("confirmedZero=filled===0&&(os==='CANCELED'||os==='CANCELLED')")) throw new Error('Confirmed zero-fill state is not cancellation-gated');
+if (runtime.includes('LOCAL INTENT · NO KALSHI FILL')) throw new Error('False local-intent zero-fill label survived finalizer');
 
 // Regression proof for the exact observed economics: NO fill at 44c settling NO
 // must be positive, while the same fill settling YES must be negative.
