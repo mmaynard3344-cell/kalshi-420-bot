@@ -120,6 +120,53 @@ const noWin = testContracts * 100 - testContracts * testPriceCents - testFeesCen
 const noLoss = -testContracts * testPriceCents - testFeesCents;
 if (!(noWin > 0 && noLoss < 0)) throw new Error('Fill-side P&L sign regression failed');
 
+
+
+// Dashboard-only J attribution: retain exchange-fill accounting and all A-I rules.
+function addJackpotAttribution(from, to, label) {
+  if (runtime.includes(to)) return;
+  if (runtime.split(from).length !== 2) throw new Error('Jackpot attribution anchor mismatch: ' + label);
+  runtime = runtime.replace(from, to);
+}
+addJackpotAttribution(
+  "||c.endsWith(':eth420-live-v1')};",
+  "||c.endsWith(':jackpot-j')||c.endsWith(':eth420-live-v1')};",
+  'bot whitelist',
+);
+addJackpotAttribution(
+  "const strategy=r=>serviceLabel(r);",
+  "const strategy=r=>String(r?.client_order_id??r?.clientOrderId??'').endsWith(':jackpot-j')?'J · Jackpot':serviceLabel(r);",
+  'transaction and chart classifier',
+);
+addJackpotAttribution(
+  "'I · Ash V2','Legacy 420'",
+  "'I · Ash V2','J · Jackpot','Legacy 420'",
+  'scorecard and chart series',
+);
+addJackpotAttribution(
+  "'I · Ash V2':'#8b5cf6','Legacy 420'",
+  "'I · Ash V2':'#8b5cf6','J · Jackpot':'#0891b2','Legacy 420'",
+  'chart color',
+);
+
+// Exercise the actual generated whitelist and classifier without network or DB access.
+const botMatch = runtime.match(/const botOrder=r=>\{[^\n]+?\};/);
+const strategyMatch = runtime.match(/const strategy=r=>[^\n]+?;/);
+if (!botMatch || !strategyMatch) throw new Error('Jackpot attribution test helpers missing');
+const acceptsBot = new Function(botMatch[0] + ';return botOrder;')();
+const classify = new Function('serviceLabel', strategyMatch[0] + ';return strategy;')(r => 'unchanged');
+for (const key of ['client_order_id', 'clientOrderId']) {
+  const j = { [key]: 'test:jackpot-j' };
+  if (!acceptsBot(j) || classify(j) !== 'J · Jackpot') throw new Error('J attribution regression');
+}
+if (acceptsBot({client_order_id:'manual-order'}) || acceptsBot({client_order_id:'test:jackpot-j-extra'}))
+  throw new Error('Non-bot order accepted');
+for (const id of ['eth-yes-test','eth-no-test','test:eth-jump-v1','test:eth-ash-v2-i-v1']) {
+  if (!acceptsBot({client_order_id:id}) || classify({client_order_id:id}) !== 'unchanged')
+    throw new Error('Existing service attribution changed');
+}
+console.log('Jackpot dashboard attribution checks passed: whitelist, labels, series, existing services');
+
 fs.writeFileSync(runtimePath, runtime);
 
 const dashboardPath = new URL('../public/eth420-dashboard.html', import.meta.url);
