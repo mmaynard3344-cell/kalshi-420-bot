@@ -30,30 +30,31 @@ async function main() {
   const replayCsvPath = path.resolve("./kalshi-100day-research/portfolio-replay-100d-daily.csv");
   const port = Number(process.env.PORT || 3000);
   const server = http.createServer((req, res) => {
-    if (req.url === "/" || req.url === "/health") {
+    const pathname = new URL(req.url || "/", "http://localhost").pathname;
+    if (pathname === "/" || pathname === "/health") {
       res.writeHead(200, { "content-type": "text/plain" });
       res.end("kalshi research archive ready\nGET /kalshi-100day-research.tar.gz\nGET /regime-analysis.json\nGET /portfolio-replay-100d.json\nGET /portfolio-replay-100d-daily.csv\n");
       return;
     }
-    if (req.url === "/regime-analysis.json" && fs.existsSync(analysisPath)) {
+    if (pathname === "/regime-analysis.json" && fs.existsSync(analysisPath)) {
       const s = fs.statSync(analysisPath);
       res.writeHead(200, { "content-type": "application/json", "content-length": s.size, "cache-control": "no-store" });
       fs.createReadStream(analysisPath).pipe(res);
       return;
     }
-    if (req.url === "/portfolio-replay-100d.json" && fs.existsSync(replayPath)) {
+    if (pathname === "/portfolio-replay-100d.json" && fs.existsSync(replayPath)) {
       const s = fs.statSync(replayPath);
       res.writeHead(200, { "content-type": "application/json", "content-length": s.size, "cache-control": "no-store" });
       fs.createReadStream(replayPath).pipe(res);
       return;
     }
-    if (req.url === "/portfolio-replay-100d-daily.csv" && fs.existsSync(replayCsvPath)) {
+    if (pathname === "/portfolio-replay-100d-daily.csv" && fs.existsSync(replayCsvPath)) {
       const s = fs.statSync(replayCsvPath);
       res.writeHead(200, { "content-type": "text/csv", "content-length": s.size, "cache-control": "no-store" });
       fs.createReadStream(replayCsvPath).pipe(res);
       return;
     }
-    if (req.url === "/kalshi-100day-research.tar.gz") {
+    if (pathname === "/kalshi-100day-research.tar.gz") {
       res.writeHead(200, {
         "content-type": "application/gzip",
         "content-length": stat.size,
