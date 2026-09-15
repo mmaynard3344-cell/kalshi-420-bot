@@ -30,6 +30,11 @@ strategy = replaceExactlyOnce(
 if (strategy.includes("/portfolio/events/orders")) {
   throw new Error("Jackpot repair refused build: deprecated V1 order endpoint remains in ethJackpotService.ts");
 }
+strategy = replaceExactlyOnce(strategy, "async function cancelAAndProveZero(order: JackpotAOrder): Promise<Record<string, unknown> | null> {\n  try {\n    await kalshiAuthFetch<Record<string, unknown>>(\n      \"DELETE\", `/portfolio/orders/${encodeURIComponent(order.kalshiOrderId)}`,\n    );\n  } catch (err) {\n    logger.warn({ err, ticker: order.ticker, aOrderId: order.id }, \"Jackpot A cancel request failed\");\n    return null;\n  }\n  for (const delay of [0, 75, 200, 500]) {\n    if (delay) await new Promise((r) => setTimeout(r, delay));\n    try {\n      const raw = await getAExchangeOrder(order);\n      const parsed = parseKalshiOrderResponse(raw, order.requestedContracts);\n      if (parsed.fillCountProvided && parsed.fillCount > 0) return null;\n      if (terminalZeroFill(raw, order.requestedContracts)) return raw;\n    } catch {\n      // Fail closed and retry the exact authenticated read only.\n    }\n  }\n  return null;\n}", "async function confirmAStillRestingZeroFill(order: JackpotAOrder): Promise<Record<string, unknown> | null> {\n  // J treats A as a read-only signal. It must never cancel, replace, or mutate A.\n  // A remains independently managed by Service A for its full resting lifecycle.\n  try {\n    const raw = await getAExchangeOrder(order);\n    const parsed = parseKalshiOrderResponse(raw, order.requestedContracts);\n    const stillResting = parsed.orderStatus === \"resting\" || parsed.orderStatus === \"open\";\n    return parsed.fillCountProvided && parsed.fillCount === 0 && stillResting ? raw : null;\n  } catch (err) {\n    logger.warn({ err, ticker: order.ticker, aOrderId: order.id }, \"Jackpot read-only A confirmation failed\");\n    return null;\n  }\n}", "A cancel helper");
+strategy = replaceExactlyOnce(strategy, "  // Critical race fence: cancel A, then authenticate the exact order again. If\n  // even one A contract filled, J must not add exposure.\n  const canceled = await cancelAAndProveZero(order);\n  if (!canceled) {\n    await patchAttempt(order.id, { status: \"blocked\", reason: \"a_not_still_resting_zero_fill\" });\n    return;\n  }", "  // Read-only safety fence: verify A is still resting with authoritative zero\n  // fills, but never cancel, replace, or otherwise alter A's order.\n  const confirmed = await confirmAStillRestingZeroFill(order);\n  if (!confirmed) {\n    await patchAttempt(order.id, { status: \"blocked\", reason: \"a_not_still_resting_zero_fill\" });\n    return;\n  }", "A cancel flow");
+if (strategy.includes("cancelAAndProveZero") || strategy.includes('"DELETE"')) {
+  throw new Error("Jackpot repair refused build: J must not cancel or mutate A orders");
+}
 writeFileSync(strategyPath, strategy);
 
 let research = readFileSync(researchPath, "utf8");
@@ -66,4 +71,4 @@ const testBlock = `\ntest("Jackpot pre-boundary discovery selects only the exact
 if (!tests.includes('test("Jackpot pre-boundary discovery selects only the exact next 15m boundary"')) tests += testBlock;
 writeFileSync(testPath, tests);
 
-console.log("Applied Jackpot-only repair: V2 order endpoints + exact-boundary next-market discovery");
+console.log("Applied Jackpot-only repair: V2 create endpoint + exact-boundary discovery + read-only A isolation");
