@@ -4,20 +4,15 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 
 COPY . .
-# J must continue observing an authoritative A zero-fill after an initial
-# no-trigger snapshot so a runaway that develops moments later is not missed.
+# Preserve the existing J repair chain first.
 RUN node artifacts/api-server/scripts/apply-jackpot-reobserve-runaway.mjs
-# J-only repair: migrate stale order calls to the current V2 order endpoints and
-# discover only the exact next 15-minute boundary market before the window opens.
-# Run this after the re-observation patch so stale V1 paths cannot be reintroduced.
 RUN node artifacts/api-server/scripts/apply-jackpot-v2-repair.mjs
-# Kalshi's catalog can publish the exact next ticker before floor_strike is
-# populated. Hydrate that exact ticker from /markets/{ticker}; never guess or
-# substitute a different boundary market.
 RUN node artifacts/api-server/scripts/apply-jackpot-next-strike-hydration.mjs
-# Apply the approved portfolio sizing rule last so the J safety/API repairs above
-# remain authoritative: 1.5x wager budget only from 06:00-11:59 ET.
 RUN node artifacts/api-server/scripts/apply-jackpot-morning-sizing.mjs
+# Final J-only trading gate validated against historical A zero-fill outcomes:
+# at +5s A must still be zero/resting, ask >=73c, ask must have risen >=2c
+# since +2s, and the complete J order must be executable at <=75c. A is read-only.
+RUN node artifacts/api-server/scripts/apply-jackpot-v7-gate.mjs
 RUN pnpm install --frozen-lockfile
 RUN cd artifacts/api-server && node scripts/run-jackpot-test.mjs && node build-jackpot.mjs
 
