@@ -3,8 +3,13 @@ import fs from "node:fs";
 const path = "artifacts/api-server/src/lib/strategies/ethJackpotService.ts";
 let source = fs.readFileSync(path, "utf8");
 
+const priceNeedle = `export const JACKPOT_MAX_PRICE_CENTS = 90; // HARD live ceiling during validation.`;
+const priceReplacement = `export const JACKPOT_MAX_PRICE_CENTS = 75; // Provisional rescue ceiling pending historical zero-fill study.`;
+if (!source.includes(priceNeedle)) throw new Error("Jackpot max-price anchor not found");
+source = source.replace(priceNeedle, priceReplacement);
+
 const constantsNeedle = `export const JACKPOT_CEILINGS = [50, 70, 75, 80, 85, 90, 95, 99] as const;\nconst SERVICE_STARTED_AT_MS = Date.now();`;
-const constantsReplacement = `export const JACKPOT_CEILINGS = [50, 70, 75, 80, 85, 90, 95, 99] as const;\nexport const JACKPOT_REOBSERVE_COOLDOWN_MS = 250;\nexport const JACKPOT_REOBSERVE_WINDOW_MS = 15 * 60_000;\nconst SERVICE_STARTED_AT_MS = Date.now();\n\nconst JACKPOT_REOBSERVABLE_REASONS = new Set([\n  "book_unavailable",\n  "depth_at_50",\n  "ask_not_runaway",\n  "ask_above_90",\n]);\n\nexport function shouldReobserveJackpotAttempt(input: {\n  status: string; reason: string | null; updatedAtMs: number; orderCreatedAtMs: number; nowMs: number;\n}): boolean {\n  return input.status === "no_trigger"\n    && input.reason != null\n    && JACKPOT_REOBSERVABLE_REASONS.has(input.reason)\n    && input.nowMs - input.updatedAtMs >= JACKPOT_REOBSERVE_COOLDOWN_MS\n    && input.nowMs - input.orderCreatedAtMs < JACKPOT_REOBSERVE_WINDOW_MS;\n}`;
+const constantsReplacement = `export const JACKPOT_CEILINGS = [50, 70, 75, 80, 85, 90, 95, 99] as const;\nexport const JACKPOT_REOBSERVE_COOLDOWN_MS = 250;\nexport const JACKPOT_REOBSERVE_WINDOW_MS = 5_000;\nconst SERVICE_STARTED_AT_MS = Date.now();\n\nconst JACKPOT_REOBSERVABLE_REASONS = new Set([\n  "book_unavailable",\n  "depth_at_50",\n  "ask_not_runaway",\n]);\n\nexport function shouldReobserveJackpotAttempt(input: {\n  status: string; reason: string | null; updatedAtMs: number; orderCreatedAtMs: number; nowMs: number;\n}): boolean {\n  return input.status === "no_trigger"\n    && input.reason != null\n    && JACKPOT_REOBSERVABLE_REASONS.has(input.reason)\n    && input.nowMs - input.updatedAtMs >= JACKPOT_REOBSERVE_COOLDOWN_MS\n    && input.nowMs - input.orderCreatedAtMs < JACKPOT_REOBSERVE_WINDOW_MS;\n}`;
 if (!source.includes(constantsNeedle)) throw new Error("Jackpot constants anchor not found");
 source = source.replace(constantsNeedle, constantsReplacement);
 
@@ -24,9 +29,9 @@ if (!source.includes(bookNeedle)) throw new Error("Jackpot initial book anchor n
 source = source.replace(bookNeedle, bookReplacement);
 
 const reasonNeedle = `      status: "no_trigger",\n      reason: aParsed.fillCount > 0 ? "a_filled" : bestAsk == null ? "book_unavailable" :\n        levels50.depthAtOrBetterContracts > 0 ? "depth_at_50" : bestAsk <= 50 ? "ask_not_runaway" : "ask_above_90",`;
-const reasonReplacement = `      status: "no_trigger",\n      reason: aParsed.fillCount > 0 ? "a_filled" :\n        (aParsed.orderStatus !== "resting" && aParsed.orderStatus !== "open") ? "a_not_resting" :\n        bestAsk == null ? "book_unavailable" : levels50.depthAtOrBetterContracts > 0 ? "depth_at_50" :\n        bestAsk <= 50 ? "ask_not_runaway" : "ask_above_90",`;
+const reasonReplacement = `      status: "no_trigger",\n      reason: aParsed.fillCount > 0 ? "a_filled" :\n        (aParsed.orderStatus !== "resting" && aParsed.orderStatus !== "open") ? "a_not_resting" :\n        bestAsk == null ? "book_unavailable" : levels50.depthAtOrBetterContracts > 0 ? "depth_at_50" :\n        bestAsk <= 50 ? "ask_not_runaway" : "ask_above_75",`;
 if (!source.includes(reasonNeedle)) throw new Error("Jackpot no-trigger reason anchor not found");
 source = source.replace(reasonNeedle, reasonReplacement);
 
 fs.writeFileSync(path, source);
-console.log("Applied J runaway re-observation repair");
+console.log("Applied J short zero-fill rescue: 5s window, 75c ceiling");
