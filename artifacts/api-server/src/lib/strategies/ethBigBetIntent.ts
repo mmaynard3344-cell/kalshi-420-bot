@@ -1,6 +1,7 @@
 import { ETH_JUMP_ORDER_TAG, ETH_JUMP_WAGER_CENTS, evaluateEthJumpSignal } from "./ethJumpSignal.js";
 import { ETH_REVERSAL_ORDER_TAG, ETH_REVERSAL_WAGER_CENTS, evaluateEthNoStreakReversal } from "./ethNoStreakReversal.js";
 import type { EthBigBetOrderIntent, EthBigBetSide } from "./ethBigBetLifecycle.js";
+import { applyEthMorningWagerMultiplier } from "./ethMorningWagerMultiplier.js";
 
 export const ETH_BIG_BET_LIMIT_PRICE_CENTS = 50;
 
@@ -28,7 +29,7 @@ export function buildEthJumpOrderIntent(input: {
     orderTag: ETH_JUMP_ORDER_TAG,
     ticker: input.ticker,
     side: signal.side ?? input.carriedSide,
-    wagerCents: ETH_JUMP_WAGER_CENTS,
+    wagerCents: applyEthMorningWagerMultiplier(ETH_JUMP_WAGER_CENTS),
     limitPriceCents: ETH_BIG_BET_LIMIT_PRICE_CENTS,
     marketOpenTimeMs: input.marketOpenTimeMs,
   };
