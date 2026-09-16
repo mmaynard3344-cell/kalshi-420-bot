@@ -31,8 +31,13 @@ if (!runtime.includes("c.endsWith(':jackpot-j')") || !runtime.includes("'J · Ja
 writeFileSync(runtimePath, runtime);
 
 // Preserve the existing dashboard speed repair at the END of the build chain so
-// later P&L generators cannot overwrite it.
+// later P&L generators cannot overwrite it. Some legacy generators replace the
+// dashboard wholesale, so restore the read-only actual-fill overlay if needed.
 let dashboard = readFileSync(dashboardPath, 'utf8');
+if (!dashboard.includes('actual-fill-dashboard-v1')) {
+  await import('./apply-actual-fill-dashboard.mjs');
+  dashboard = readFileSync(dashboardPath, 'utf8');
+}
 if (!dashboard.includes('shawshank-pnl-fast-cache-v1')) {
   dashboard = dashboard.replace(
     "const daily = summarize(payload.fills || []);\n      paint(daily, Boolean(payload.stale));",
