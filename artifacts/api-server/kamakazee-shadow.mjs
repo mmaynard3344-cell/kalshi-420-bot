@@ -12,7 +12,7 @@ const SERIES = "KXETH15M";
 const INTERVAL_MS = 15 * 60 * 1000;
 const EFFICIENCY_THRESHOLD = 0.85;
 const POLL_MS = 30_000;
-const PRINCIPAL_CENTS = [10_000, 20_000, 40_000];
+const PRINCIPAL_CENTS = [10_000];
 const LIMIT_CENTS = 50;
 let inFlight = false;
 
@@ -165,7 +165,7 @@ async function reconcile() {
       continue;
     }
     const win = official === "NO";
-    const nextStep = win || Number(row.step) === 2 ? 0 : Number(row.step) + 1;
+    const nextStep = 0;
     const transitioned = await db.execute(sql`
       UPDATE kamakazee_orders SET official_result=${official}, transition_applied=TRUE, updated_at_ms=${Date.now()}
       WHERE target_ticker=${row.target_ticker} AND transition_applied=FALSE RETURNING target_ticker`);
@@ -214,7 +214,7 @@ async function evaluate() {
   const targetTicker = candidates[0].ticker;
   const step = Number(currentState?.step ?? 0);
   if (!Number.isInteger(step) || step < 0 || step > 2) throw new Error("invalid durable K step");
-  const principalCents = PRINCIPAL_CENTS[step];
+  const principalCents = PRINCIPAL_CENTS[0];
   const contracts = Math.floor(principalCents / LIMIT_CENTS);
   const clientId = `${targetTicker}:kamakazee-k-v1`;
   const reserved = await db.execute(sql`
@@ -260,7 +260,7 @@ await init();
 await authFetch("GET", "/portfolio/balance");
 log("STARTUP", { executable: true, live: process.env.KAMAKAZEE_LIVE_ENABLED === "true",
   series: SERIES, endpoint: "/portfolio/orders", limitPriceCents: LIMIT_CENTS,
-  principalLadderDollars: PRINCIPAL_CENTS.map((value) => value / 100), orderType: "GTC" });
+  principalDollars: 100, repeatAfterLoss: false, orderType: "GTC" });
 await evaluate();
 setInterval(() => {
   if (inFlight) return;
