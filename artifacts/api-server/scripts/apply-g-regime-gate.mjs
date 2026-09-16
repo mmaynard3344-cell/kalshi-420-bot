@@ -5,7 +5,8 @@ const file = "artifacts/api-server/src/g4060ScalpIndex.ts";
 let source = fs.readFileSync(file, "utf8");
 
 // Service G production patch: exact-two reversal only, 4:00-7:59 AM ET,
-// Monday/Tuesday/Wednesday/Friday/Saturday, flat $200 at 50c.
+// Monday/Tuesday/Wednesday/Friday/Saturday, flat $200 at 50c outside the
+// approved 6:00-11:59 AM ET portfolio sizing window, where it is $300.
 // No weather/regime veto and no loss progression.
 
 const helperAnchor = "let busy = false;\nasync function tick(): Promise<void> {";
@@ -26,6 +27,17 @@ const helper = `function gEntryWindowAllowed(openMs: number): boolean {
     && weekday !== "Thu";
 }
 
+function gEffectivePrincipalCents(nowMs = Date.now()): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    hour12: false,
+  }).formatToParts(new Date(nowMs));
+  const rawHour = Number(parts.find((p) => p.type === "hour")?.value ?? NaN);
+  const hour = rawHour === 24 ? 0 : rawHour;
+  return Number.isFinite(hour) && hour >= 6 && hour < 12 ? 30_000 : 20_000;
+}
+
 let busy = false;
 async function tick(): Promise<void> {`;
 if (!source.includes("function gEntryWindowAllowed")) {
@@ -35,8 +47,8 @@ if (!source.includes("function gEntryWindowAllowed")) {
 
 const submitSizingAnchor = `  const principalCents = PRINCIPALS_CENTS[step]!;
   const contracts = CONTRACTS[step]!;`;
-const submitSizingReplacement = `  const principalCents = 20_000;
-  const contracts = 400;`;
+const submitSizingReplacement = `  const principalCents = gEffectivePrincipalCents();
+  const contracts = Math.floor(principalCents / LIMIT_PRICE_CENTS);`;
 if (!source.includes(submitSizingReplacement)) {
   if (!source.includes(submitSizingAnchor)) throw new Error("G sizing anchor missing");
   source = source.replace(submitSizingAnchor, submitSizingReplacement);
@@ -93,10 +105,9 @@ const tickReplacement = `    const market = await discoverCurrentMarket();
     const trigger = await exactTwoStreakTrigger(market.openMs);
     if (!trigger || trigger.key === state.lastTriggerKey) return;
 
-    // Clear any legacy ladder state before every new flat entry.
     await setState(null, 0, trigger.key);
-    logger.info({ ticker: market.ticker, priorResult: trigger.priorResult, side: trigger.side, triggerKey: trigger.key, principalCents: 20_000 },
-      "G flat-200 scheduled exact-two reversal trigger armed");
+    logger.info({ ticker: market.ticker, priorResult: trigger.priorResult, side: trigger.side, triggerKey: trigger.key, principalCents: gEffectivePrincipalCents() },
+      "G flat scheduled exact-two reversal trigger armed");
     await submitOrder(market, trigger.side, 0);`;
 if (!source.includes(tickReplacement)) {
   if (!source.includes(tickAnchor)) throw new Error("G tick anchor missing");
@@ -104,13 +115,14 @@ if (!source.includes(tickReplacement)) {
 }
 
 const startupAnchor = `    progression: "100-200-400_same_side_on_losses_reset_on_win_or_step3_loss",`;
-const startupReplacement = `    progression: "flat_200_no_loss_progression",
+const startupReplacement = `    progression: "flat_200_base_300_morning_no_loss_progression",
     entrySchedule: "04:00-07:59_America/New_York_excluding_Sun_Thu",
+    morningSizing: "1.5x_06:00-11:59_America/New_York",
     regimeGate: "disabled",`;
-if (!source.includes('progression: "flat_200_no_loss_progression"')) {
+if (!source.includes('progression: "flat_200_base_300_morning_no_loss_progression"')) {
   if (!source.includes(startupAnchor)) throw new Error("G startup anchor missing");
   source = source.replace(startupAnchor, startupReplacement);
 }
 
 fs.writeFileSync(file, source);
-console.log("Applied G flat-$200 scheduled exact-two patch; legacy weather gate disabled");
+console.log("Applied G flat-$200 schedule with approved 1.5x 6am-noon ET sizing; weather gate disabled");
