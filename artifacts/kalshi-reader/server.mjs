@@ -427,7 +427,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Read-only ETH 420 operator UI listening on ${port}`);
-  for (const path of ['/api/trade/fills?limit=1000', '/api/trade/orders?limit=1000']) {
+  for (const path of ['/api/trade/fills?limit=10000', '/api/trade/orders?limit=1000']) {
     const url = new URL(path, 'http://shawshank.local');
     void refreshReadCache(url).catch((error) => console.error('Dashboard cache warm failed', path, error));
   }
