@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const path = new URL('../server.mjs', import.meta.url);
 let src = readFileSync(path, 'utf8');
-const marker = 'shawshank-j-rescue-research-v3';
+const marker = 'shawshank-j-rescue-research-v3-fix1';
 if (src.includes(marker)) { console.log(`${marker}: already installed`); process.exit(0); }
 const fnAnchor = 'function serveStatic(req, res, url) {';
 if (!src.includes(fnAnchor)) throw new Error('J research patch: serveStatic anchor missing');
@@ -15,9 +15,8 @@ async function computeJRescueResearch() {
  const terminalStatus=new Set(['settled','finalized','closed','resolved','complete','completed','cancelled','canceled','expired']); const isTerminal=o=>pick(o,'settled_at_ms','finalized_at_ms')!=null||terminalStatus.has(String(pick(o,'status','order_status')??'').toLowerCase());
  const rows=data.orders.map(o=>{const id=String(o.id??'');const s=byOrder.get(id)??new Map();const filled=num(pick(o,'filled_contracts','filledContracts'))??0;const terminal=isTerminal(o);return{id,ticker:String(o.ticker??''),side:String(o.side??''),createdAtMs:num(pick(o,'created_at_ms','createdAtMs')),finalFilledContracts:filled,label:filled>0?'A_LATER_FILLED':terminal?'A_NEVER_FILLED':'UNKNOWN',plus1:s.get(1000)??null,plus2:s.get(2000)??null,plus5:s.get(5000)??null,plus10:s.get(10000)??null}}).filter(r=>r.plus1||r.plus2||r.plus5||r.plus10);
  const known=rows.filter(r=>r.label!=='UNKNOWN'); const eligible=s=>s&&s.state==='captured'&&s.orderStatus==='resting'&&s.filled===0;
- const evalGate=(name,fn)=>{let tp=0,fp=0,fn=0,tn=0;for(const r of known){const fire=!!fn(r),truth=r.label==='A_NEVER_FILLED';if(fire&&truth)tp++;else if(fire)fp++;else if(truth)fn++;else tn++;}return{name,tp,fp,fn,tn,precision:tp+fp?tp/(tp+fp):null,recall:tp+fn?tp/(tp+fn):null,fired:tp+fp}};
+ const evalGate=(name,predicate)=>{let tp=0,fp=0,falseNeg=0,tn=0;for(const r of known){const fire=!!predicate(r),truth=r.label==='A_NEVER_FILLED';if(fire&&truth)tp++;else if(fire)fp++;else if(truth)falseNeg++;else tn++;}return{name,tp,fp,fn:falseNeg,tn,precision:tp+fp?tp/(tp+fp):null,recall:tp+falseNeg?tp/(tp+falseNeg):null,fired:tp+fp}};
  const gates=[]; for(const off of [1000,2000,5000,10000])for(const ask of [55,60,65,70,75,80,85,90])gates.push(evalGate('ask_'+off+'_'+ask,r=>{const s=r['plus'+off/1000];return eligible(s)&&s.ask!=null&&s.ask>=ask}));
- // Multi-feature sweep: persistence, acceleration, spread/depth and executable-price confirmation.
  for(const ask5 of [60,65,70,75,80])for(const ask10 of [60,65,70,75,80])for(const rise of [0,3,5,10])gates.push(evalGate('persist_a5_'+ask5+'_a10_'+ask10+'_rise_'+rise,r=>eligible(r.plus5)&&eligible(r.plus10)&&r.plus5.ask>=ask5&&r.plus10.ask>=ask10&&r.plus1?.ask!=null&&r.plus10.ask-r.plus1.ask>=rise));
  for(const ask of [60,65,70,75,80])for(const exe of [60,65,70,75,80,85,90])gates.push(evalGate('a10_'+ask+'_exe_'+exe,r=>eligible(r.plus10)&&r.plus10.ask>=ask&&r.plus10.executable!=null&&r.plus10.executable<=exe));
  for(const ask of [60,65,70,75,80])for(const depth of [0,5,10,20,30,50])gates.push(evalGate('a10_'+ask+'_depth50_le_'+depth,r=>eligible(r.plus10)&&r.plus10.ask>=ask&&r.plus10.depth50!=null&&r.plus10.depth50<=depth));
