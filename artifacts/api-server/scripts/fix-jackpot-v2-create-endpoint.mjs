@@ -6,8 +6,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const strategyPath = join(here, "..", "src", "lib", "strategies", "ethJackpotService.ts");
 let source = readFileSync(strategyPath, "utf8");
 
-const v1 = 'kalshiAuthFetch<Record<string, unknown>>("POST", "/portfolio/events/orders", payload)';
-const v2 = 'kalshiAuthFetch<Record<string, unknown>>("POST", "/portfolio/orders", payload)';
+const v1 = 'kalshiAuthFetch<Record<string, unknown>>("POST", "/portfolio/orders", payload)';
+const v2 = 'kalshiAuthFetch<Record<string, unknown>>("POST", "/portfolio/events/orders", payload)';
 const hits = source.split(v1).length - 1;
 if (hits === 1) source = source.replace(v1, v2);
 else if (hits === 0 && source.includes(v2)) {
