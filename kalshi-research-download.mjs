@@ -17,6 +17,7 @@ async function main() {
   await run(process.execPath, ["kalshi-g-deep-study.mjs"]);
   await run(process.execPath, ["kalshi-g-combo-study.mjs"]);
   await run(process.execPath, ["kalshi-g-stability-study.mjs"]);
+  await run(process.execPath, ["kalshi-g-weekday-validation.mjs"]);
   await run(process.execPath, ["kalshi-regime-analysis.mjs"]);
   await run(process.execPath, ["kalshi-daily-streak-analysis.mjs"]);
   await run(process.execPath, ["kalshi-portfolio-replay.mjs"]);
