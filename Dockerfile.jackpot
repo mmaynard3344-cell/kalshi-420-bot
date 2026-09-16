@@ -11,6 +11,10 @@ RUN node artifacts/api-server/scripts/apply-jackpot-reobserve-runaway.mjs
 # discover only the exact next 15-minute boundary market before the window opens.
 # Run this after the re-observation patch so stale V1 paths cannot be reintroduced.
 RUN node artifacts/api-server/scripts/apply-jackpot-v2-repair.mjs
+# Kalshi's catalog can publish the exact next ticker before floor_strike is
+# populated. Hydrate that exact ticker from /markets/{ticker}; never guess or
+# substitute a different boundary market.
+RUN node artifacts/api-server/scripts/apply-jackpot-next-strike-hydration.mjs
 RUN pnpm install --frozen-lockfile
 RUN cd artifacts/api-server && node scripts/run-jackpot-test.mjs && node build-jackpot.mjs
 
