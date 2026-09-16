@@ -14,6 +14,7 @@ function run(cmd, args) {
 
 async function main() {
   await run(process.execPath, ["kalshi-research-runner.mjs"]);
+  await run(process.execPath, ["kalshi-g-sizing-study.mjs"]);
   await run(process.execPath, ["kalshi-g-walkforward.mjs"]);
   await run(process.execPath, ["kalshi-g-deep-study.mjs"]);
   await run(process.execPath, ["kalshi-g-combo-study.mjs"]);
