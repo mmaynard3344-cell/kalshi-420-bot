@@ -50,6 +50,7 @@
     if(c.endsWith(':eth-downfade-p80-p99-v2'))return'E · Downfade';
     if(c.endsWith(':eth-downfade-p90-p99-v2'))return'F · Downfade';
     if(c.endsWith(':eth-probe-g-5m-30c-v1'))return'G · Probe';
+    if(c.startsWith('g-streak-reversal-v1:'))return'G · Streak Reversal';
     if(c.endsWith(':eth-ashley-h-v1'))return'H · Ashley';
     if(c.endsWith(':eth-ash-v2-i-v1'))return'I · Ash V2';
     if(c.endsWith(':jackpot-j'))return'J · Jackpot';
