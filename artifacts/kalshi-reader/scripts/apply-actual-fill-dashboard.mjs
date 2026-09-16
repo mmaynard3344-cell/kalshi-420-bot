@@ -25,7 +25,7 @@ const overlay = String.raw`
   const moneyActual = (cents, signed=true) => {
     const n = Number(cents || 0);
     const prefix = signed ? (n > 0 ? '+' : n < 0 ? '-' : '') : (n < 0 ? '-' : '');
-    return prefix + '$' + (Math.abs(n) / 100).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    return prefix + String.fromCharCode(36) + (Math.abs(n) / 100).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
   };
   const easternKey = (ms) => {
     const parts = new Intl.DateTimeFormat('en-US',{timeZone:ET,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(ms));
