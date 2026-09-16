@@ -14,11 +14,11 @@ function run(cmd, args) {
 
 async function main() {
   await run(process.execPath, ["kalshi-research-runner.mjs"]);
+  await run(process.execPath, ["kalshi-g-deep-study.mjs"]);
   await run(process.execPath, ["kalshi-regime-analysis.mjs"]);
   await run(process.execPath, ["kalshi-daily-streak-analysis.mjs"]);
   await run(process.execPath, ["kalshi-portfolio-replay.mjs"]);
   await run(process.execPath, ["kalshi-g2-fresh-confirmation.mjs"]);
-  await run(process.execPath, ["kalshi-g-deep-study.mjs"]);
 
   const archive = path.resolve("./kalshi-100day-research.tar.gz");
   if (fs.existsSync(archive)) fs.unlinkSync(archive);
