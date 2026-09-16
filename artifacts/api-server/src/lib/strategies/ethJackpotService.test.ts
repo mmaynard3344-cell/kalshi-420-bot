@@ -73,17 +73,11 @@ test("Jackpot only re-observes a zero-fill during the short rescue window", () =
   }), false, "re-observation cannot outlive the 5-second rescue window");
 });
 
-test("Jackpot validation sizing respects the 75c ceiling and morning 1.5x budget", () => {
-  assert.equal(JACKPOT_WAGER_CENTS, 1000);
+test("Jackpot fixed $100 sizing respects the 75c ceiling", () => {
+  assert.equal(JACKPOT_WAGER_CENTS, 10_000);
   assert.equal(JACKPOT_MAX_PRICE_CENTS, 75);
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York", hour: "numeric", hour12: false,
-  }).formatToParts(new Date());
-  const rawHour = Number(parts.find((part) => part.type === "hour")?.value ?? NaN);
-  const hour = rawHour === 24 ? 0 : rawHour;
-  const budget = Number.isFinite(hour) && hour >= 6 && hour < 12 ? 1500 : 1000;
-  assert.equal(jackpotContracts(), Math.floor(budget / JACKPOT_MAX_PRICE_CENTS));
-  assert.ok(jackpotContracts() * JACKPOT_MAX_PRICE_CENTS <= budget);
+  assert.equal(jackpotContracts(), Math.floor(JACKPOT_WAGER_CENTS / JACKPOT_MAX_PRICE_CENTS));
+  assert.ok(jackpotContracts() * JACKPOT_MAX_PRICE_CENTS <= JACKPOT_WAGER_CENTS);
 });
 
 test("Jackpot uses native IOC and correct Kalshi wire complement for NO", () => {
