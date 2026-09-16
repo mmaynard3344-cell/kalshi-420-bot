@@ -1,6 +1,7 @@
 import { ETH_JUMP_ORDER_TAG, ETH_JUMP_WAGER_CENTS, evaluateEthJumpSignal } from "./ethJumpSignal.js";
 import { ETH_REVERSAL_ORDER_TAG, ETH_REVERSAL_WAGER_CENTS, evaluateEthNoStreakReversal } from "./ethNoStreakReversal.js";
 import type { EthBigBetOrderIntent, EthBigBetSide } from "./ethBigBetLifecycle.js";
+import { applyEthMorningWagerMultiplier } from "./ethMorningWagerMultiplier.js";
 
 export const ETH_BIG_BET_LIMIT_PRICE_CENTS = 50;
 
@@ -16,22 +17,10 @@ export function buildEthJumpOrderIntent(input: {
 }): EthBigBetOrderIntent | null {
   if (!/^KXETH15M-/.test(input.ticker) || !Number.isInteger(input.marketOpenTimeMs)
     || (input.carriedSide !== "yes" && input.carriedSide !== "no")) return null;
-  const signal = evaluateEthJumpSignal({
-    currentMove: input.currentMove,
-    p95: input.p95,
-    p99: input.p99,
-    carriedSide: input.carriedSide,
-  });
+  const signal = evaluateEthJumpSignal({ currentMove: input.currentMove, p95: input.p95, p99: input.p99, carriedSide: input.carriedSide });
   if (!signal.fires) return null;
-  return {
-    strategy: "jump",
-    orderTag: ETH_JUMP_ORDER_TAG,
-    ticker: input.ticker,
-    side: signal.side ?? input.carriedSide,
-    wagerCents: ETH_JUMP_WAGER_CENTS,
-    limitPriceCents: ETH_BIG_BET_LIMIT_PRICE_CENTS,
-    marketOpenTimeMs: input.marketOpenTimeMs,
-  };
+  return { strategy: "jump", orderTag: ETH_JUMP_ORDER_TAG, ticker: input.ticker, side: signal.side ?? input.carriedSide,
+    wagerCents: ETH_JUMP_WAGER_CENTS, limitPriceCents: ETH_BIG_BET_LIMIT_PRICE_CENTS, marketOpenTimeMs: input.marketOpenTimeMs };
 }
 
 /** Service C is independent of A's sequence: a qualifying reversal is always
@@ -45,20 +34,8 @@ export function buildEthReversalOrderIntent(input: {
   p99: number | null;
 }): EthBigBetOrderIntent | null {
   if (!/^KXETH15M-/.test(input.ticker) || !Number.isInteger(input.marketOpenTimeMs)) return null;
-  const signal = evaluateEthNoStreakReversal({
-    consecutiveNoOutcomes: input.consecutiveNoOutcomes,
-    currentMove: input.currentMove,
-    p95: input.p95,
-    p99: input.p99,
-  });
+  const signal = evaluateEthNoStreakReversal({ consecutiveNoOutcomes: input.consecutiveNoOutcomes, currentMove: input.currentMove, p95: input.p95, p99: input.p99 });
   if (!signal.fires) return null;
-  return {
-    strategy: "reversal",
-    orderTag: ETH_REVERSAL_ORDER_TAG,
-    ticker: input.ticker,
-    side: signal.side,
-    wagerCents: ETH_REVERSAL_WAGER_CENTS,
-    limitPriceCents: ETH_BIG_BET_LIMIT_PRICE_CENTS,
-    marketOpenTimeMs: input.marketOpenTimeMs,
-  };
+  return { strategy: "reversal", orderTag: ETH_REVERSAL_ORDER_TAG, ticker: input.ticker, side: signal.side,
+    wagerCents: applyEthMorningWagerMultiplier(ETH_REVERSAL_WAGER_CENTS), limitPriceCents: ETH_BIG_BET_LIMIT_PRICE_CENTS, marketOpenTimeMs: input.marketOpenTimeMs };
 }
