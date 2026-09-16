@@ -15,6 +15,9 @@ RUN node artifacts/api-server/scripts/apply-jackpot-v2-repair.mjs
 # populated. Hydrate that exact ticker from /markets/{ticker}; never guess or
 # substitute a different boundary market.
 RUN node artifacts/api-server/scripts/apply-jackpot-next-strike-hydration.mjs
+# Apply the approved portfolio sizing rule last so the J safety/API repairs above
+# remain authoritative: 1.5x wager budget only from 06:00-11:59 ET.
+RUN node artifacts/api-server/scripts/apply-jackpot-morning-sizing.mjs
 RUN pnpm install --frozen-lockfile
 RUN cd artifacts/api-server && node scripts/run-jackpot-test.mjs && node build-jackpot.mjs
 
