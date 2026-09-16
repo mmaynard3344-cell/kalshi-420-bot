@@ -58,8 +58,9 @@ if (pnl.includes('function summarizeFills')) {
   }
 
   const compactRefreshProof = "const z=summarize(fr.value.rows,idx);";
-  if (!pnl.includes(compactRefreshProof)) throw new Error('P&L compact refresh join anchor not found');
-  if (!pnl.includes("idx=or.value.index")) throw new Error('P&L compact order index anchor not found');
+  const cachedRefreshProof = "z=summarize(state.fills,idx);";
+  if (!pnl.includes(compactRefreshProof) && !pnl.includes(cachedRefreshProof)) throw new Error('P&L compact refresh join anchor not found');
+  if (!pnl.includes("idx=or.value.index") && !pnl.includes("state.orders.map(x=>[oid(x),x])")) throw new Error('P&L compact order index anchor not found');
 }
 
 fs.writeFileSync(pnlPath, pnl);
