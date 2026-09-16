@@ -3,6 +3,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { gzipSync } from 'node:zlib';
 
 const port = Number(process.env.PORT ?? 3000);
 const graceBase = (process.env.GRACE_API_BASE_URL ?? '').replace(/\/$/, '');
@@ -83,6 +84,7 @@ async function refreshReadCache(url) {
       status: upstream.status,
       contentType: upstream.headers.get('content-type') ?? 'application/json; charset=utf-8',
       body,
+      gzipBody: gzipSync(body, { level: 6 }),
       updatedAt: Date.now(),
     };
     if (upstream.ok) readCache.set(key, value);
@@ -92,14 +94,18 @@ async function refreshReadCache(url) {
   return work;
 }
 
-function sendCachedRead(res, value, cacheStatus) {
+function sendCachedRead(req, res, value, cacheStatus) {
+  const acceptsGzip = String(req.headers['accept-encoding'] ?? '').includes('gzip');
+  const body = acceptsGzip ? value.gzipBody : value.body;
   res.writeHead(value.status, {
     'content-type': value.contentType,
     'cache-control': 'no-store',
+    'content-length': body.length,
+    ...(acceptsGzip ? { 'content-encoding': 'gzip', vary: 'accept-encoding' } : {}),
     'x-content-type-options': 'nosniff',
     'x-shawshank-cache': cacheStatus,
   });
-  res.end(value.body);
+  res.end(body);
 }
 
 async function proxyRead(req, res, url) {
@@ -110,12 +116,12 @@ async function proxyRead(req, res, url) {
       const key = url.pathname + url.search;
       const cached = readCache.get(key);
       const age = cached ? Date.now() - cached.updatedAt : Infinity;
-      if (cached && age <= READ_CACHE_TTL_MS) return sendCachedRead(res, cached, 'hit');
+      if (cached && age <= READ_CACHE_TTL_MS) return sendCachedRead(req, res, cached, 'hit');
       if (cached && age <= READ_CACHE_STALE_MS) {
         void refreshReadCache(url).catch((error) => console.error('Grace cache refresh failed', error));
-        return sendCachedRead(res, cached, 'stale');
+        return sendCachedRead(req, res, cached, 'stale');
       }
-      return sendCachedRead(res, await refreshReadCache(url), 'miss');
+      return sendCachedRead(req, res, await refreshReadCache(url), 'miss');
     }
 
     const upstream = await fetch(`${graceBase}${url.pathname}${url.search}`, {
