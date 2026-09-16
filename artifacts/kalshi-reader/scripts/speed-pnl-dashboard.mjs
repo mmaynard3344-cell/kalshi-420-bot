@@ -5,7 +5,14 @@ import { dirname, join } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const dashboardPath = join(here, '..', 'public', 'eth420-dashboard.html');
 const runtimePath = join(here, '..', 'public', 'pnl-runtime.js');
+
+// The speed patch depends on the actual-fill overlay. Install that read-only
+// dashboard overlay first when a fresh Railway checkout does not contain it.
 let source = readFileSync(dashboardPath, 'utf8');
+if (!source.includes('actual-fill-dashboard-v1')) {
+  await import('./apply-actual-fill-dashboard.mjs');
+  source = readFileSync(dashboardPath, 'utf8');
+}
 
 // Dashboard-only performance repair. Never touches trading/order code.
 // Paint the last successful P&L summary immediately, then refresh exchange data
