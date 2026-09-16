@@ -60,10 +60,64 @@ async function graceJson(path) {
   return JSON.parse(text);
 }
 
+const READ_CACHE_TTL_MS = 30_000;
+const READ_CACHE_STALE_MS = 5 * 60_000;
+const readCache = new Map();
+const readInflight = new Map();
+
+function cacheableRead(url) {
+  return url.pathname === '/api/trade/fills' || url.pathname === '/api/trade/orders';
+}
+
+async function refreshReadCache(url) {
+  const key = url.pathname + url.search;
+  if (readInflight.has(key)) return readInflight.get(key);
+  const work = (async () => {
+    const upstream = await fetch(`${graceBase}${key}`, {
+      method: 'GET',
+      headers: { 'x-trade-token': graceToken, accept: 'application/json' },
+      redirect: 'manual',
+    });
+    const body = Buffer.from(await upstream.arrayBuffer());
+    const value = {
+      status: upstream.status,
+      contentType: upstream.headers.get('content-type') ?? 'application/json; charset=utf-8',
+      body,
+      updatedAt: Date.now(),
+    };
+    if (upstream.ok) readCache.set(key, value);
+    return value;
+  })().finally(() => readInflight.delete(key));
+  readInflight.set(key, work);
+  return work;
+}
+
+function sendCachedRead(res, value, cacheStatus) {
+  res.writeHead(value.status, {
+    'content-type': value.contentType,
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'x-shawshank-cache': cacheStatus,
+  });
+  res.end(value.body);
+}
+
 async function proxyRead(req, res, url) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
   if (!ALLOWED_READ_PATHS.has(url.pathname)) return send(res, 404, 'Not found');
   try {
+    if (req.method === 'GET' && cacheableRead(url)) {
+      const key = url.pathname + url.search;
+      const cached = readCache.get(key);
+      const age = cached ? Date.now() - cached.updatedAt : Infinity;
+      if (cached && age <= READ_CACHE_TTL_MS) return sendCachedRead(res, cached, 'hit');
+      if (cached && age <= READ_CACHE_STALE_MS) {
+        void refreshReadCache(url).catch((error) => console.error('Grace cache refresh failed', error));
+        return sendCachedRead(res, cached, 'stale');
+      }
+      return sendCachedRead(res, await refreshReadCache(url), 'miss');
+    }
+
     const upstream = await fetch(`${graceBase}${url.pathname}${url.search}`, {
       method: req.method,
       headers: { 'x-trade-token': graceToken, accept: 'application/json' },
@@ -367,4 +421,8 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Read-only ETH 420 operator UI listening on ${port}`);
+  for (const path of ['/api/trade/fills?limit=1000', '/api/trade/orders?limit=1000']) {
+    const url = new URL(path, 'http://shawshank.local');
+    void refreshReadCache(url).catch((error) => console.error('Dashboard cache warm failed', path, error));
+  }
 });
