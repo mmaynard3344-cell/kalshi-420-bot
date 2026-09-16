@@ -1,4 +1,5 @@
 import type { EthBigBetOrderIntent } from "./ethBigBetLifecycle.js";
+import { applyEthMorningWagerMultiplier } from "./ethMorningWagerMultiplier.js";
 
 function positiveIntegerEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -34,9 +35,7 @@ export function buildEthAshV2Intent(evidence: EthAshV2Evidence): EthBigBetOrderI
     || typeof evidence.priorStrike !== "number" || !Number.isFinite(evidence.priorStrike) || evidence.priorStrike <= 0
     || typeof evidence.moveRatio !== "number" || !Number.isFinite(evidence.moveRatio)
     || typeof evidence.ageMs !== "number" || !Number.isFinite(evidence.ageMs)) return null;
-
   if (evidence.ageMs < 0 || evidence.ageMs > ETH_ASH_V2_ENTRY_WINDOW_MS) return null;
-
   let side: "yes" | "no" | null = null;
   if (evidence.moveRatio < 0) {
     const decline = -evidence.moveRatio;
@@ -46,13 +45,12 @@ export function buildEthAshV2Intent(evidence: EthAshV2Evidence): EthBigBetOrderI
     if (rise >= ETH_ASH_V2_UP_MIN_RATIO && rise < ETH_ASH_V2_UP_MAX_RATIO) side = "no";
   }
   if (!side) return null;
-
   return {
     strategy: "ash_v2_i",
     orderTag: ETH_ASH_V2_ORDER_TAG,
     ticker: evidence.ticker,
     side,
-    wagerCents: ETH_ASH_V2_WAGER_CENTS,
+    wagerCents: applyEthMorningWagerMultiplier(ETH_ASH_V2_WAGER_CENTS),
     limitPriceCents: ETH_ASH_V2_LIMIT_PRICE_CENTS,
     marketOpenTimeMs: evidence.marketOpenTimeMs,
   };
