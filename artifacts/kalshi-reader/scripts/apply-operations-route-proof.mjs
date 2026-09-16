@@ -21,8 +21,13 @@ let ops = fs.readFileSync(opsPath, 'utf8');
 const oldHelpers = `  const backFlipWindows = (p) => { const rows=Array.isArray(p)?p:Array.isArray(p?.rows)?p.rows:[]; return rows.map(r=>num(first(r,['targetOpenTimeMs','target_open_time_ms']))).filter(Number.isFinite); };\n  const routeOf = (o, bfWindows, bfAvailable) => { const c=clientId(o); if(c.startsWith('eth-yes-')||c.startsWith('eth-no-'))return'Regular'; if(c.endsWith(':eth420-live-v1')){if(!bfAvailable)return'420 Special'; const t=orderTime(o); return bfWindows.some(w=>t>=w&&t<w+900000)?'Back Flip':'420 Jump';} return'ETH Order'; };`;
 const newHelpers = `  const backFlipRows = (p) => Array.isArray(p)?p:Array.isArray(p?.rows)?p.rows:[];\n  const routeOf = (o, bfRows, bfAvailable) => {\n    const c=clientId(o);\n    if(c.startsWith('eth-yes-')||c.startsWith('eth-no-')) return 'Regular';\n    if(c.endsWith(':eth420-live-v1')) {\n      if(!bfAvailable) return '420 Special';\n      const oid=orderId(o), ticker=orderTicker(o);\n      const proved=bfRows.some(r=>{\n        const candidate=String(first(r,['candidateOrderId','candidate_order_id'])??'');\n        const target=String(first(r,['targetTicker','target_ticker'])??'');\n        return candidate && (candidate===c || candidate===oid) && (!target || target===ticker);\n      });\n      return proved ? 'Back Flip' : '420 Jump';\n    }\n    return 'ETH Order';\n  };`;
 if (!ops.includes(newHelpers)) {
-  if (!ops.includes(oldHelpers)) throw new Error('route proof: Operations route helper anchor not found');
-  ops = ops.replace(oldHelpers, newHelpers);
+  const multiOrderRouteProof = ops.includes("if(c.endsWith(':eth-jump-v1'))return'B · Jump';")
+    && ops.includes('const backFlipRows =')
+    && ops.includes("candidate===c||candidate===oid");
+  if (!multiOrderRouteProof) {
+    if (!ops.includes(oldHelpers)) throw new Error('route proof: Operations route helper anchor not found');
+    ops = ops.replace(oldHelpers, newHelpers);
+  }
 }
 ops = ops.replace('const results=settlementMap(fills); const bfWindows=backFlipWindows(bf);', 'const results=settlementMap(fills); const bfRows=backFlipRows(bf);');
 ops = ops.replaceAll('routeOf(current,bfWindows,bfAvailable)', 'routeOf(current,bfRows,bfAvailable)');
