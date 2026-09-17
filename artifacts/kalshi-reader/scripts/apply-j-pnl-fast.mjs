@@ -28,6 +28,21 @@ if (!runtime.includes("':jackpot-j'")) {
 if (!runtime.includes("c.endsWith(':jackpot-j')") || !runtime.includes("'J · Jackpot'")) {
   throw new Error('J P&L attribution anchors not found; refusing partial dashboard patch');
 }
+// Paint a compact recent ledger immediately while the complete exchange history
+// continues loading for P&L totals and analytics.
+if (!runtime.includes('shawshank-recent-ledger-v1')) {
+  runtime = runtime.replace(
+    "function paintOrders(rows,fm){if($('orderCount'))$('orderCount').textContent=rows.length+' actual orders';",
+    "function paintOrders(rows,fm){rows=[...rows].sort((a,b)=>(ms(b)||0)-(ms(a)||0)).slice(0,100);if($('orderCount'))$('orderCount').textContent=rows.length+' recent orders';",
+  );
+  runtime = runtime.replace(
+    "let busy=false;async function refresh(){if(busy)return;busy=true;try{const[fr,or]=await Promise.allSettled([fills(),orders()]);",
+    "let busy=false;async function refresh(){if(busy)return;busy=true;try{/* shawshank-recent-ledger-v1 */void fetch('/api/trade/orders?limit=100',{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject(new Error(String(r.status)))).then(j=>{const recent=(Array.isArray(j?.orders)?j.orders:[]).filter(x=>eth(x));if(recent.length)paintOrders(recent,new Map)}).catch(()=>{});const[fr,or]=await Promise.allSettled([fills(),orders()]);",
+  );
+}
+if (!runtime.includes('shawshank-recent-ledger-v1')) {
+  throw new Error('Recent P&L ledger anchors not found; refusing partial dashboard patch');
+}
 writeFileSync(runtimePath, runtime);
 
 // Preserve the existing dashboard speed repair at the END of the build chain so
