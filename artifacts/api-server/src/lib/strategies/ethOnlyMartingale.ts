@@ -133,7 +133,7 @@ export function ethNoOrderPayload(
     ticker, client_order_id: clientOrderId, side: "ask",
     count: `${contracts}.00`, price: (ETH_GTC_LIMIT_PRICE_CENTS / 100).toFixed(4),
     time_in_force: "good_till_canceled", self_trade_prevention_type: "taker_at_cross",
-    exchange_index: exchangeIndex,
+    ...(exchangeIndex >= 0 ? { exchange_index: exchangeIndex } : {}),
   };
 }
 
@@ -154,7 +154,7 @@ export function ethYesOrderPayload(
     ticker, client_order_id: clientOrderId, side: "bid",
     count: `${contracts}.00`, price: (ETH_GTC_LIMIT_PRICE_CENTS / 100).toFixed(4),
     time_in_force: "good_till_canceled", self_trade_prevention_type: "taker_at_cross",
-    exchange_index: exchangeIndex,
+    ...(exchangeIndex >= 0 ? { exchange_index: exchangeIndex } : {}),
   };
 }
 
@@ -780,14 +780,25 @@ export const placeEthMartingaleGtcEntry: EthPlacementLifecycleGateway = async ({
       ethDependencies.haltTrading(true);
       logger.warn({ ticker: state.ticker }, "ETH live proof claim engaged before first order POST attempt");
     }
+    logger.info({
+      ticker: state.ticker, clientOrderId, side, contracts,
+      exchangeRouting: exchangeIndex < 0 ? "ticker_auto" : exchangeIndex,
+    }, "ETH A order POST starting");
     const raw = await ethDependencies.authFetch<Record<string, unknown>>("POST", "/portfolio/events/orders", payload);
     const ack = parseKalshiOrderResponse(raw, contracts);
     if (ack.rejectReason) {
+      logger.warn({
+        ticker: state.ticker, clientOrderId, rejectReason: ack.rejectReason,
+      }, "ETH A order POST rejected");
       if (!await ethDependencies.store.rejectEthMartingaleOrder({ id, rejectionReason: ack.rejectReason })) {
         scheduleEthDurableRetry("durable_store_failure");
       }
       return;
     }
+    logger.info({
+      ticker: state.ticker, clientOrderId, kalshiOrderId: ack.kalshiOrderId,
+      orderStatus: ack.orderStatus, fillCount: ack.fillCount,
+    }, "ETH A order POST acknowledged");
     if (!ack.kalshiOrderId) {
       await ethDependencies.store.updateEthMartingaleOrder({ id, outcome: "unresolved" });
       logger.error({ ticker: state.ticker }, "ETH GTC outcome unknown (no kalshi_order_id); permanent reservation retained");
