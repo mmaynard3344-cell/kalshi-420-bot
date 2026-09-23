@@ -38,7 +38,7 @@ import { easternDay } from "../dailyBudget.js";
 import { isEthOrderSubmissionPermitted, setTradingHalted } from "../tradingKillSwitch.js";
 import { logger } from "../logger.js";
 import { kalshiFetch } from "../kalshi.js";
-import { fetchFreshKalshiBalanceForExchangeRead, kalshiBalanceCents } from "../kalshiBalance.js";
+import { fetchFreshKalshiBalanceForExchangeRead, fetchFreshKalshiBalanceRead, kalshiBalanceCents } from "../kalshiBalance.js";
 import * as ethStore from "../tradeStore.js";
 import { addDecimalStrings, normalizeKalshiFill, type KalshiFillWire } from "../kalshiFillNormalizer.js";
 import { getAccountHistoryFingerprint } from "../kalshiAccountFingerprint.js";
@@ -192,6 +192,94 @@ type EthUnsettledOrder = Exclude<
   Awaited<ReturnType<typeof ethStore.listUnsettledEthMartingaleOrders>>,
   null
 >[number];
+
+
+type KalshiTargetAllocation = { exchange_index: number; percent: number };
+type KalshiTargetAllocationResponse = {
+  allocations?: KalshiTargetAllocation[];
+  resting_margin_reservation?: string;
+};
+
+const ETH_SHARD_FUNDING_TARGET_CENTS = 9_000;
+let ethShardFundingRequested = false;
+let ethShardFundingOriginal: KalshiTargetAllocationResponse | null = null;
+let ethShardFundingRestored = false;
+
+async function requestEthShardFunding(exchangeIndex: number): Promise<void> {
+  if (ethShardFundingRequested || exchangeIndex !== 2) return;
+  const aggregate = kalshiBalanceCents((await fetchFreshKalshiBalanceRead()).value);
+  if (aggregate == null || aggregate < ETH_SHARD_FUNDING_TARGET_CENTS) return;
+
+  const current = await kalshiAuthFetch<KalshiTargetAllocationResponse>(
+    "GET", "/portfolio/target_balance_allocation",
+  );
+  ethShardFundingOriginal = {
+    allocations: Array.isArray(current.allocations)
+      ? current.allocations.map((x) => ({ exchange_index: x.exchange_index, percent: x.percent }))
+      : [],
+    ...(typeof current.resting_margin_reservation === "string"
+      ? { resting_margin_reservation: current.resting_margin_reservation }
+      : {}),
+  };
+
+  const targetPercent = Math.min(100, Math.max(1,
+    Math.ceil(ETH_SHARD_FUNDING_TARGET_CENTS * 100 / aggregate)));
+  const remainder = 100 - targetPercent;
+  const priorOthers = (ethShardFundingOriginal.allocations ?? [])
+    .filter((x) => x.exchange_index !== exchangeIndex && x.percent > 0);
+  const allocations: KalshiTargetAllocation[] = [{ exchange_index: exchangeIndex, percent: targetPercent }];
+
+  if (remainder > 0) {
+    if (priorOthers.length === 0) {
+      allocations.push({ exchange_index: 0, percent: remainder });
+    } else {
+      const total = priorOthers.reduce((s, x) => s + x.percent, 0);
+      let left = remainder;
+      priorOthers.forEach((x, i) => {
+        const pct = i === priorOthers.length - 1
+          ? left
+          : Math.min(left, Math.floor(remainder * x.percent / total));
+        if (pct > 0) allocations.push({ exchange_index: x.exchange_index, percent: pct });
+        left -= pct;
+      });
+      if (left > 0) {
+        const row = allocations.find((x) => x.exchange_index !== exchangeIndex);
+        if (row) row.percent += left;
+        else allocations.push({ exchange_index: 0, percent: left });
+      }
+    }
+  }
+
+  await kalshiAuthFetch<Record<string, unknown>>(
+    "POST", "/portfolio/target_balance_allocation",
+    {
+      allocations,
+      ...(ethShardFundingOriginal.resting_margin_reservation
+        ? { resting_margin_reservation: ethShardFundingOriginal.resting_margin_reservation }
+        : {}),
+    },
+  );
+  ethShardFundingRequested = true;
+  logger.warn({ exchangeIndex, aggregateBalanceCents: aggregate, targetPercent, allocations },
+    "ETH A requested Kalshi target-balance rebalance for funded market shard");
+}
+
+async function restoreEthShardFundingAllocationIfDone(exchangeIndex: number, availableCents: number): Promise<void> {
+  if (!ethShardFundingRequested || ethShardFundingRestored || exchangeIndex !== 2
+    || availableCents < ETH_SHARD_FUNDING_TARGET_CENTS || ethShardFundingOriginal == null) return;
+  await kalshiAuthFetch<Record<string, unknown>>(
+    "POST", "/portfolio/target_balance_allocation",
+    {
+      allocations: ethShardFundingOriginal.allocations ?? [],
+      ...(ethShardFundingOriginal.resting_margin_reservation
+        ? { resting_margin_reservation: ethShardFundingOriginal.resting_margin_reservation }
+        : {}),
+    },
+  );
+  ethShardFundingRestored = true;
+  logger.warn({ exchangeIndex, availableBalanceCents: availableCents },
+    "ETH A restored prior Kalshi target-balance allocation after shard funding completed");
+}
 
 const productionEthDependencies: EthDependencies = {
   authFetch: kalshiAuthFetch, marketFetch: kalshiFetch, marketSettlementFetch: kalshiAuthFetch, captureOrderbook,
@@ -1041,7 +1129,7 @@ const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;
       );
       return;
     }
-    const availableBalanceCents = kalshiBalanceCents(accountBalance.value);
+    let availableBalanceCents = kalshiBalanceCents(accountBalance.value);
     if (accountBalance.stale || availableBalanceCents == null) {
       setEthExchangeBalanceBlocker(
         "exchange_balance_unavailable",
@@ -1053,16 +1141,42 @@ const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;
       );
       return;
     }
-    if (availableBalanceCents < requiredBalanceCents) {
+
+    // The Kalshi app exposes aggregate event cash, while the API now partitions
+    // order collateral by exchange_index. If shard 2 is underfunded but the
+    // aggregate account has enough cash, request the user's approved ~$90
+    // one-time rebalance through Kalshi's target-balance allocation API.
+    if (availableBalanceCents < requiredBalanceCents && routingExchangeIndex === 2) {
+      try {
+        await requestEthShardFunding(routingExchangeIndex);
+        if (ethShardFundingRequested) {
+          await ethDependencies.sleep(1_000);
+          accountBalance = await ethDependencies.fetchAccountBalance(routingExchangeIndex);
+          availableBalanceCents = kalshiBalanceCents(accountBalance.value);
+        }
+      } catch (err) {
+        logger.warn({ err, exchangeIndex: routingExchangeIndex },
+          "ETH A Kalshi shard-funding rebalance request failed");
+      }
+    }
+
+    if (availableBalanceCents == null || availableBalanceCents < requiredBalanceCents) {
       setEthExchangeBalanceBlocker(
         "insufficient_exchange_balance",
-        `ETH entry is blocked: exchange ${routingExchangeIndex} has ${(availableBalanceCents / 100).toFixed(2)} available but requires ${(requiredBalanceCents / 100).toFixed(2)}`,
+        `ETH entry is blocked: exchange ${routingExchangeIndex} has ${((availableBalanceCents ?? 0) / 100).toFixed(2)} available but requires ${(requiredBalanceCents / 100).toFixed(2)}`,
         routingExchangeIndex,
         availableBalanceCents,
         requiredBalanceCents,
         false,
       );
       return;
+    }
+
+    try {
+      await restoreEthShardFundingAllocationIfDone(routingExchangeIndex, availableBalanceCents);
+    } catch (err) {
+      logger.warn({ err, exchangeIndex: routingExchangeIndex },
+        "ETH A could not yet restore prior target-balance allocation");
     }
     await placeEthMartingaleGtcEntry({
       state: { ...state, exchangeIndex: routingExchangeIndex }, side: effectiveSide, step: effectiveStep,
