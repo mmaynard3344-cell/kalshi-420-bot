@@ -748,6 +748,20 @@ server.listen(port, '0.0.0.0', () => {
        ORDER BY created_at_ms DESC
     `);
     console.log('CANDIDATE_ORIGIN_DIAGNOSTIC', JSON.stringify(r.rows));
+    const early = await client.query(`
+      SELECT id, ticker, kalshi_order_id, origin_service, requested_contracts, fill_price_cents, created_at_ms
+      FROM eth420_candidate_live_orders
+      WHERE ticker IN (
+        'KXETH15M-26SEP230530-30',
+        'KXETH15M-26SEP230615-15',
+        'KXETH15M-26SEP230815-15',
+        'KXETH15M-26SEP231145-45',
+        'KXETH15M-26SEP231300-00',
+        'KXETH15M-26SEP231315-15'
+      )
+      ORDER BY created_at_ms
+    `);
+    console.log('EARLY_CANDIDATE_ORIGIN_DIAGNOSTIC', JSON.stringify(early.rows));
   }).catch((error) => console.error('CANDIDATE_ORIGIN_DIAGNOSTIC_FAILED', String(error?.message ?? error)));
   for (const path of ['/api/trade/fills?limit=10000', '/api/trade/orders?limit=1000']) {
     const url = new URL(path, 'http://shawshank.local');
