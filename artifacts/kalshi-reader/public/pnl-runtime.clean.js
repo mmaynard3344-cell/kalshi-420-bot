@@ -3,8 +3,8 @@
 const ET='America/New_York', START='2026-09-22', PAGE=250, MAX_PAGES=10;
 const SERVICES=[
   'A · Regular','B · Jump','C · Reversal','D · Breakout Reversal','E · Downfade',
-  'F · Downfade','G · Probe','H · Ashley','I · Ash V2','J · Jackpot','K · Kamakazee',
-  'Legacy 420','Unattributed'
+  'F · Downfade','G · Streak Reversal','H · Ashley','I · Ash V2','J · Jackpot','K · Kamakazee',
+  'Unattributed'
 ];
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
@@ -50,7 +50,7 @@ function service(r,owners){
   if(id&&owners?.byOrder?.has(id))return owners.byOrder.get(id);
   if(c&&owners?.byClient?.has(c))return owners.byClient.get(c);
   // Only retain deterministic service tags that are unique by construction.
-  if(c.startsWith('g-streak-reversal-v1:'))return'G · Probe';
+  if(c.startsWith('g-streak-reversal-v1:'))return'G · Streak Reversal';
   if(c.endsWith(':kamakazee-k-v1'))return'K · Kamakazee';
   return'Unattributed';
 }
@@ -99,18 +99,20 @@ function renderOpenOrders(raw,owners){
   $('openCount').textContent=open.length+' open';
   $('openRows').innerHTML=open.length?open.map(o=>`<tr><td>${esc(service(o,owners))}</td><td>${esc(o.ticker??o.market_ticker??'—')}</td><td>${esc(String(side(o)||'—').toUpperCase())}</td><td class="num">${esc(requested(o)??'—')}</td><td class="num">${esc(num(o?.fill_count_fp,o?.filled_count_fp,o?.filled_count,o?.filledContracts)??'—')}</td><td class="num">${esc(num(o?.remaining_count_fp,o?.remaining_count,o?.remainingContracts)??'—')}</td><td>${esc(status(o)||'—')}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">No open orders.</td></tr>';
 }
-function renderPnl(fills,orders,owners,tradeStatus){
+function renderPnl(fills,orders,owners,ledgerToday){
   const fm=fillsByOrder(fills,orders,owners),td=today(),settled=[...fm.values()].filter(x=>x.result&&x.netCents!=null&&dk(x.atMs)===td);
-  const reconstructedTotal=settled.reduce((s,x)=>s+x.netCents,0),wins=settled.filter(x=>x.won).length,losses=settled.length-wins,fees=settled.reduce((s,x)=>s+x.feesCents,0);
-  const authoritativeDollars=num(tradeStatus?.daily_realized_net_pnl_dollars);
-  const authoritativeTotal=authoritativeDollars==null?null:Math.round(authoritativeDollars*100);
-  const total=authoritativeTotal;
+  const wins=settled.filter(x=>x.won).length,losses=settled.length-wins,fees=settled.reduce((s,x)=>s+x.feesCents,0);
+  const total=num(ledgerToday?.totalPnlCents);
   $('pnl').textContent=total==null?'—':money(total);
   $('pnl').className='metric '+(total==null?'':total>0?'good':total<0?'bad':'');
-  const authoritativeSettled=num(tradeStatus?.daily_realized_settled_fill_count);
-  $('settled').textContent=authoritativeSettled==null?String(settled.length):String(authoritativeSettled);
+  const durableSettled=num(ledgerToday?.settledCount);
+  $('settled').textContent=durableSettled==null?String(settled.length):String(durableSettled);
   $('wins').textContent=String(wins);$('losses').textContent=String(losses);$('fees').textContent=money(fees,false);
-  const svc=SERVICES.map(name=>{const a=settled.filter(x=>x.service===name);return{name,n:a.length,pnl:a.reduce((s,x)=>s+x.netCents,0)}}).filter(x=>x.n>0||x.name!=='Unattributed');
+  const ledgerRows=Array.isArray(ledgerToday?.byService)?ledgerToday.byService:[];
+  const svc=SERVICES.map(name=>{
+    const r=ledgerRows.find(x=>x?.service===name);
+    return{name,n:num(r?.settled,0)||0,pnl:num(r?.pnlCents,0)||0};
+  }).filter(x=>x.n>0||x.name!=='Unattributed');
   $('serviceRows').innerHTML=svc.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${x.n}</td><td class="num ${x.pnl>0?'good':x.pnl<0?'bad':''}">${money(x.pnl)}</td></tr>`).join('');
   const rows=orders.filter(eth).sort((a,b)=>(ms(b)||0)-(ms(a)||0)).slice(0,100);
   $('tradeCount').textContent=rows.length+' recent';
@@ -120,13 +122,13 @@ let busy=false;
 async function refresh(){
   if(busy)return;busy=true;$('stamp').textContent='Refreshing…';
   try{
-    const [b,m,o,f,w,s]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),paged('/api/trade/orders','orders'),paged('/api/trade/fills','fills'),j('/api/diagnostics/service-ownership'),j('/api/trade/status')]);
+    const [b,m,o,f,w,l]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),paged('/api/trade/orders','orders'),paged('/api/trade/fills','fills'),j('/api/diagnostics/service-ownership'),j('/api/diagnostics/service-ledger-today')]);
     if(b.status==='fulfilled')renderAccount(b.value);else $('accountState').textContent='UNAVAILABLE';
     if(m.status==='fulfilled')renderMarket(m.value);
     const orderRows=o.status==='fulfilled'?o.value:[];
     const owners=w.status==='fulfilled'?ownershipIndex(w.value):ownershipIndex(null);
     renderOpenOrders(orderRows,owners);
-    if(f.status==='fulfilled')renderPnl(f.value,orderRows,owners,s.status==='fulfilled'?s.value:null);
+    if(f.status==='fulfilled')renderPnl(f.value,orderRows,owners,l.status==='fulfilled'?l.value:null);
     $('stamp').textContent='Updated '+new Intl.DateTimeFormat('en-US',{timeZone:ET,hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date());
   }catch(e){$('stamp').textContent='Partial data · '+String(e?.message??e)}
   finally{busy=false}
