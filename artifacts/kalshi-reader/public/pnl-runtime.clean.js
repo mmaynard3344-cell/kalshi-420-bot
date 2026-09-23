@@ -97,10 +97,10 @@ let busy=false;
 async function refresh(){
   if(busy)return;busy=true;$('stamp').textContent='Refreshing…';
   try{
-    const [b,m,o,f]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),j('/api/trade/orders?limit=100'),paged('/api/trade/fills','fills')]);
+    const [b,m,o,f]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),paged('/api/trade/orders','orders'),paged('/api/trade/fills','fills')]);
     if(b.status==='fulfilled')renderAccount(b.value);else $('accountState').textContent='UNAVAILABLE';
     if(m.status==='fulfilled')renderMarket(m.value);
-    const orderRows=o.status==='fulfilled'?(Array.isArray(o.value)?o.value:Array.isArray(o.value?.orders)?o.value.orders:[]):await paged('/api/trade/orders','orders').catch(()=>[]);
+    const orderRows=o.status==='fulfilled'?o.value:[];
     renderOpenOrders(orderRows);
     if(f.status==='fulfilled')renderPnl(f.value,orderRows);
     $('stamp').textContent='Updated '+new Intl.DateTimeFormat('en-US',{timeZone:ET,hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date());
