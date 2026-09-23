@@ -16,17 +16,8 @@ const PRINCIPAL_CENTS = [100];
 const LIMIT_CENTS = 50;
 let inFlight = false;
 
-function effectivePrincipalCents(nowMs = Date.now()) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hour: "numeric",
-    hour12: false,
-  }).formatToParts(new Date(nowMs));
-  const rawHour = Number(parts.find((part) => part.type === "hour")?.value ?? NaN);
-  const hour = rawHour === 24 ? 0 : rawHour;
-  return Number.isFinite(hour) && hour >= 6 && hour < 12
-    ? Math.round(PRINCIPAL_CENTS[0] * 1.5)
-    : PRINCIPAL_CENTS[0];
+function effectivePrincipalCents(_nowMs = Date.now()) {
+  return PRINCIPAL_CENTS[0];
 }
 
 function log(event, data = {}) {
@@ -269,7 +260,7 @@ async function evaluate() {
 
 await init();
 await authFetch("GET", "/portfolio/balance");
-log("STARTUP", { executable: true, live: process.env.KAMAKAZEE_LIVE_ENABLED === "true", series: SERIES, endpoint: "/portfolio/orders", limitPriceCents: LIMIT_CENTS, principalDollars: 1, morningPrincipalDollars: 1.5, morningWindowEt: "06:00-11:59", repeatAfterLoss: false, orderType: "GTC" });
+log("STARTUP", { executable: true, live: process.env.KAMAKAZEE_LIVE_ENABLED === "true", series: SERIES, endpoint: "/portfolio/orders", limitPriceCents: LIMIT_CENTS, principalDollars: 1, timeOfDayMultiplier: false, repeatAfterLoss: false, orderType: "GTC" });
 await evaluate();
 setInterval(() => {
   if (inFlight) return;
