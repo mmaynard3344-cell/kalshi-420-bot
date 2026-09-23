@@ -200,69 +200,61 @@ type KalshiTargetAllocationResponse = {
   resting_margin_reservation?: string;
 };
 
-const ETH_SHARD_2_TARGET_PERCENT = 92;
+const ETH_SHARD_2_TRANSFER_CENTS = 9_000;
+const ETH_SHARD_2_TRANSFER_CENTICENTS = 900_000;
 let ethShardFundingRequested = false;
+
+type KalshiIntraTransferResponse = {
+  transfer_id?: string;
+  status?: string;
+};
 
 async function requestEthShardFunding(exchangeIndex: number): Promise<void> {
   if (ethShardFundingRequested || exchangeIndex !== 2) return;
 
-  const current = await kalshiAuthFetch<KalshiTargetAllocationResponse>(
-    "GET", "/portfolio/target_balance_allocation",
-  );
-  const prior = Array.isArray(current.allocations) ? current.allocations : [];
-  const remainder = 100 - ETH_SHARD_2_TARGET_PERCENT;
-  const priorOthers = prior.filter((x) =>
-    Number.isInteger(x.exchange_index) && x.exchange_index !== exchangeIndex && x.percent > 0
-  );
+  const sourceRead = await fetchFreshKalshiBalanceForExchangeRead(0);
+  const sourceAvailableCents = kalshiBalanceCents(sourceRead.value);
+  logger.warn({ sourceExchangeIndex: 0, destinationExchangeIndex: exchangeIndex, sourceAvailableCents },
+    "ETH A checking source shard for immediate Kalshi transfer");
 
-  const allocations: KalshiTargetAllocation[] = [
-    { exchange_index: exchangeIndex, percent: ETH_SHARD_2_TARGET_PERCENT },
-  ];
-
-  if (remainder > 0) {
-    if (priorOthers.length === 0) {
-      allocations.push({ exchange_index: 0, percent: remainder });
-    } else {
-      const total = priorOthers.reduce((s, x) => s + x.percent, 0);
-      let left = remainder;
-      priorOthers.forEach((x, i) => {
-        const pct = i === priorOthers.length - 1
-          ? left
-          : Math.min(left, Math.floor(remainder * x.percent / total));
-        if (pct > 0) allocations.push({ exchange_index: x.exchange_index, percent: pct });
-        left -= pct;
-      });
-      if (left > 0) {
-        const row = allocations.find((x) => x.exchange_index !== exchangeIndex);
-        if (row) row.percent += left;
-        else allocations.push({ exchange_index: 0, percent: left });
-      }
-    }
+  if (sourceRead.stale || sourceAvailableCents == null || sourceAvailableCents < ETH_SHARD_2_TRANSFER_CENTS) {
+    throw new Error(`exchange 0 has insufficient transferable cash for $90 move: ${sourceAvailableCents}`);
   }
 
-  logger.warn({ exchangeIndex, allocations },
-    "ETH A requesting persistent Kalshi target-balance allocation");
+  logger.warn({
+    source: "event_contract",
+    destination: "event_contract",
+    amountCenticents: ETH_SHARD_2_TRANSFER_CENTICENTS,
+    sourceExchangeShard: 0,
+    destinationExchangeShard: exchangeIndex,
+  }, "ETH A requesting immediate Kalshi intra-account shard transfer");
 
-  await kalshiAuthFetch<Record<string, unknown>>(
-    "POST", "/portfolio/target_balance_allocation",
+  const transfer = await kalshiAuthFetch<KalshiIntraTransferResponse>(
+    "POST", "/portfolio/intra_exchange_instance_transfer",
     {
-      allocations,
-      ...(typeof current.resting_margin_reservation === "string"
-        ? { resting_margin_reservation: current.resting_margin_reservation }
-        : {}),
+      source: "event_contract",
+      destination: "event_contract",
+      amount: ETH_SHARD_2_TRANSFER_CENTICENTS,
+      source_exchange_shard: 0,
+      destination_exchange_shard: exchangeIndex,
+      source_subaccount: 0,
+      destination_subaccount: 0,
     },
   );
 
   ethShardFundingRequested = true;
-  logger.warn({ exchangeIndex, allocations },
-    "ETH A Kalshi target-balance allocation accepted");
+  logger.warn({
+    exchangeIndex,
+    transferId: transfer.transfer_id ?? null,
+    transferStatus: transfer.status ?? null,
+  }, "ETH A immediate Kalshi shard transfer accepted");
 }
 
 async function waitForEthShardFunding(
   exchangeIndex: number,
   requiredBalanceCents: number,
 ): Promise<number | null> {
-  for (let attempt = 0; attempt < 12; attempt++) {
+  for (let attempt = 0; attempt < 20; attempt++) {
     const read = await fetchFreshKalshiBalanceForExchangeRead(exchangeIndex);
     const available = kalshiBalanceCents(read.value);
     logger.info({ exchangeIndex, availableBalanceCents: available, requiredBalanceCents, attempt },
