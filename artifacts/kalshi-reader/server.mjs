@@ -211,18 +211,23 @@ async function serviceOwnershipDiagnostics(req, res) {
   try {
     const rows = await withReadOnlyDb(async (client) => {
       const out = [];
+      let savepointSeq = 0;
       const safe = async (service, sqlText, params = []) => {
+        const sp = 'service_owner_' + (++savepointSeq);
+        await client.query('SAVEPOINT ' + sp);
         try {
           const result = await client.query(sqlText, params);
+          await client.query('RELEASE SAVEPOINT ' + sp);
           for (const row of result.rows ?? []) {
             const orderId = row.order_id == null ? '' : String(row.order_id);
             const clientOrderId = row.client_order_id == null ? '' : String(row.client_order_id);
             if (orderId || clientOrderId) out.push({ orderId, clientOrderId, service });
           }
         } catch (error) {
-          // A service table may legitimately be absent before that service has
-          // ever initialized. Attribution remains conservative rather than
-          // inventing ownership.
+          await client.query('ROLLBACK TO SAVEPOINT ' + sp);
+          await client.query('RELEASE SAVEPOINT ' + sp);
+          // One absent service table must never poison the rest of the
+          // ownership scan.
           console.warn('service ownership read skipped', service, String(error?.message ?? error));
         }
       };
@@ -232,30 +237,37 @@ async function serviceOwnershipDiagnostics(req, res) {
            FROM eth_martingale_orders
           WHERE kalshi_order_id IS NOT NULL`);
 
-      try {
-        const big = await client.query(`
-          SELECT kalshi_order_id AS order_id, id AS client_order_id, strategy
-            FROM eth_big_bet_orders
-           WHERE kalshi_order_id IS NOT NULL`);
-        const map = {
-          jump: 'B · Jump',
-          reversal: 'C · Reversal',
-          breakout_reversal: 'D · Breakout Reversal',
-          downfade_p80_p90: 'E · Downfade',
-          downfade_p90_p95: 'F · Downfade',
-          probe_g: 'G · Probe',
-          downfade_p95_p99: 'H · Ashley',
-          ash_v2_i: 'I · Ash V2',
-        };
-        for (const row of big.rows ?? []) {
-          const service = map[String(row.strategy ?? '')];
-          if (!service) continue;
-          const orderId = row.order_id == null ? '' : String(row.order_id);
-          const clientOrderId = row.client_order_id == null ? '' : String(row.client_order_id);
-          if (orderId || clientOrderId) out.push({ orderId, clientOrderId, service });
+      {
+        const sp = 'service_owner_' + (++savepointSeq);
+        await client.query('SAVEPOINT ' + sp);
+        try {
+          const big = await client.query(`
+            SELECT kalshi_order_id AS order_id, id AS client_order_id, strategy
+              FROM eth_big_bet_orders
+             WHERE kalshi_order_id IS NOT NULL`);
+          await client.query('RELEASE SAVEPOINT ' + sp);
+          const map = {
+            jump: 'B · Jump',
+            reversal: 'C · Reversal',
+            breakout_reversal: 'D · Breakout Reversal',
+            downfade_p80_p90: 'E · Downfade',
+            downfade_p90_p95: 'F · Downfade',
+            probe_g: 'G · Probe',
+            downfade_p95_p99: 'H · Ashley',
+            ash_v2_i: 'I · Ash V2',
+          };
+          for (const row of big.rows ?? []) {
+            const service = map[String(row.strategy ?? '')];
+            if (!service) continue;
+            const orderId = row.order_id == null ? '' : String(row.order_id);
+            const clientOrderId = row.client_order_id == null ? '' : String(row.client_order_id);
+            if (orderId || clientOrderId) out.push({ orderId, clientOrderId, service });
+          }
+        } catch (error) {
+          await client.query('ROLLBACK TO SAVEPOINT ' + sp);
+          await client.query('RELEASE SAVEPOINT ' + sp);
+          console.warn('service ownership read skipped B-I', String(error?.message ?? error));
         }
-      } catch (error) {
-        console.warn('service ownership read skipped B-I', String(error?.message ?? error));
       }
 
       await safe('G · Probe',
@@ -275,8 +287,13 @@ async function serviceOwnershipDiagnostics(req, res) {
 
       return out;
     });
+    const counts = rows.reduce((acc, row) => {
+      acc[row.service] = (acc[row.service] ?? 0) + 1;
+      return acc;
+    }, {});
+    console.log('SERVICE_OWNERSHIP_COUNTS ' + JSON.stringify({ count: rows.length, counts }));
     if (req.method === 'HEAD') return send(res, 200, '', 'application/json; charset=utf-8');
-    return send(res, 200, JSON.stringify({ rows, count: rows.length }), 'application/json; charset=utf-8');
+    return send(res, 200, JSON.stringify({ rows, count: rows.length, counts }), 'application/json; charset=utf-8');
   } catch (error) {
     console.error('Service ownership diagnostic read failed', error);
     return send(res, 500, JSON.stringify({ error: 'Service ownership unavailable' }), 'application/json; charset=utf-8');
