@@ -237,6 +237,16 @@ async function serviceOwnershipDiagnostics(req, res) {
            FROM eth_martingale_orders
           WHERE kalshi_order_id IS NOT NULL`);
 
+      await safe('420 · Candidate',
+        `SELECT kalshi_order_id AS order_id, id AS client_order_id
+           FROM eth420_candidate_live_orders
+          WHERE kalshi_order_id IS NOT NULL
+         UNION ALL
+         SELECT original_primary_kalshi_order_id AS order_id, id AS client_order_id
+           FROM eth420_candidate_live_orders
+          WHERE original_primary_kalshi_order_id IS NOT NULL
+            AND original_primary_kalshi_order_id <> kalshi_order_id`);
+
       {
         const sp = 'service_owner_' + (++savepointSeq);
         await client.query('SAVEPOINT ' + sp);
