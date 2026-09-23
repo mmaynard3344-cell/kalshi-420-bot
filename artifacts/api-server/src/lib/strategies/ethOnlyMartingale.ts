@@ -819,6 +819,24 @@ export const placeEthMartingaleGtcEntry: EthPlacementLifecycleGateway = async ({
       });
     }
   } catch (err) {
+    const candidate = err as { status?: unknown; body?: unknown; name?: unknown; code?: unknown } | null;
+    const status = Number(candidate?.status);
+    const body = typeof candidate?.body === "object" && candidate?.body != null
+      ? candidate.body as Record<string, unknown>
+      : null;
+    const errorBody = typeof body?.["error"] === "object" && body?.["error"] != null
+      ? body["error"] as Record<string, unknown>
+      : null;
+    logger.warn({
+      ticker: state.ticker,
+      clientOrderId,
+      httpStatus: Number.isFinite(status) ? status : null,
+      errorName: typeof candidate?.name === "string" ? candidate.name : null,
+      errorCode: typeof errorBody?.["code"] === "string" ? errorBody["code"] : (typeof candidate?.code === "string" ? candidate.code : null),
+      errorReason: typeof errorBody?.["reason"] === "string" ? errorBody["reason"] : null,
+      errorMessage: typeof errorBody?.["message"] === "string" ? errorBody["message"] : null,
+    }, "ETH A order POST failed");
+
     const rejectionReason = confirmedKalshiPostRejectionReason(err);
     if (rejectionReason != null) {
       if (!await ethDependencies.store.rejectEthMartingaleOrder({ id, rejectionReason })) {
@@ -826,8 +844,51 @@ export const placeEthMartingaleGtcEntry: EthPlacementLifecycleGateway = async ({
       }
       return;
     }
+
+    // Ambiguous POST outcomes are reconciled by exact client id + ticker only.
+    // Never resubmit here: a lost acknowledgement may still have created a live GTC.
+    try {
+      const lookup = await ethDependencies.authFetch<{ orders?: Array<Record<string, unknown>> }>(
+        "GET",
+        `/portfolio/orders?client_order_id=${encodeURIComponent(clientOrderId)}&ticker=${encodeURIComponent(state.ticker)}&limit=100`,
+      );
+      const matches = (lookup.orders ?? []).filter((order) =>
+        order["client_order_id"] === clientOrderId && order["ticker"] === state.ticker,
+      );
+      if (matches.length === 1) {
+        const rawOrder = matches[0]!;
+        const parsed = parseKalshiOrderResponse({ order: rawOrder }, contracts);
+        const recoveredOrderId = parsed.kalshiOrderId
+          ?? (typeof rawOrder["order_id"] === "string" ? rawOrder["order_id"] : null);
+        logger.warn({
+          ticker: state.ticker,
+          clientOrderId,
+          kalshiOrderId: recoveredOrderId,
+          orderStatus: parsed.orderStatus,
+          fillCount: parsed.fillCount,
+        }, "ETH A ambiguous POST recovered by exact client-order lookup");
+        if (recoveredOrderId) {
+          const filled = Math.min(contracts, Math.max(0, parsed.fillCount));
+          await ethDependencies.store.updateEthMartingaleOrder({
+            id,
+            kalshiOrderId: recoveredOrderId,
+            filledContracts: filled,
+            filledFeeCents: parsed.reportedFeeCents ?? (filled > 0 ? ethTakerFeeCents(noPriceCents, filled) : 0),
+            outcome: filled >= contracts ? "full_fill" : "resting",
+          });
+          return;
+        }
+      } else {
+        logger.warn({ ticker: state.ticker, clientOrderId, exactMatches: matches.length },
+          "ETH A ambiguous POST exact client-order lookup did not resolve uniquely");
+      }
+    } catch (lookupErr) {
+      logger.warn({ err: lookupErr, ticker: state.ticker, clientOrderId },
+        "ETH A ambiguous POST exact client-order lookup failed");
+    }
+
     await ethDependencies.store.updateEthMartingaleOrder({ id, outcome: "unresolved" });
-    logger.error({ err, ticker: state.ticker }, "ETH GTC outcome unknown; permanent reservation retained");
+    logger.error({ err, ticker: state.ticker, clientOrderId }, "ETH GTC outcome unknown; permanent reservation retained");
   }
 };
 
