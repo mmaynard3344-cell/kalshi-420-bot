@@ -253,12 +253,12 @@ async function serviceOwnershipDiagnostics(req, res) {
         await client.query('RELEASE SAVEPOINT ' + sp);
         const candidateService = (origin) => {
           const s = String(origin ?? '').toLowerCase();
-          if (s === 'kalshi-420-bot' || s === 'martingale') return 'A · Candidate';
-          if (s === 'eth-jump-service' || s === 'jump') return 'B · Candidate';
-          if (s === 'eth-reversal-service' || s === 'reversal') return 'C · Candidate';
-          if (s === 'eth-breakout-reversal' || s === 'eth-breakout-reversal-service') return 'D · Candidate';
-          if (s === 'eth-downfade-e' || s === 'downfade_e') return 'E · Candidate';
-          if (s === 'eth-downfade-f' || s === 'downfade_f') return 'F · Candidate';
+          if (s === 'kalshi-420-bot' || s === 'martingale') return 'A · Regular';
+          if (s === 'eth-jump-service' || s === 'jump') return 'B · Jump';
+          if (s === 'eth-reversal-service' || s === 'reversal') return 'C · Reversal';
+          if (s === 'eth-breakout-reversal' || s === 'eth-breakout-reversal-service') return 'D · Breakout Reversal';
+          if (s === 'eth-downfade-e' || s === 'downfade_e') return 'E · Downfade';
+          if (s === 'eth-downfade-f' || s === 'downfade_f') return 'F · Downfade';
           return '420 · Candidate';
         };
           for (const row of candidate.rows ?? []) {
