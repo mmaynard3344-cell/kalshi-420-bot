@@ -73,6 +73,19 @@ export function fetchKalshiBalanceRead(): Promise<CachedRead<Record<string, unkn
 }
 
 /**
+ * Fetch a fresh aggregate account balance for an immediately-following
+ * auto-routed order authorization. This bypasses the dashboard cache.
+ */
+export function fetchFreshKalshiBalanceRead(): Promise<CachedRead<Record<string, unknown>>> {
+  return kalshiAuthFetch<Record<string, unknown>>(
+    "GET",
+    "/portfolio/balance",
+    undefined,
+    { readPriority: "safety" },
+  ).then((value) => ({ value, stale: false }));
+}
+
+/**
  * Fetch an exchange-scoped available balance. Kalshi accounts can hold funds on
  * several exchange shards, so aggregate account cash must never authorize an
  * order routed to a specific exchange_index.
