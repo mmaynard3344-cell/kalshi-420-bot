@@ -251,7 +251,18 @@ async function serviceOwnershipDiagnostics(req, res) {
            WHERE original_primary_kalshi_order_id IS NOT NULL
              AND original_primary_kalshi_order_id <> kalshi_order_id`);
         await client.query('RELEASE SAVEPOINT ' + sp);
-        const candidateService = () => 'Legacy 420';
+        const candidateService = (origin) => {
+          const s = String(origin ?? '').toLowerCase();
+          if (s === 'kalshi-420-bot' || s === 'martingale') return 'A · Regular';
+          if (s === 'eth-jump-service' || s === 'jump') return 'B · Jump';
+          if (s === 'eth-reversal-service' || s === 'reversal') return 'C · Reversal';
+          if (s === 'eth-breakout-reversal' || s === 'eth-breakout-reversal-service') return 'D · Breakout Reversal';
+          if (s === 'eth-downfade-e' || s === 'downfade_e') return 'E · Downfade';
+          if (s === 'eth-downfade-f' || s === 'downfade_f') return 'F · Downfade';
+          if (s === 'eth-downfade-g' || s === 'downfade_g') return 'G · Streak Reversal';
+          if (s === 'ashley' || s === 'eth-ashley') return 'H · Ashley';
+          return 'Unattributed';
+        };
           for (const row of candidate.rows ?? []) {
             const orderId = row.order_id == null ? '' : String(row.order_id);
             const clientOrderId = row.client_order_id == null ? '' : String(row.client_order_id);
@@ -327,6 +338,104 @@ async function serviceOwnershipDiagnostics(req, res) {
   } catch (error) {
     console.error('Service ownership diagnostic read failed', error);
     return send(res, 500, JSON.stringify({ error: 'Service ownership unavailable' }), 'application/json; charset=utf-8');
+  }
+}
+
+function easternDateKey(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now);
+  const g = (type) => parts.find((p) => p.type === type)?.value ?? '';
+  return g('year') + '-' + g('month') + '-' + g('day');
+}
+
+async function serviceLedgerTodayDiagnostics(req, res) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
+  const easternDate = easternDateKey();
+  try {
+    const data = await withReadOnlyDb(async (client) => {
+      const a = await client.query(`
+        SELECT COUNT(*)::int AS n,
+               COALESCE(SUM(
+                 CASE WHEN settlement_result = side
+                   THEN (COALESCE(filled_contracts,0)::numeric - COALESCE(actual_notional_dollars,0)::numeric - COALESCE(actual_fee_dollars,0)::numeric)
+                   ELSE -(COALESCE(actual_notional_dollars,0)::numeric + COALESCE(actual_fee_dollars,0)::numeric)
+                 END
+               ),0)::numeric AS pnl_dollars
+        FROM eth_martingale_orders
+        WHERE eastern_date=$1
+          AND settlement_result IN ('yes','no')
+          AND COALESCE(filled_contracts,0)::numeric > 0
+      `, [easternDate]);
+
+      const candidate = await client.query(`
+        SELECT origin_service,
+               COUNT(*)::int AS n,
+               COALESCE(SUM(realized_pnl_delta_cents),0)::int AS pnl_cents
+        FROM eth420_candidate_live_orders
+        WHERE eastern_date=$1
+          AND realized_pnl_delta_cents IS NOT NULL
+        GROUP BY origin_service
+      `, [easternDate]);
+
+      const big = await client.query(`
+        SELECT strategy, COUNT(*)::int AS n,
+               COALESCE(SUM(realized_pnl_cents),0)::int AS pnl_cents
+        FROM eth_big_bet_orders
+        WHERE to_char(to_timestamp(created_at_ms/1000.0) AT TIME ZONE 'America/New_York','YYYY-MM-DD')=$1
+          AND realized_pnl_cents IS NOT NULL
+        GROUP BY strategy
+      `, [easternDate]);
+
+      const rows = [];
+      const aDollars = Number(a.rows?.[0]?.pnl_dollars ?? 0);
+      const aCount = Number(a.rows?.[0]?.n ?? 0);
+      rows.push({ service:'A · Regular', settled:aCount, pnlCents:Math.round(aDollars*100) });
+
+      const originMap = {
+        'kalshi-420-bot':'A · Regular',
+        'martingale':'A · Regular',
+        'eth-jump-service':'B · Jump',
+        'jump':'B · Jump',
+        'eth-reversal-service':'C · Reversal',
+        'reversal':'C · Reversal',
+        'eth-breakout-reversal':'D · Breakout Reversal',
+        'eth-breakout-reversal-service':'D · Breakout Reversal',
+        'eth-downfade-e':'E · Downfade',
+        'downfade_e':'E · Downfade',
+        'eth-downfade-f':'F · Downfade',
+        'downfade_f':'F · Downfade',
+      };
+      for (const row of candidate.rows ?? []) {
+        const service = originMap[String(row.origin_service ?? '').toLowerCase()] ?? 'Unattributed';
+        rows.push({ service, settled:Number(row.n ?? 0), pnlCents:Number(row.pnl_cents ?? 0) });
+      }
+      const strategyMap = {
+        jump:'B · Jump', reversal:'C · Reversal', breakout_reversal:'D · Breakout Reversal',
+        downfade_p80_p90:'E · Downfade', downfade_p90_p95:'F · Downfade',
+        probe_g:'G · Streak Reversal', downfade_p95_p99:'H · Ashley', ash_v2_i:'I · Ash V2',
+      };
+      for (const row of big.rows ?? []) {
+        const service = strategyMap[String(row.strategy ?? '')];
+        if (service) rows.push({ service, settled:Number(row.n ?? 0), pnlCents:Number(row.pnl_cents ?? 0) });
+      }
+      const combined = new Map();
+      for (const row of rows) {
+        const prior = combined.get(row.service) ?? {service:row.service, settled:0, pnlCents:0};
+        prior.settled += row.settled;
+        prior.pnlCents += row.pnlCents;
+        combined.set(row.service, prior);
+      }
+      const byService = [...combined.values()];
+      const totalPnlCents = byService.reduce((s,r)=>s+r.pnlCents,0);
+      const settledCount = byService.reduce((s,r)=>s+r.settled,0);
+      return { easternDate, totalPnlCents, settledCount, byService };
+    });
+    if (req.method === 'HEAD') return send(res, 200, '', 'application/json; charset=utf-8');
+    return send(res, 200, JSON.stringify(data), 'application/json; charset=utf-8');
+  } catch (error) {
+    console.error('Service ledger today read failed', error);
+    return send(res, 500, JSON.stringify({ error:'Service ledger today unavailable' }), 'application/json; charset=utf-8');
   }
 }
 
@@ -542,6 +651,7 @@ function serveStatic(req, res, url) {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   if (url.pathname === '/api/diagnostics/service-ownership') return void serviceOwnershipDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/service-ledger-today') return void serviceLedgerTodayDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/exchange-ticker') return void exchangeTickerDiagnostics(req, res, url);
   if (url.pathname === '/api/diagnostics/candidate-lifecycle') return void candidateLifecycleDiagnostics(req, res, url);
   if (url.pathname === '/api/diagnostics/settlement-latency') return void settlementLatencyDiagnostics(req, res, url);
