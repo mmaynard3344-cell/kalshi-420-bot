@@ -11210,10 +11210,43 @@ export async function reserveEthMartingaleEntry(params: {
           return "proof_already_claimed";
         }
       }
-      const claim = await tx.execute(sql`
+      let claim = await tx.execute(sql`
         INSERT INTO eth_martingale_claims (generation, ticker, eastern_date, claimed_at_ms, client_order_id)
         VALUES (${ETH_MARTINGALE_ACTIVE_GENERATION_KEY}, ${params.ticker}, ${params.easternDate}, ${now}, ${params.clientOrderId})
         ON CONFLICT (generation, ticker) DO NOTHING RETURNING ticker`);
+      if ((claim as unknown as { rows: unknown[] }).rows.length !== 1) {
+        // A definitive zero-fill insufficient-balance rejection must not strand
+        // a ticker forever. Release only the exact claim whose owner is proven
+        // to be that rejected attempt; all resting, filled, ambiguous, expired,
+        // or differently-rejected attempts remain permanently fenced.
+        const stale = await tx.execute(sql`
+          SELECT c.client_order_id
+          FROM eth_martingale_claims c
+          JOIN eth_martingale_orders o
+            ON o.generation = c.generation
+           AND o.ticker = c.ticker
+           AND o.client_order_id = c.client_order_id
+          WHERE c.generation = ${ETH_MARTINGALE_ACTIVE_GENERATION_KEY}
+            AND c.ticker = ${params.ticker}
+            AND o.outcome = 'rejected'
+            AND o.rejection_reason = 'insufficient_balance'
+            AND o.kalshi_order_id IS NULL
+            AND o.filled_contracts = 0
+            AND COALESCE(o.filled_fee_cents, 0) = 0
+          FOR UPDATE`);
+        const staleOwner = (stale as unknown as { rows: Array<{ client_order_id: string }> }).rows[0];
+        if (staleOwner != null) {
+          await tx.execute(sql`
+            DELETE FROM eth_martingale_claims
+            WHERE generation = ${ETH_MARTINGALE_ACTIVE_GENERATION_KEY}
+              AND ticker = ${params.ticker}
+              AND client_order_id = ${staleOwner.client_order_id}`);
+          claim = await tx.execute(sql`
+            INSERT INTO eth_martingale_claims (generation, ticker, eastern_date, claimed_at_ms, client_order_id)
+            VALUES (${ETH_MARTINGALE_ACTIVE_GENERATION_KEY}, ${params.ticker}, ${params.easternDate}, ${now}, ${params.clientOrderId})
+            ON CONFLICT (generation, ticker) DO NOTHING RETURNING ticker`);
+        }
+      }
       if ((claim as unknown as { rows: unknown[] }).rows.length !== 1) {
         // A proof-fence insert may have preceded this conflict. Roll it back
         // with the rest of the transaction so no orderless attempt is consumed.
