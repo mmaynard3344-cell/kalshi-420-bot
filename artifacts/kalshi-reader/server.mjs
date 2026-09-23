@@ -205,6 +205,84 @@ async function withReadOnlyDb(work) {
   }
 }
 
+
+async function serviceOwnershipDiagnostics(req, res) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
+  try {
+    const rows = await withReadOnlyDb(async (client) => {
+      const out = [];
+      const safe = async (service, sqlText, params = []) => {
+        try {
+          const result = await client.query(sqlText, params);
+          for (const row of result.rows ?? []) {
+            const orderId = row.order_id == null ? '' : String(row.order_id);
+            const clientOrderId = row.client_order_id == null ? '' : String(row.client_order_id);
+            if (orderId || clientOrderId) out.push({ orderId, clientOrderId, service });
+          }
+        } catch (error) {
+          // A service table may legitimately be absent before that service has
+          // ever initialized. Attribution remains conservative rather than
+          // inventing ownership.
+          console.warn('service ownership read skipped', service, String(error?.message ?? error));
+        }
+      };
+
+      await safe('A · Regular',
+        `SELECT kalshi_order_id AS order_id, client_order_id
+           FROM eth_martingale_orders
+          WHERE kalshi_order_id IS NOT NULL`);
+
+      try {
+        const big = await client.query(`
+          SELECT kalshi_order_id AS order_id, id AS client_order_id, strategy
+            FROM eth_big_bet_orders
+           WHERE kalshi_order_id IS NOT NULL`);
+        const map = {
+          jump: 'B · Jump',
+          reversal: 'C · Reversal',
+          breakout_reversal: 'D · Breakout Reversal',
+          downfade_p80_p90: 'E · Downfade',
+          downfade_p90_p95: 'F · Downfade',
+          probe_g: 'G · Probe',
+          downfade_p95_p99: 'H · Ashley',
+          ash_v2_i: 'I · Ash V2',
+        };
+        for (const row of big.rows ?? []) {
+          const service = map[String(row.strategy ?? '')];
+          if (!service) continue;
+          const orderId = row.order_id == null ? '' : String(row.order_id);
+          const clientOrderId = row.client_order_id == null ? '' : String(row.client_order_id);
+          if (orderId || clientOrderId) out.push({ orderId, clientOrderId, service });
+        }
+      } catch (error) {
+        console.warn('service ownership read skipped B-I', String(error?.message ?? error));
+      }
+
+      await safe('G · Probe',
+        `SELECT kalshi_order_id AS order_id, client_order_id
+           FROM eth_g_streak_reversal_orders
+          WHERE kalshi_order_id IS NOT NULL`);
+
+      await safe('J · Jackpot',
+        `SELECT j_kalshi_order_id AS order_id, j_client_order_id AS client_order_id
+           FROM jackpot_attempts
+          WHERE j_kalshi_order_id IS NOT NULL OR j_client_order_id IS NOT NULL`);
+
+      await safe('K · Kamakazee',
+        `SELECT kalshi_order_id AS order_id, client_order_id
+           FROM kamakazee_orders
+          WHERE kalshi_order_id IS NOT NULL OR client_order_id IS NOT NULL`);
+
+      return out;
+    });
+    if (req.method === 'HEAD') return send(res, 200, '', 'application/json; charset=utf-8');
+    return send(res, 200, JSON.stringify({ rows, count: rows.length }), 'application/json; charset=utf-8');
+  } catch (error) {
+    console.error('Service ownership diagnostic read failed', error);
+    return send(res, 500, JSON.stringify({ error: 'Service ownership unavailable' }), 'application/json; charset=utf-8');
+  }
+}
+
 async function candidateLifecycleDiagnostics(req, res, url) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
   const ticker = String(url.searchParams.get('ticker') ?? '').trim();
@@ -416,6 +494,7 @@ function serveStatic(req, res, url) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  if (url.pathname === '/api/diagnostics/service-ownership') return void serviceOwnershipDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/exchange-ticker') return void exchangeTickerDiagnostics(req, res, url);
   if (url.pathname === '/api/diagnostics/candidate-lifecycle') return void candidateLifecycleDiagnostics(req, res, url);
   if (url.pathname === '/api/diagnostics/settlement-latency') return void settlementLatencyDiagnostics(req, res, url);
