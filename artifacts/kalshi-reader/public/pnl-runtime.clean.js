@@ -22,22 +22,21 @@ const result=r=>{const x=String(r?.market_result??r?.result??'').toLowerCase();r
 const priceDollars=(r,s)=>{const d=num(s==='no'?r?.no_price_dollars:r?.yes_price_dollars);if(d!=null)return d;const c=num(s==='no'?r?.no_price:r?.yes_price);return c==null?null:c/100};
 const status=r=>String(r?.status??r?.order_status??r?.state??'').toUpperCase().replaceAll('_',' ');
 const requested=r=>num(r?.initial_count_fp,r?.initial_count,r?.requested_contracts,r?.requestedContracts,r?.count_fp,r?.count);
-function service(r){
-  const c=String(r?.client_order_id??r?.clientOrderId??'');
-  // Match strategy-specific suffixes first. Several non-A services intentionally
-  // share the generic eth-yes-/eth-no- prefix, so treating that prefix as A
-  // before checking the suffix misattributes their orders to A.
-  if(c.endsWith(':eth-jump-v1'))return'B · Jump';
-  if(c.endsWith(':eth-no3-reversal-v1'))return'C · Reversal';
-  if(c.endsWith(':eth-no3-upperband-v1'))return'D · Breakout Reversal';
-  if(c.endsWith(':eth-downfade-p80-p99-v2'))return'E · Downfade';
-  if(c.endsWith(':eth-downfade-p90-p99-v2'))return'F · Downfade';
-  if(c.endsWith(':eth-probe-g-5m-30c-v1'))return'G · Probe';
-  if(c.endsWith(':eth-ashley-h-v1'))return'H · Ashley';
-  if(c.endsWith(':eth-ash-v2-i-v1'))return'I · Ash V2';
-  if(c.endsWith(':jackpot-j'))return'J · Jackpot';
+function ownershipIndex(payload){
+  const byOrder=new Map,byClient=new Map;
+  for(const r of(Array.isArray(payload?.rows)?payload.rows:[])){
+    if(r?.orderId)byOrder.set(String(r.orderId),String(r.service||'Unattributed'));
+    if(r?.clientOrderId)byClient.set(String(r.clientOrderId),String(r.service||'Unattributed'));
+  }
+  return{byOrder,byClient};
+}
+function service(r,owners){
+  const id=oid(r),c=String(r?.client_order_id??r?.clientOrderId??'');
+  if(id&&owners?.byOrder?.has(id))return owners.byOrder.get(id);
+  if(c&&owners?.byClient?.has(c))return owners.byClient.get(c);
+  // Only retain deterministic service tags that are unique by construction.
+  if(c.startsWith('g-streak-reversal-v1:'))return'G · Probe';
   if(c.endsWith(':kamakazee-k-v1'))return'K · Kamakazee';
-  if(c.includes(':eth420-live-v1')||c.startsWith('eth-yes-')||c.startsWith('eth-no-'))return'A · Regular';
   return'Unattributed';
 }
 async function j(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error(path+' HTTP '+r.status);return r.json()}
@@ -53,12 +52,12 @@ async function paged(path,key){
   }
   return rows.filter(r=>{const t=ms(r);return t!=null&&dk(t)>=START});
 }
-function fillsByOrder(fills,orders){
+function fillsByOrder(fills,orders,owners){
   const idx=new Map(orders.map(o=>[oid(o),o])),m=new Map;
   for(const f of fills){
     if(!eth(f))continue;const t=ms(f),id=oid(f);if(t==null||!id)continue;
     const s=side(f),n=count(f),p=priceDollars(f,s);if(!(n>0)||p==null)continue;
-    const o=m.get(id)||{id,ticker:String(f.ticker??f.market_ticker??''),side:s,atMs:t,contracts:0,principalCents:0,feesCents:0,weighted:0,result:'',service:service(idx.get(id))};
+    const o=m.get(id)||{id,ticker:String(f.ticker??f.market_ticker??''),side:s,atMs:t,contracts:0,principalCents:0,feesCents:0,weighted:0,result:'',service:service(idx.get(id),owners)};
     o.contracts+=n;o.principalCents+=Math.round(n*p*100);o.feesCents+=feeCents(f);o.weighted+=n*p*100;o.atMs=Math.min(o.atMs,t);
     const rr=result(f);if(rr)o.result=rr;m.set(id,o);
   }
@@ -79,14 +78,14 @@ function renderMarket(x){
   $('yesBid').textContent=e?.yesBid==null?'—':e.yesBid+'¢';$('yesAsk').textContent=e?.yesAsk==null?'—':e.yesAsk+'¢';
   $('noBid').textContent=e?.noBid==null?'—':e.noBid+'¢';$('noAsk').textContent=e?.noAsk==null?'—':e.noAsk+'¢';
 }
-function renderOpenOrders(raw){
+function renderOpenOrders(raw,owners){
   const rows=Array.isArray(raw)?raw:Array.isArray(raw?.orders)?raw.orders:[];
   const open=rows.filter(o=>{const s=String(o?.status??o?.order_status??'').toLowerCase(),r=num(o?.remaining_count_fp,o?.remaining_count,o?.remainingContracts,0)||0;return r>0||['open','resting','pending','submitted','active','partially_filled'].includes(s)});
   $('openCount').textContent=open.length+' open';
-  $('openRows').innerHTML=open.length?open.map(o=>`<tr><td>${esc(service(o))}</td><td>${esc(o.ticker??o.market_ticker??'—')}</td><td>${esc(String(side(o)||'—').toUpperCase())}</td><td class="num">${esc(requested(o)??'—')}</td><td class="num">${esc(num(o?.fill_count_fp,o?.filled_count_fp,o?.filled_count,o?.filledContracts)??'—')}</td><td class="num">${esc(num(o?.remaining_count_fp,o?.remaining_count,o?.remainingContracts)??'—')}</td><td>${esc(status(o)||'—')}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">No open orders.</td></tr>';
+  $('openRows').innerHTML=open.length?open.map(o=>`<tr><td>${esc(service(o,owners))}</td><td>${esc(o.ticker??o.market_ticker??'—')}</td><td>${esc(String(side(o)||'—').toUpperCase())}</td><td class="num">${esc(requested(o)??'—')}</td><td class="num">${esc(num(o?.fill_count_fp,o?.filled_count_fp,o?.filled_count,o?.filledContracts)??'—')}</td><td class="num">${esc(num(o?.remaining_count_fp,o?.remaining_count,o?.remainingContracts)??'—')}</td><td>${esc(status(o)||'—')}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">No open orders.</td></tr>';
 }
-function renderPnl(fills,orders){
-  const fm=fillsByOrder(fills,orders),td=today(),settled=[...fm.values()].filter(x=>x.result&&x.netCents!=null&&dk(x.atMs)===td);
+function renderPnl(fills,orders,owners){
+  const fm=fillsByOrder(fills,orders,owners),td=today(),settled=[...fm.values()].filter(x=>x.result&&x.netCents!=null&&dk(x.atMs)===td);
   const total=settled.reduce((s,x)=>s+x.netCents,0),wins=settled.filter(x=>x.won).length,losses=settled.length-wins,fees=settled.reduce((s,x)=>s+x.feesCents,0);
   $('pnl').textContent=money(total);$('pnl').className='metric '+(total>0?'good':total<0?'bad':'');
   $('settled').textContent=String(settled.length);$('wins').textContent=String(wins);$('losses').textContent=String(losses);$('fees').textContent=money(fees,false);
@@ -94,18 +93,19 @@ function renderPnl(fills,orders){
   $('serviceRows').innerHTML=svc.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${x.n}</td><td class="num ${x.pnl>0?'good':x.pnl<0?'bad':''}">${money(x.pnl)}</td></tr>`).join('');
   const rows=orders.filter(eth).sort((a,b)=>(ms(b)||0)-(ms(a)||0)).slice(0,100);
   $('tradeCount').textContent=rows.length+' recent';
-  $('tradeRows').innerHTML=rows.length?rows.map(o=>{const f=fm.get(oid(o)),t=ms(o),filled=f?.contracts??num(o?.fill_count_fp,o?.filled_count_fp,o?.filled_count,o?.filledContracts),avg=f?.avgFillPriceCents,pnl=f?.netCents;return`<tr><td>${t==null?'—':time(t)}</td><td>${esc(service(o))}</td><td>${esc(o.ticker??'—')}</td><td>${esc(String(side(o)||'—').toUpperCase())}</td><td class="num">${esc(requested(o)??'—')}</td><td class="num">${esc(filled??'—')}</td><td class="num">${avg==null?'—':avg.toFixed(1)+'¢'}</td><td>${esc(status(o)||'—')}</td><td class="num">${f?money(f.feesCents,false):'—'}</td><td class="num ${pnl>0?'good':pnl<0?'bad':''}">${pnl==null?'Pending':money(pnl)}</td></tr>`}).join(''):'<tr><td colspan="10" class="empty">No Sep. 22-forward ETH orders.</td></tr>';
+  $('tradeRows').innerHTML=rows.length?rows.map(o=>{const f=fm.get(oid(o)),t=ms(o),filled=f?.contracts??num(o?.fill_count_fp,o?.filled_count_fp,o?.filled_count,o?.filledContracts),avg=f?.avgFillPriceCents,pnl=f?.netCents;return`<tr><td>${t==null?'—':time(t)}</td><td>${esc(service(o,owners))}</td><td>${esc(o.ticker??'—')}</td><td>${esc(String(side(o)||'—').toUpperCase())}</td><td class="num">${esc(requested(o)??'—')}</td><td class="num">${esc(filled??'—')}</td><td class="num">${avg==null?'—':avg.toFixed(1)+'¢'}</td><td>${esc(status(o)||'—')}</td><td class="num">${f?money(f.feesCents,false):'—'}</td><td class="num ${pnl>0?'good':pnl<0?'bad':''}">${pnl==null?'Pending':money(pnl)}</td></tr>`}).join(''):'<tr><td colspan="10" class="empty">No Sep. 22-forward ETH orders.</td></tr>';
 }
 let busy=false;
 async function refresh(){
   if(busy)return;busy=true;$('stamp').textContent='Refreshing…';
   try{
-    const [b,m,o,f]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),paged('/api/trade/orders','orders'),paged('/api/trade/fills','fills')]);
+    const [b,m,o,f,w]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),paged('/api/trade/orders','orders'),paged('/api/trade/fills','fills'),j('/api/diagnostics/service-ownership')]);
     if(b.status==='fulfilled')renderAccount(b.value);else $('accountState').textContent='UNAVAILABLE';
     if(m.status==='fulfilled')renderMarket(m.value);
     const orderRows=o.status==='fulfilled'?o.value:[];
-    renderOpenOrders(orderRows);
-    if(f.status==='fulfilled')renderPnl(f.value,orderRows);
+    const owners=w.status==='fulfilled'?ownershipIndex(w.value):ownershipIndex(null);
+    renderOpenOrders(orderRows,owners);
+    if(f.status==='fulfilled')renderPnl(f.value,orderRows,owners);
     $('stamp').textContent='Updated '+new Intl.DateTimeFormat('en-US',{timeZone:ET,hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date());
   }catch(e){$('stamp').textContent='Partial data · '+String(e?.message??e)}
   finally{busy=false}
