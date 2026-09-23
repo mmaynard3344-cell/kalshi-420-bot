@@ -2,7 +2,7 @@
 'use strict';
 const ET='America/New_York', START='2026-09-22', PAGE=250, MAX_PAGES=10;
 const SERVICES=[
-  'A · Regular','B · Jump','C · Reversal','D · Breakout Reversal','E · Downfade',
+  'A · Regular','420 · Candidate','B · Jump','C · Reversal','D · Breakout Reversal','E · Downfade',
   'F · Downfade','G · Probe','H · Ashley','I · Ash V2','J · Jackpot','K · Kamakazee','Unattributed'
 ];
 const $=id=>document.getElementById(id);
