@@ -99,11 +99,17 @@ function renderOpenOrders(raw,owners){
   $('openCount').textContent=open.length+' open';
   $('openRows').innerHTML=open.length?open.map(o=>`<tr><td>${esc(service(o,owners))}</td><td>${esc(o.ticker??o.market_ticker??'—')}</td><td>${esc(String(side(o)||'—').toUpperCase())}</td><td class="num">${esc(requested(o)??'—')}</td><td class="num">${esc(num(o?.fill_count_fp,o?.filled_count_fp,o?.filled_count,o?.filledContracts)??'—')}</td><td class="num">${esc(num(o?.remaining_count_fp,o?.remaining_count,o?.remainingContracts)??'—')}</td><td>${esc(status(o)||'—')}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">No open orders.</td></tr>';
 }
-function renderPnl(fills,orders,owners){
+function renderPnl(fills,orders,owners,tradeStatus){
   const fm=fillsByOrder(fills,orders,owners),td=today(),settled=[...fm.values()].filter(x=>x.result&&x.netCents!=null&&dk(x.atMs)===td);
-  const total=settled.reduce((s,x)=>s+x.netCents,0),wins=settled.filter(x=>x.won).length,losses=settled.length-wins,fees=settled.reduce((s,x)=>s+x.feesCents,0);
-  $('pnl').textContent=money(total);$('pnl').className='metric '+(total>0?'good':total<0?'bad':'');
-  $('settled').textContent=String(settled.length);$('wins').textContent=String(wins);$('losses').textContent=String(losses);$('fees').textContent=money(fees,false);
+  const reconstructedTotal=settled.reduce((s,x)=>s+x.netCents,0),wins=settled.filter(x=>x.won).length,losses=settled.length-wins,fees=settled.reduce((s,x)=>s+x.feesCents,0);
+  const authoritativeDollars=num(tradeStatus?.daily_realized_net_pnl_dollars);
+  const authoritativeTotal=authoritativeDollars==null?null:Math.round(authoritativeDollars*100);
+  const total=authoritativeTotal;
+  $('pnl').textContent=total==null?'—':money(total);
+  $('pnl').className='metric '+(total==null?'':total>0?'good':total<0?'bad':'');
+  const authoritativeSettled=num(tradeStatus?.daily_realized_settled_fill_count);
+  $('settled').textContent=authoritativeSettled==null?String(settled.length):String(authoritativeSettled);
+  $('wins').textContent=String(wins);$('losses').textContent=String(losses);$('fees').textContent=money(fees,false);
   const svc=SERVICES.map(name=>{const a=settled.filter(x=>x.service===name);return{name,n:a.length,pnl:a.reduce((s,x)=>s+x.netCents,0)}}).filter(x=>x.n>0||x.name!=='Unattributed');
   $('serviceRows').innerHTML=svc.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${x.n}</td><td class="num ${x.pnl>0?'good':x.pnl<0?'bad':''}">${money(x.pnl)}</td></tr>`).join('');
   const rows=orders.filter(eth).sort((a,b)=>(ms(b)||0)-(ms(a)||0)).slice(0,100);
@@ -114,13 +120,13 @@ let busy=false;
 async function refresh(){
   if(busy)return;busy=true;$('stamp').textContent='Refreshing…';
   try{
-    const [b,m,o,f,w]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),paged('/api/trade/orders','orders'),paged('/api/trade/fills','fills'),j('/api/diagnostics/service-ownership')]);
+    const [b,m,o,f,w,s]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),paged('/api/trade/orders','orders'),paged('/api/trade/fills','fills'),j('/api/diagnostics/service-ownership'),j('/api/trade/status')]);
     if(b.status==='fulfilled')renderAccount(b.value);else $('accountState').textContent='UNAVAILABLE';
     if(m.status==='fulfilled')renderMarket(m.value);
     const orderRows=o.status==='fulfilled'?o.value:[];
     const owners=w.status==='fulfilled'?ownershipIndex(w.value):ownershipIndex(null);
     renderOpenOrders(orderRows,owners);
-    if(f.status==='fulfilled')renderPnl(f.value,orderRows,owners);
+    if(f.status==='fulfilled')renderPnl(f.value,orderRows,owners,s.status==='fulfilled'?s.value:null);
     $('stamp').textContent='Updated '+new Intl.DateTimeFormat('en-US',{timeZone:ET,hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date());
   }catch(e){$('stamp').textContent='Partial data · '+String(e?.message??e)}
   finally{busy=false}
