@@ -7,7 +7,7 @@ import { captureOrderbook, parseOrderbookResponse, computeSnapshotFields, type O
 import { parseKalshiOrderResponse } from "../orderResponseParser.js";
 import { logger } from "../logger.js";
 
-export const JACKPOT_WAGER_CENTS = 1_000; // HARD live cap: $10 during validation.
+export const JACKPOT_WAGER_CENTS = 100; // Reduced live test cap: $1.
 export const JACKPOT_MAX_PRICE_CENTS = 90; // HARD live ceiling during validation.
 export const JACKPOT_POLL_MS = 100;
 export const JACKPOT_TELEMETRY_OFFSETS_MS = [0, 250, 500, 1_000, 2_000] as const;
