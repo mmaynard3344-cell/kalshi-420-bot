@@ -36,13 +36,13 @@ export function _setEth420CandidateOrderbookCaptureForTesting(reader: CandidateO
   candidateOrderbookCapture = reader ?? captureOrderbook;
 }
 export const ETH_420_CANDIDATE_LABEL = "ETH_420_6_STEP_RESET_SHADOW_ONLY";
-export const ETH_420_PRINCIPALS_CENTS = [1500, 3000, 6000, 12000, 24000, 32000] as const;
-export const ETH_420_OVERRIDE_CENTS = 42000;
-/** Retained-side (≥50¢) Back Flip entries cross the chosen-side ask up to $420. */
-export const ETH_420_BACK_FLIP_RETAIN_WAGER_CENTS = 42000;
-/** Flipped-side (<50¢) Back Flip entries retain their isolated $25 resting wager. */
-export const ETH_420_BACK_FLIP_FLIP_WAGER_CENTS = 2500;
-export const ETH_420_DAILY_LOSS_LIMIT_CENTS = -120000;
+export const ETH_420_PRINCIPALS_CENTS = [50, 50, 50, 100, 250, 300] as const;
+export const ETH_420_OVERRIDE_CENTS = 420;
+/** Reduced-test retained-side Back Flip entries cross the chosen-side ask up to $4.20. */
+export const ETH_420_BACK_FLIP_RETAIN_WAGER_CENTS = 420;
+/** Reduced-test flipped-side Back Flip entries retain a $0.25 resting wager. */
+export const ETH_420_BACK_FLIP_FLIP_WAGER_CENTS = 25;
+export const ETH_420_DAILY_LOSS_LIMIT_CENTS = -1200;
 export const ETH_420_HISTORY_DAYS = 28;
 export const ETH_420_MIN_HISTORY = 50;
 export const ETH_420_LIVE_LIMIT_PRICE_CENTS = 50;
@@ -68,7 +68,7 @@ export function selectEth420BackFlipSide(missedSide: Eth420Side, missedSideBidCe
   return missedSideBidCents >= 50 ? missedSide : missedSide === "yes" ? "no" : "yes";
 }
 
-/** Whole-contract retained-side IOC quantity that never exceeds the $420 Back Flip risk cap. */
+/** Whole-contract retained-side IOC quantity that never exceeds the reduced-test $4.20 Back Flip risk cap. */
 export function eth420BackFlipIocContracts(chosenSideAskCents: number): number | null {
   if (!Number.isInteger(chosenSideAskCents) || chosenSideAskCents < 1 || chosenSideAskCents > 99) return null;
   const contracts = Math.floor(ETH_420_BACK_FLIP_RETAIN_WAGER_CENTS / chosenSideAskCents);
