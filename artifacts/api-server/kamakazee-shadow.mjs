@@ -12,7 +12,7 @@ const SERIES = "KXETH15M";
 const INTERVAL_MS = 15 * 60 * 1000;
 const EFFICIENCY_THRESHOLD = 0.85;
 const POLL_MS = 30_000;
-const PRINCIPAL_CENTS = [10_000];
+const PRINCIPAL_CENTS = [100];
 const LIMIT_CENTS = 50;
 let inFlight = false;
 
@@ -194,7 +194,7 @@ async function evaluate() {
 
 await init();
 await authFetch("GET", "/portfolio/balance");
-log("STARTUP", { executable: true, live: process.env.KAMAKAZEE_LIVE_ENABLED === "true", series: SERIES, endpoint: "/portfolio/orders", limitPriceCents: LIMIT_CENTS, principalDollars: 100, morningPrincipalDollars: 150, morningWindowEt: "06:00-11:59", repeatAfterLoss: false, orderType: "GTC" });
+log("STARTUP", { executable: true, live: process.env.KAMAKAZEE_LIVE_ENABLED === "true", series: SERIES, endpoint: "/portfolio/orders", limitPriceCents: LIMIT_CENTS, principalDollars: 1, morningPrincipalDollars: 1.5, morningWindowEt: "06:00-11:59", repeatAfterLoss: false, orderType: "GTC" });
 await evaluate();
 setInterval(() => {
   if (inFlight) return;
