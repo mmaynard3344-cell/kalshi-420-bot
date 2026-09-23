@@ -52,7 +52,7 @@ export interface EthMarketState {
   status: string | null;
 }
 
-export const ETH_PRINCIPALS_CENTS = [1500, 3000, 6000, 12000, 24000, 32000] as const;
+export const ETH_PRINCIPALS_CENTS = [50, 50, 50, 100, 250, 300] as const;
 /** Loss stop: fail closed if realized daily P&L (even-money cents) is at or below this. */
 export const ETH_DAILY_LOSS_STOP_CENTS = -120_000;
 /** A pending row has not entered POST yet, so it can be released after this bound. */
