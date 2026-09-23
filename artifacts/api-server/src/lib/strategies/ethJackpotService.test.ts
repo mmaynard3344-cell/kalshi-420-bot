@@ -73,8 +73,8 @@ test("Jackpot only re-observes a zero-fill during the short rescue window", () =
   }), false, "re-observation cannot outlive the 5-second rescue window");
 });
 
-test("Jackpot fixed $100 sizing respects the 75c ceiling", () => {
-  assert.equal(JACKPOT_WAGER_CENTS, 10_000);
+test("Jackpot reduced $1 sizing respects the 75c ceiling", () => {
+  assert.equal(JACKPOT_WAGER_CENTS, 100);
   assert.equal(JACKPOT_MAX_PRICE_CENTS, 75);
   assert.equal(jackpotContracts(), Math.floor(JACKPOT_WAGER_CENTS / JACKPOT_MAX_PRICE_CENTS));
   assert.ok(jackpotContracts() * JACKPOT_MAX_PRICE_CENTS <= JACKPOT_WAGER_CENTS);
