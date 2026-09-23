@@ -8,26 +8,63 @@ const dashboardPath = join(here, '..', 'public', 'eth420-dashboard.html');
 
 let runtime = readFileSync(runtimePath, 'utf8');
 
-// Dashboard-only repair: restore explicit J / Jackpot attribution in the final
-// generated P&L runtime. This does not touch trading, orders, sizing, or services.
-if (!runtime.includes("':jackpot-j'")) {
-  runtime = runtime.replace(
-    "S=['Regular','Jump','Legacy 420','Reversal','Ash V2']",
-    "S=['Regular','Jump','Legacy 420','Reversal','Ash V2','J · Jackpot']",
-  );
-  runtime = runtime.replace(
-    "'Ash V2':'#8b5cf6'",
-    "'Ash V2':'#8b5cf6','J · Jackpot':'#64748b'",
-  );
-  runtime = runtime.replace(
-    "const strategy=r=>{const c=String(r?.client_order_id??r?.clientOrderId??'');",
-    "const strategy=r=>{const c=String(r?.client_order_id??r?.clientOrderId??'');if(c.endsWith(':jackpot-j'))return'J · Jackpot';",
-  );
+// Dashboard-only finalizer: normalize every current Shawshank service label
+// after all earlier P&L generators have run. Unknown order tags stay visibly
+// unattributed rather than silently falling through to A/Regular.
+const serviceSeries = [
+  'A · ETH 420',
+  'B · Jump',
+  'C · Reversal',
+  'D · Breakout Reversal',
+  'E · Downfade',
+  'F · Downfade',
+  'G · Probe',
+  'H · Ashley',
+  'I · Ash V2',
+  'J · Jackpot',
+  'K · Kamakazee',
+  'Unattributed',
+];
+const serviceColors = {
+  'A · ETH 420':'#4f8cff',
+  'B · Jump':'#35b66f',
+  'C · Reversal':'#d56cf0',
+  'D · Breakout Reversal':'#d9a441',
+  'E · Downfade':'#4f8cff',
+  'F · Downfade':'#35b66f',
+  'G · Probe':'#d56cf0',
+  'H · Ashley':'#7c5cff',
+  'I · Ash V2':'#8b5cf6',
+  'J · Jackpot':'#64748b',
+  'K · Kamakazee':'#d9a441',
+  'Unattributed':'#94a3b8',
+};
+const seriesStart = runtime.indexOf("S=[");
+const seriesEnd = runtime.indexOf(",B=[[", seriesStart);
+if (seriesStart < 0 || seriesEnd < 0) throw new Error('A-K P&L series anchors not found');
+runtime = runtime.slice(0, seriesStart)
+  + `S=${JSON.stringify(serviceSeries)},C=${JSON.stringify(serviceColors)}`
+  + runtime.slice(seriesEnd);
+
+const strategyStart = runtime.indexOf('const strategy=r=>');
+const strategyEnd = runtime.indexOf(';\nconst wk=', strategyStart);
+if (strategyStart < 0 || strategyEnd < 0) throw new Error('A-K P&L strategy anchors not found');
+const serviceClassifier = `const strategy=r=>{const c=String(r?.client_order_id??r?.clientOrderId??'');if(c.includes(':eth420-live-v1'))return'A · ETH 420';if(c.endsWith(':eth-jump-v1'))return'B · Jump';if(c.endsWith(':eth-no3-reversal-v1'))return'C · Reversal';if(c.endsWith(':eth-no3-upperband-v1'))return'D · Breakout Reversal';if(c.endsWith(':eth-downfade-p80-p99-v2'))return'E · Downfade';if(c.endsWith(':eth-downfade-p90-p99-v2'))return'F · Downfade';if(c.endsWith(':eth-probe-g-5m-30c-v1'))return'G · Probe';if(c.endsWith(':eth-ashley-h-v1'))return'H · Ashley';if(c.endsWith(':eth-ash-v2-i-v1'))return'I · Ash V2';if(c.endsWith(':jackpot-j'))return'J · Jackpot';if(c.endsWith(':kamakazee-k-v1'))return'K · Kamakazee';return'Unattributed'}`;
+runtime = runtime.slice(0, strategyStart) + serviceClassifier + runtime.slice(strategyEnd + 1);
+
+for (const required of [
+  "A · ETH 420", "B · Jump", "C · Reversal", "D · Breakout Reversal",
+  "E · Downfade", "F · Downfade", "G · Probe", "H · Ashley",
+  "I · Ash V2", "J · Jackpot", "K · Kamakazee", "Unattributed",
+  ":eth420-live-v1", ":eth-jump-v1", ":eth-no3-reversal-v1",
+  ":eth-no3-upperband-v1", ":eth-downfade-p80-p99-v2",
+  ":eth-downfade-p90-p99-v2", ":eth-probe-g-5m-30c-v1",
+  ":eth-ashley-h-v1", ":eth-ash-v2-i-v1", ":jackpot-j",
+  ":kamakazee-k-v1",
+]) {
+  if (!runtime.includes(required)) throw new Error(`A-K P&L attribution missing ${required}`);
 }
 
-if (!runtime.includes("c.endsWith(':jackpot-j')") || !runtime.includes("'J · Jackpot'")) {
-  throw new Error('J P&L attribution anchors not found; refusing partial dashboard patch');
-}
 // Paint a compact recent ledger immediately while the complete exchange history
 // continues loading for P&L totals and analytics.
 if (!runtime.includes('shawshank-recent-ledger-v1')) {
