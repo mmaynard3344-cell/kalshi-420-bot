@@ -275,9 +275,13 @@ export function normalizeMarket(m: Record<string, any>): Record<string, unknown>
     series_ticker:    m.series_ticker ?? null,
     // Orders must be routed to the same Kalshi exchange as their discovered
     // market. ETH markets currently use a non-default exchange index.
-    exchange_index:   Number.isInteger(m.exchange_index) && m.exchange_index >= 0
-      ? m.exchange_index
-      : null,
+    exchange_index:   (() => {
+      const raw = m.exchange_index;
+      const parsed = typeof raw === "number" ? raw
+        : typeof raw === "string" && /^\\d+$/.test(raw.trim()) ? Number(raw.trim())
+        : NaN;
+      return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+    })(),
     title:            m.title,
     subtitle:         m.yes_sub_title ?? m.subtitle ?? null,
     status:           m.status === "active" ? "open" : (m.status ?? "unknown"),
