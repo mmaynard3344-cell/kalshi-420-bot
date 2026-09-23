@@ -38,7 +38,7 @@ import { easternDay } from "../dailyBudget.js";
 import { isEthOrderSubmissionPermitted, setTradingHalted } from "../tradingKillSwitch.js";
 import { logger } from "../logger.js";
 import { kalshiFetch } from "../kalshi.js";
-import { fetchFreshKalshiBalanceForExchangeRead, kalshiBalanceCents } from "../kalshiBalance.js";
+import { fetchFreshKalshiBalanceRead, kalshiBalanceCents } from "../kalshiBalance.js";
 import * as ethStore from "../tradeStore.js";
 import { addDecimalStrings, normalizeKalshiFill, type KalshiFillWire } from "../kalshiFillNormalizer.js";
 import { getAccountHistoryFingerprint } from "../kalshiAccountFingerprint.js";
@@ -168,7 +168,7 @@ type EthDependencies = {
   isEthOrderSubmissionPermitted: typeof isEthOrderSubmissionPermitted;
   haltTrading: typeof setTradingHalted;
   accountFingerprint: typeof getAccountHistoryFingerprint;
-  fetchExchangeBalance: typeof fetchFreshKalshiBalanceForExchangeRead;
+  fetchAccountBalance: typeof fetchFreshKalshiBalanceRead;
   stopAfterFirstPost: () => boolean;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
@@ -194,7 +194,7 @@ const productionEthDependencies: EthDependencies = {
   isEthOrderSubmissionPermitted, now: () => Date.now(),
   haltTrading: setTradingHalted,
   accountFingerprint: getAccountHistoryFingerprint,
-  fetchExchangeBalance: fetchFreshKalshiBalanceForExchangeRead,
+  fetchAccountBalance: fetchFreshKalshiBalanceRead,
   stopAfterFirstPost: () => process.env["ETH_MARTINGALE_STOP_AFTER_FIRST_POST"] === "true",
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   setRetryTimer: setTimeout,
@@ -215,7 +215,7 @@ export function _setEthNoMartingaleDependenciesForTesting(overrides: Partial<Eth
     // Existing strategy tests exercise order lifecycle with no live Kalshi
     // account access. They receive a deliberately sufficient scoped balance
     // unless a case explicitly supplies exchange funds to test this preflight.
-    fetchExchangeBalance: overrides.fetchExchangeBalance
+    fetchAccountBalance: overrides.fetchAccountBalance
       ?? (async () => ({ value: { balance: 1_000_000 }, stale: false })),
     // Existing test fixtures supply public-market responses via marketFetch.
     // Production never does: its settlement source is the signed client above.
@@ -728,7 +728,7 @@ export const placeEthMartingaleGtcEntry: EthPlacementLifecycleGateway = async ({
   state, side, step, requestedPrincipalCents: _requestedPrincipalCents,
   requestedContracts: contracts, easternDate: date, expectedMartingaleState,
 }) => {
-  const exchangeIndex = state.exchangeIndex!;
+  const exchangeIndex = -1; // Kalshi auto-route by market ticker.
   const noPriceCents = ETH_GTC_LIMIT_PRICE_CENTS;
   const reservedFeeCents = ethTakerFeeCents(noPriceCents, contracts);
   const id = `eth-entry:${ethStore.ETH_MARTINGALE_ACTIVE_GENERATION_KEY}:${state.ticker}`;
@@ -846,14 +846,9 @@ export const runEthPreflightAndPlacement: EthPreflightAndPlacementGateway = asyn
     return;
   }
   if (!isEthMarketEligible(state.status, state.openTime, state.closeTime, ethDependencies.now())) return;
-  const exchangeIndex = state.exchangeIndex;
-  if (typeof exchangeIndex !== "number" || !Number.isInteger(exchangeIndex) || exchangeIndex < 0) {
-    setEthBlockerStatus(
-      "missing_exchange_index",
-      "ETH entry is blocked until market discovery supplies its Kalshi exchange index",
-    );
-    return;
-  }
+  // A uses Kalshi auto-routing (exchange_index = -1), so a market shard is not
+  // required for order authorization. The ticker determines the destination.
+  const routingExchangeIndex = -1;
   if (!ethDependencies.isEthOrderSubmissionPermitted(state.ticker)) {
     setEthBlockerStatus("kill_switch", "ETH order submission is blocked by a runtime safety gate");
     return;
@@ -942,38 +937,39 @@ if (projectedFullLossPnlCents < dailyLossStopCents) {
   return;
 }
 
-const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;    let exchangeBalance;
+const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;
+    let accountBalance;
     try {
-      exchangeBalance = await ethDependencies.fetchExchangeBalance(exchangeIndex);
+      accountBalance = await ethDependencies.fetchAccountBalance();
     } catch (err) {
-      logger.warn({ err, exchangeIndex, ticker: state.ticker }, "ETH entry blocked: exchange-specific balance read failed");
+      logger.warn({ err, ticker: state.ticker }, "ETH entry blocked: fresh aggregate balance read failed");
       setEthExchangeBalanceBlocker(
         "exchange_balance_unavailable",
-        `ETH entry is blocked because available funds on exchange ${exchangeIndex} could not be verified; $${(requiredBalanceCents / 100).toFixed(2)} is required`,
-        exchangeIndex,
+        `ETH entry is blocked because aggregate available funds could not be verified; ${(requiredBalanceCents / 100).toFixed(2)} is required`,
+        routingExchangeIndex,
         null,
         requiredBalanceCents,
         false,
       );
       return;
     }
-    const availableBalanceCents = kalshiBalanceCents(exchangeBalance.value);
-    if (exchangeBalance.stale || availableBalanceCents == null) {
+    const availableBalanceCents = kalshiBalanceCents(accountBalance.value);
+    if (accountBalance.stale || availableBalanceCents == null) {
       setEthExchangeBalanceBlocker(
         "exchange_balance_unavailable",
-        `ETH entry is blocked because exchange ${exchangeIndex} balance is ${exchangeBalance.stale ? "stale" : "invalid"}; $${(requiredBalanceCents / 100).toFixed(2)} is required`,
-        exchangeIndex,
+        `ETH entry is blocked because aggregate account balance is ${accountBalance.stale ? "stale" : "invalid"}; ${(requiredBalanceCents / 100).toFixed(2)} is required`,
+        routingExchangeIndex,
         availableBalanceCents,
         requiredBalanceCents,
-        exchangeBalance.stale,
+        accountBalance.stale,
       );
       return;
     }
     if (availableBalanceCents < requiredBalanceCents) {
       setEthExchangeBalanceBlocker(
         "insufficient_exchange_balance",
-        `ETH entry is blocked: exchange ${exchangeIndex} has $${(availableBalanceCents / 100).toFixed(2)} available but requires $${(requiredBalanceCents / 100).toFixed(2)}`,
-        exchangeIndex,
+        `ETH entry is blocked: aggregate account has ${(availableBalanceCents / 100).toFixed(2)} available but requires ${(requiredBalanceCents / 100).toFixed(2)}`,
+        routingExchangeIndex,
         availableBalanceCents,
         requiredBalanceCents,
         false,
