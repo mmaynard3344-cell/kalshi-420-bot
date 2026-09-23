@@ -570,6 +570,60 @@ server.listen(port, '0.0.0.0', () => {
         ORDER BY table_name, ordinal_position
       `, [tables]);
       console.log('SERVICE_LEDGER_SCHEMA_DIAGNOSTIC', JSON.stringify(q.rows));
+      const [a,cand,big,g,j,k] = await Promise.all([
+        client.query(`
+          SELECT COUNT(*)::int AS n,
+                 COALESCE(SUM(
+                   CASE WHEN settlement_result = side
+                     THEN (COALESCE(filled_contracts,0)::numeric - COALESCE(actual_notional_dollars,0)::numeric - COALESCE(actual_fee_dollars,0)::numeric)
+                     ELSE -(COALESCE(actual_notional_dollars,0)::numeric + COALESCE(actual_fee_dollars,0)::numeric)
+                   END
+                 ),0) AS pnl
+          FROM eth_martingale_orders
+          WHERE eastern_date='2026-09-23'
+            AND settlement_result IN ('yes','no')
+            AND COALESCE(filled_contracts,0)::numeric > 0
+        `),
+        client.query(`
+          SELECT COUNT(*)::int AS n, COALESCE(SUM(realized_pnl_delta_cents),0)::int AS pnl_cents
+          FROM eth420_candidate_live_orders
+          WHERE eastern_date='2026-09-23' AND realized_pnl_delta_cents IS NOT NULL
+        `),
+        client.query(`
+          SELECT strategy, COUNT(*)::int AS n, COALESCE(SUM(realized_pnl_cents),0)::int AS pnl_cents
+          FROM eth_big_bet_orders
+          WHERE created_at_ms >= 1790136000000
+            AND created_at_ms < 1790222400000
+            AND realized_pnl_cents IS NOT NULL
+          GROUP BY strategy ORDER BY strategy
+        `),
+        client.query(`
+          SELECT COUNT(*)::int AS n,
+                 COUNT(*) FILTER (WHERE settlement_result IN ('yes','no'))::int AS settled,
+                 COUNT(*) FILTER (WHERE won IS TRUE)::int AS wins,
+                 COUNT(*) FILTER (WHERE won IS FALSE)::int AS losses
+          FROM eth_g_streak_reversal_orders
+          WHERE created_at_ms >= 1790136000000 AND created_at_ms < 1790222400000
+        `),
+        client.query(`
+          SELECT COUNT(*)::int AS n,
+                 COUNT(*) FILTER (WHERE official_result IN ('yes','no'))::int AS settled,
+                 COALESCE(SUM(j_fee_cents),0)::int AS fees_cents
+          FROM jackpot_attempts
+          WHERE detected_at_ms >= 1790136000000 AND detected_at_ms < 1790222400000
+            AND j_kalshi_order_id IS NOT NULL
+        `),
+        client.query(`
+          SELECT COUNT(*)::int AS n,
+                 COUNT(*) FILTER (WHERE official_result IN ('yes','no'))::int AS settled
+          FROM kamakazee_orders
+          WHERE created_at_ms >= 1790136000000 AND created_at_ms < 1790222400000
+            AND kalshi_order_id IS NOT NULL
+        `)
+      ]);
+      console.log('SERVICE_LEDGER_TODAY_DIAGNOSTIC', JSON.stringify({
+        A:a.rows, candidate:cand.rows, BI:big.rows, G:g.rows, J:j.rows, K:k.rows
+      }));
     }),
   ]).catch((error) => console.error('PNL_SCHEMA_DIAGNOSTIC_FAILED', String(error?.message ?? error)));
   void withReadOnlyDb(async (client) => {
