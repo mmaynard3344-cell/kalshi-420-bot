@@ -731,8 +731,12 @@ export const placeEthMartingaleGtcEntry: EthPlacementLifecycleGateway = async ({
   const exchangeIndex = -1; // Kalshi auto-route by market ticker.
   const noPriceCents = ETH_GTC_LIMIT_PRICE_CENTS;
   const reservedFeeCents = ethTakerFeeCents(noPriceCents, contracts);
-  const id = `eth-entry:${ethStore.ETH_MARTINGALE_ACTIVE_GENERATION_KEY}:${state.ticker}`;
   const clientOrderId = `eth-${side}-${randomUUID()}`;
+  // Preserve every prior attempt for audit/history while allowing a later
+  // confirmed-rejection retry on the same ticker. The ticker claim remains
+  // the single-attempt concurrency fence; the order-row primary key is unique
+  // to this exact client order attempt.
+  const id = `eth-entry:${ethStore.ETH_MARTINGALE_ACTIVE_GENERATION_KEY}:${state.ticker}:${clientOrderId}`;
   const proofMode = ethDependencies.stopAfterFirstPost();
   const reservation = await ethDependencies.store.reserveEthMartingaleEntry({
     ticker: state.ticker, easternDate: date, id, clientOrderId,
