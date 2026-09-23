@@ -1183,6 +1183,7 @@ export async function initTradeStore(
             settled_at_ms bigint, finalized_at_ms bigint, state_after_json text, created_at_ms bigint NOT NULL, secondary_activation_sequence bigint NOT NULL DEFAULT 0, updated_at_ms bigint NOT NULL
         );
         ALTER TABLE eth420_candidate_live_orders ADD COLUMN IF NOT EXISTS market_open_time_ms bigint;
+         ALTER TABLE eth420_candidate_live_orders ADD COLUMN IF NOT EXISTS origin_service text;
          ALTER TABLE eth420_candidate_live_orders ADD COLUMN IF NOT EXISTS actual_notional_dollars text;
          ALTER TABLE eth420_candidate_live_orders ADD COLUMN IF NOT EXISTS actual_fee_dollars text;
          ALTER TABLE eth420_candidate_live_orders ADD COLUMN IF NOT EXISTS fill_price_cents integer;
@@ -8305,10 +8306,11 @@ export async function reserveEth420CandidateLiveOrderIfStateMatches(params: Omit
       const inserted = await tx.execute(sql`
         INSERT INTO eth420_candidate_live_orders
           (id, ticker, eastern_date, market_open_time_ms, side, martingale_step, requested_contracts, limit_price_cents,
-           effective_wager_cents, state_before_json, status, created_at_ms, secondary_activation_sequence, updated_at_ms)
+           effective_wager_cents, state_before_json, origin_service, status, created_at_ms, secondary_activation_sequence, updated_at_ms)
         VALUES (${params.id}, ${params.ticker}, ${params.easternDate}, ${params.marketOpenTimeMs ?? null}, ${params.side},
           ${params.step}, ${params.requestedContracts},
           ${params.limitPriceCents}, ${params.effectiveWagerCents}, ${params.stateBeforeJson},
+           ${process.env["RAILWAY_SERVICE_NAME"] ?? process.env["ETH_SERVICE_ROLE"] ?? null},
            'reserved', ${now}, ${reservationSequence}, ${now})
         ON CONFLICT (id) DO NOTHING RETURNING id`);
       const reserved = (inserted as unknown as { rows: unknown[] }).rows.length === 1;
