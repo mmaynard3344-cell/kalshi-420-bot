@@ -1600,8 +1600,10 @@ export async function initTradeStore(
           DROP CONSTRAINT IF EXISTS eth_martingale_orders_ticker_key;
         CREATE UNIQUE INDEX IF NOT EXISTS eth_martingale_claims_generation_ticker_idx
           ON eth_martingale_claims (generation, ticker);
-        CREATE UNIQUE INDEX IF NOT EXISTS eth_martingale_orders_generation_ticker_idx
-          ON eth_martingale_orders (generation, ticker);
+        DROP INDEX IF EXISTS eth_martingale_orders_generation_ticker_idx;
+        CREATE UNIQUE INDEX IF NOT EXISTS eth_martingale_orders_generation_ticker_live_idx
+          ON eth_martingale_orders (generation, ticker)
+          WHERE outcome NOT IN ('rejected','expired','zero_fill','zero_fill_verified','error');
         CREATE TABLE IF NOT EXISTS eth_martingale_proof_fences (
           generation text PRIMARY KEY,
           claimed_at_ms bigint NOT NULL,
