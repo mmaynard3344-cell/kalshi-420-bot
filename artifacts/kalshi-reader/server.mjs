@@ -553,6 +553,25 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Read-only ETH 420 operator UI listening on ${port}`);
+  void Promise.all([
+    graceJson('/api/trade/status').then((s) => console.log('TRADE_STATUS_PNL_DIAGNOSTIC', JSON.stringify({
+      date: s?.date ?? null,
+      daily_realized_net_pnl_dollars: s?.daily_realized_net_pnl_dollars ?? null,
+      daily_realized_settled_fill_count: s?.daily_realized_settled_fill_count ?? null,
+      daily_realized_pending_fill_count: s?.daily_realized_pending_fill_count ?? null,
+      daily_realized_unverified_fill_count: s?.daily_realized_unverified_fill_count ?? null,
+    }))),
+    withReadOnlyDb(async (client) => {
+      const tables = ['eth_martingale_orders','eth420_candidate_live_orders','eth_big_bet_orders','eth_g_streak_reversal_orders','jackpot_attempts','kamakazee_orders'];
+      const q = await client.query(`
+        SELECT table_name, column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema='public' AND table_name = ANY($1::text[])
+        ORDER BY table_name, ordinal_position
+      `, [tables]);
+      console.log('SERVICE_LEDGER_SCHEMA_DIAGNOSTIC', JSON.stringify(q.rows));
+    }),
+  ]).catch((error) => console.error('PNL_SCHEMA_DIAGNOSTIC_FAILED', String(error?.message ?? error)));
   void withReadOnlyDb(async (client) => {
     const r = await client.query(`
       SELECT id, kalshi_order_id, origin_service, created_at_ms
