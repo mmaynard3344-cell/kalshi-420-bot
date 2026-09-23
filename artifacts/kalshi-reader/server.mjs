@@ -237,10 +237,11 @@ async function serviceOwnershipDiagnostics(req, res) {
            FROM eth_martingale_orders
           WHERE kalshi_order_id IS NOT NULL`);
 
-      try {
+      {
         const sp = 'service_owner_' + (++savepointSeq);
-        await client.query('SAVEPOINT ' + sp);
-        const candidate = await client.query(`
+        try {
+          await client.query('SAVEPOINT ' + sp);
+          const candidate = await client.query(`
           SELECT kalshi_order_id AS order_id, id AS client_order_id, origin_service
             FROM eth420_candidate_live_orders
            WHERE kalshi_order_id IS NOT NULL
@@ -260,18 +261,19 @@ async function serviceOwnershipDiagnostics(req, res) {
           if (s === 'eth-downfade-f' || s === 'downfade_f') return 'F · Downfade';
           return '420 · Candidate';
         };
-        for (const row of candidate.rows ?? []) {
-          const orderId = row.order_id == null ? '' : String(row.order_id);
-          const clientOrderId = row.client_order_id == null ? '' : String(row.client_order_id);
-          if (orderId || clientOrderId) out.push({
-            orderId, clientOrderId, service: candidateService(row.origin_service),
-            originService: row.origin_service == null ? null : String(row.origin_service),
-          });
+          for (const row of candidate.rows ?? []) {
+            const orderId = row.order_id == null ? '' : String(row.order_id);
+            const clientOrderId = row.client_order_id == null ? '' : String(row.client_order_id);
+            if (orderId || clientOrderId) out.push({
+              orderId, clientOrderId, service: candidateService(row.origin_service),
+              originService: row.origin_service == null ? null : String(row.origin_service),
+            });
+          }
+        } catch (error) {
+          try { await client.query('ROLLBACK TO SAVEPOINT ' + sp); } catch {}
+          try { await client.query('RELEASE SAVEPOINT ' + sp); } catch {}
+          console.warn('service ownership read skipped candidate', String(error?.message ?? error));
         }
-      } catch (error) {
-        try { await client.query('ROLLBACK TO SAVEPOINT ' + sp); } catch {}
-        try { await client.query('RELEASE SAVEPOINT ' + sp); } catch {}
-        console.warn('service ownership read skipped candidate', String(error?.message ?? error));
       }
 
       {
