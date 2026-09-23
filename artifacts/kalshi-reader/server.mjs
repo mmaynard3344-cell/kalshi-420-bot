@@ -237,15 +237,42 @@ async function serviceOwnershipDiagnostics(req, res) {
            FROM eth_martingale_orders
           WHERE kalshi_order_id IS NOT NULL`);
 
-      await safe('420 · Candidate',
-        `SELECT kalshi_order_id AS order_id, id AS client_order_id
-           FROM eth420_candidate_live_orders
-          WHERE kalshi_order_id IS NOT NULL
-         UNION ALL
-         SELECT original_primary_kalshi_order_id AS order_id, id AS client_order_id
-           FROM eth420_candidate_live_orders
-          WHERE original_primary_kalshi_order_id IS NOT NULL
-            AND original_primary_kalshi_order_id <> kalshi_order_id`);
+      try {
+        const sp = 'service_owner_' + (++savepointSeq);
+        await client.query('SAVEPOINT ' + sp);
+        const candidate = await client.query(`
+          SELECT kalshi_order_id AS order_id, id AS client_order_id, origin_service
+            FROM eth420_candidate_live_orders
+           WHERE kalshi_order_id IS NOT NULL
+          UNION ALL
+          SELECT original_primary_kalshi_order_id AS order_id, id AS client_order_id, origin_service
+            FROM eth420_candidate_live_orders
+           WHERE original_primary_kalshi_order_id IS NOT NULL
+             AND original_primary_kalshi_order_id <> kalshi_order_id`);
+        await client.query('RELEASE SAVEPOINT ' + sp);
+        const candidateService = (origin) => {
+          const s = String(origin ?? '').toLowerCase();
+          if (s === 'kalshi-420-bot' || s === 'martingale') return 'A · Regular';
+          if (s === 'eth-jump-service' || s === 'jump') return 'B · Jump';
+          if (s === 'eth-reversal-service' || s === 'reversal') return 'C · Reversal';
+          if (s === 'eth-breakout-reversal' || s === 'eth-breakout-reversal-service') return 'D · Breakout Reversal';
+          if (s === 'eth-downfade-e' || s === 'downfade_e') return 'E · Downfade';
+          if (s === 'eth-downfade-f' || s === 'downfade_f') return 'F · Downfade';
+          return '420 · Candidate';
+        };
+        for (const row of candidate.rows ?? []) {
+          const orderId = row.order_id == null ? '' : String(row.order_id);
+          const clientOrderId = row.client_order_id == null ? '' : String(row.client_order_id);
+          if (orderId || clientOrderId) out.push({
+            orderId, clientOrderId, service: candidateService(row.origin_service),
+            originService: row.origin_service == null ? null : String(row.origin_service),
+          });
+        }
+      } catch (error) {
+        try { await client.query('ROLLBACK TO SAVEPOINT ' + sp); } catch {}
+        try { await client.query('RELEASE SAVEPOINT ' + sp); } catch {}
+        console.warn('service ownership read skipped candidate', String(error?.message ?? error));
+      }
 
       {
         const sp = 'service_owner_' + (++savepointSeq);
