@@ -15,7 +15,21 @@ const time=t=>new Intl.DateTimeFormat('en-US',{timeZone:ET,month:'short',day:'nu
 const today=()=>dk(Date.now());
 const eth=r=>String(r?.ticker??r?.market_ticker??'').startsWith('KXETH15M-');
 const oid=r=>String(r?.order_id??r?.orderId??'');
-const side=r=>String(r?.side??r?.outcome_side??'').toLowerCase();
+const side=r=>{
+  const c=String(r?.client_order_id??r?.clientOrderId??'').toLowerCase();
+  if(c.startsWith('eth-yes-'))return'yes';
+  if(c.startsWith('eth-no-'))return'no';
+  const s=String(r?.side??r?.order_side??r?.outcome_side??'').toLowerCase();
+  const a=String(r?.action??r?.order_action??'').toLowerCase();
+  if(s==='bid')return'yes';
+  if(s==='ask')return'no';
+  if(s==='yes'&&a==='buy')return'yes';
+  if(s==='yes'&&a==='sell')return'no';
+  if(s==='no'&&a==='buy')return'no';
+  if(s==='no'&&a==='sell')return'yes';
+  if(s==='yes'||s==='no')return s;
+  return'';
+};
 const count=r=>num(r?.count_fp,r?.count,0)||0;
 const feeCents=r=>Math.round((num(r?.fee_cost_dollars,r?.fee_cost,r?.fee_dollars,0)||0)*100);
 const result=r=>{const x=String(r?.market_result??r?.result??'').toLowerCase();return x==='yes'||x==='no'?x:''};
