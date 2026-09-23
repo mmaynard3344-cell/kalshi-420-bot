@@ -38,7 +38,7 @@ import { easternDay } from "../dailyBudget.js";
 import { isEthOrderSubmissionPermitted, setTradingHalted } from "../tradingKillSwitch.js";
 import { logger } from "../logger.js";
 import { kalshiFetch } from "../kalshi.js";
-import { fetchFreshKalshiBalanceForExchangeRead, fetchFreshKalshiBalanceRead, kalshiBalanceCents } from "../kalshiBalance.js";
+import { fetchFreshKalshiBalanceForExchangeRead, kalshiBalanceCents } from "../kalshiBalance.js";
 import * as ethStore from "../tradeStore.js";
 import { addDecimalStrings, normalizeKalshiFill, type KalshiFillWire } from "../kalshiFillNormalizer.js";
 import { getAccountHistoryFingerprint } from "../kalshiAccountFingerprint.js";
@@ -200,34 +200,24 @@ type KalshiTargetAllocationResponse = {
   resting_margin_reservation?: string;
 };
 
-const ETH_SHARD_FUNDING_TARGET_CENTS = 9_000;
+const ETH_SHARD_2_TARGET_PERCENT = 92;
 let ethShardFundingRequested = false;
-let ethShardFundingOriginal: KalshiTargetAllocationResponse | null = null;
-let ethShardFundingRestored = false;
 
 async function requestEthShardFunding(exchangeIndex: number): Promise<void> {
   if (ethShardFundingRequested || exchangeIndex !== 2) return;
-  const aggregate = kalshiBalanceCents((await fetchFreshKalshiBalanceRead()).value);
-  if (aggregate == null || aggregate < ETH_SHARD_FUNDING_TARGET_CENTS) return;
 
   const current = await kalshiAuthFetch<KalshiTargetAllocationResponse>(
     "GET", "/portfolio/target_balance_allocation",
   );
-  ethShardFundingOriginal = {
-    allocations: Array.isArray(current.allocations)
-      ? current.allocations.map((x) => ({ exchange_index: x.exchange_index, percent: x.percent }))
-      : [],
-    ...(typeof current.resting_margin_reservation === "string"
-      ? { resting_margin_reservation: current.resting_margin_reservation }
-      : {}),
-  };
+  const prior = Array.isArray(current.allocations) ? current.allocations : [];
+  const remainder = 100 - ETH_SHARD_2_TARGET_PERCENT;
+  const priorOthers = prior.filter((x) =>
+    Number.isInteger(x.exchange_index) && x.exchange_index !== exchangeIndex && x.percent > 0
+  );
 
-  const targetPercent = Math.min(100, Math.max(1,
-    Math.ceil(ETH_SHARD_FUNDING_TARGET_CENTS * 100 / aggregate)));
-  const remainder = 100 - targetPercent;
-  const priorOthers = (ethShardFundingOriginal.allocations ?? [])
-    .filter((x) => x.exchange_index !== exchangeIndex && x.percent > 0);
-  const allocations: KalshiTargetAllocation[] = [{ exchange_index: exchangeIndex, percent: targetPercent }];
+  const allocations: KalshiTargetAllocation[] = [
+    { exchange_index: exchangeIndex, percent: ETH_SHARD_2_TARGET_PERCENT },
+  ];
 
   if (remainder > 0) {
     if (priorOthers.length === 0) {
@@ -250,35 +240,37 @@ async function requestEthShardFunding(exchangeIndex: number): Promise<void> {
     }
   }
 
+  logger.warn({ exchangeIndex, allocations },
+    "ETH A requesting persistent Kalshi target-balance allocation");
+
   await kalshiAuthFetch<Record<string, unknown>>(
     "POST", "/portfolio/target_balance_allocation",
     {
       allocations,
-      ...(ethShardFundingOriginal.resting_margin_reservation
-        ? { resting_margin_reservation: ethShardFundingOriginal.resting_margin_reservation }
+      ...(typeof current.resting_margin_reservation === "string"
+        ? { resting_margin_reservation: current.resting_margin_reservation }
         : {}),
     },
   );
+
   ethShardFundingRequested = true;
-  logger.warn({ exchangeIndex, aggregateBalanceCents: aggregate, targetPercent, allocations },
-    "ETH A requested Kalshi target-balance rebalance for funded market shard");
+  logger.warn({ exchangeIndex, allocations },
+    "ETH A Kalshi target-balance allocation accepted");
 }
 
-async function restoreEthShardFundingAllocationIfDone(exchangeIndex: number, availableCents: number): Promise<void> {
-  if (!ethShardFundingRequested || ethShardFundingRestored || exchangeIndex !== 2
-    || availableCents < ETH_SHARD_FUNDING_TARGET_CENTS || ethShardFundingOriginal == null) return;
-  await kalshiAuthFetch<Record<string, unknown>>(
-    "POST", "/portfolio/target_balance_allocation",
-    {
-      allocations: ethShardFundingOriginal.allocations ?? [],
-      ...(ethShardFundingOriginal.resting_margin_reservation
-        ? { resting_margin_reservation: ethShardFundingOriginal.resting_margin_reservation }
-        : {}),
-    },
-  );
-  ethShardFundingRestored = true;
-  logger.warn({ exchangeIndex, availableBalanceCents: availableCents },
-    "ETH A restored prior Kalshi target-balance allocation after shard funding completed");
+async function waitForEthShardFunding(
+  exchangeIndex: number,
+  requiredBalanceCents: number,
+): Promise<number | null> {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const read = await fetchFreshKalshiBalanceForExchangeRead(exchangeIndex);
+    const available = kalshiBalanceCents(read.value);
+    logger.info({ exchangeIndex, availableBalanceCents: available, requiredBalanceCents, attempt },
+      "ETH A shard-funding poll");
+    if (!read.stale && available != null && available >= requiredBalanceCents) return available;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return null;
 }
 
 const productionEthDependencies: EthDependencies = {
@@ -1150,13 +1142,13 @@ const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;
       try {
         await requestEthShardFunding(routingExchangeIndex);
         if (ethShardFundingRequested) {
-          await ethDependencies.sleep(1_000);
-          accountBalance = await ethDependencies.fetchAccountBalance(routingExchangeIndex);
-          availableBalanceCents = kalshiBalanceCents(accountBalance.value);
+          availableBalanceCents = await waitForEthShardFunding(
+            routingExchangeIndex, requiredBalanceCents,
+          );
         }
       } catch (err) {
         logger.warn({ err, exchangeIndex: routingExchangeIndex },
-          "ETH A Kalshi shard-funding rebalance request failed");
+          "ETH A Kalshi shard-funding allocation request failed");
       }
     }
 
@@ -1170,13 +1162,6 @@ const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;
         false,
       );
       return;
-    }
-
-    try {
-      await restoreEthShardFundingAllocationIfDone(routingExchangeIndex, availableBalanceCents);
-    } catch (err) {
-      logger.warn({ err, exchangeIndex: routingExchangeIndex },
-        "ETH A could not yet restore prior target-balance allocation");
     }
     await placeEthMartingaleGtcEntry({
       state: { ...state, exchangeIndex: routingExchangeIndex }, side: effectiveSide, step: effectiveStep,
