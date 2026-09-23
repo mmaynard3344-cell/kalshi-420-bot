@@ -251,16 +251,7 @@ async function serviceOwnershipDiagnostics(req, res) {
            WHERE original_primary_kalshi_order_id IS NOT NULL
              AND original_primary_kalshi_order_id <> kalshi_order_id`);
         await client.query('RELEASE SAVEPOINT ' + sp);
-        const candidateService = (origin) => {
-          const s = String(origin ?? '').toLowerCase();
-          if (s === 'kalshi-420-bot' || s === 'martingale') return 'A · Regular';
-          if (s === 'eth-jump-service' || s === 'jump') return 'B · Jump';
-          if (s === 'eth-reversal-service' || s === 'reversal') return 'C · Reversal';
-          if (s === 'eth-breakout-reversal' || s === 'eth-breakout-reversal-service') return 'D · Breakout Reversal';
-          if (s === 'eth-downfade-e' || s === 'downfade_e') return 'E · Downfade';
-          if (s === 'eth-downfade-f' || s === 'downfade_f') return 'F · Downfade';
-          return '420 · Candidate';
-        };
+        const candidateService = () => 'Legacy 420';
           for (const row of candidate.rows ?? []) {
             const orderId = row.order_id == null ? '' : String(row.order_id);
             const clientOrderId = row.client_order_id == null ? '' : String(row.client_order_id);
