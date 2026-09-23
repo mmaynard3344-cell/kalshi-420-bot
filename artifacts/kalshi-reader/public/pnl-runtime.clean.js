@@ -2,9 +2,9 @@
 'use strict';
 const ET='America/New_York', START='2026-09-22', PAGE=250, MAX_PAGES=10;
 const SERVICES=[
-  'A · Regular','A · Candidate','B · Jump','B · Candidate','C · Reversal','C · Candidate',
-  'D · Breakout Reversal','D · Candidate','E · Downfade','E · Candidate','F · Downfade','F · Candidate',
-  '420 · Candidate','G · Probe','H · Ashley','I · Ash V2','J · Jackpot','K · Kamakazee','Unattributed'
+  'A · Regular','B · Jump','C · Reversal','D · Breakout Reversal','E · Downfade',
+  'F · Downfade','G · Probe','H · Ashley','I · Ash V2','J · Jackpot','K · Kamakazee',
+  '420 · Candidate','Unattributed'
 ];
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
