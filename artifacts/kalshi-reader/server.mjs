@@ -553,6 +553,19 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Read-only ETH 420 operator UI listening on ${port}`);
+  void withReadOnlyDb(async (client) => {
+    const r = await client.query(`
+      SELECT id, kalshi_order_id, origin_service, created_at_ms
+        FROM eth420_candidate_live_orders
+       WHERE id IN (
+         'KXETH15M-26SEP231345-45:eth420-live-v1',
+         'KXETH15M-26SEP231400-00:eth420-live-v1',
+         'KXETH15M-26SEP231415-15:eth420-live-v1'
+       )
+       ORDER BY created_at_ms DESC
+    `);
+    console.log('CANDIDATE_ORIGIN_DIAGNOSTIC', JSON.stringify(r.rows));
+  }).catch((error) => console.error('CANDIDATE_ORIGIN_DIAGNOSTIC_FAILED', String(error?.message ?? error)));
   for (const path of ['/api/trade/fills?limit=10000', '/api/trade/orders?limit=1000']) {
     const url = new URL(path, 'http://shawshank.local');
     void refreshReadCache(url).catch((error) => console.error('Dashboard cache warm failed', path, error));
