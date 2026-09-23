@@ -24,7 +24,9 @@ const status=r=>String(r?.status??r?.order_status??r?.state??'').toUpperCase().r
 const requested=r=>num(r?.initial_count_fp,r?.initial_count,r?.requested_contracts,r?.requestedContracts,r?.count_fp,r?.count);
 function service(r){
   const c=String(r?.client_order_id??r?.clientOrderId??'');
-  if(c.startsWith('eth-yes-')||c.startsWith('eth-no-')||c.includes(':eth420-live-v1'))return'A · Regular';
+  // Match strategy-specific suffixes first. Several non-A services intentionally
+  // share the generic eth-yes-/eth-no- prefix, so treating that prefix as A
+  // before checking the suffix misattributes their orders to A.
   if(c.endsWith(':eth-jump-v1'))return'B · Jump';
   if(c.endsWith(':eth-no3-reversal-v1'))return'C · Reversal';
   if(c.endsWith(':eth-no3-upperband-v1'))return'D · Breakout Reversal';
@@ -35,6 +37,7 @@ function service(r){
   if(c.endsWith(':eth-ash-v2-i-v1'))return'I · Ash V2';
   if(c.endsWith(':jackpot-j'))return'J · Jackpot';
   if(c.endsWith(':kamakazee-k-v1'))return'K · Kamakazee';
+  if(c.includes(':eth420-live-v1')||c.startsWith('eth-yes-')||c.startsWith('eth-no-'))return'A · Regular';
   return'Unattributed';
 }
 async function j(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error(path+' HTTP '+r.status);return r.json()}
