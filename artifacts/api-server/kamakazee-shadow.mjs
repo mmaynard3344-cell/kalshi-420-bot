@@ -112,12 +112,87 @@ async function state() {
   return result.rows[0];
 }
 
+async function recoverSubmissionIdentity(row) {
+  const matches = new Map();
+  for (const status of ["resting", "canceled", "executed", "rejected", "expired"]) {
+    let cursor = "";
+    const seen = new Set();
+    for (;;) {
+      const params = new URLSearchParams({
+        ticker: String(row.target_ticker),
+        status,
+        limit: "100",
+      });
+      if (cursor) params.set("cursor", cursor);
+      let page;
+      try {
+        page = await authFetch("GET", `/portfolio/orders?${params.toString()}`);
+      } catch (error) {
+        log("FAIL_CLOSED", {
+          reason: "identity_recovery_read_unavailable",
+          targetTicker: row.target_ticker,
+          status,
+          error: String(error?.message ?? error),
+        });
+        return null;
+      }
+      if (!Array.isArray(page?.orders)) return null;
+      for (const raw of page.orders) {
+        if (raw?.ticker !== row.target_ticker || raw?.client_order_id !== row.client_order_id) continue;
+        const parsed = orderFields(raw);
+        if (!parsed.orderId) return null;
+        matches.set(parsed.orderId, raw);
+      }
+      const next = page?.cursor;
+      if (next == null || next === "") break;
+      if (typeof next !== "string" || seen.has(next)) return null;
+      seen.add(next);
+      cursor = next;
+    }
+  }
+  if (matches.size !== 1) {
+    log("FAIL_CLOSED", {
+      reason: matches.size === 0 ? "submission_identity_not_found" : "submission_identity_ambiguous",
+      targetTicker: row.target_ticker,
+      clientOrderId: row.client_order_id,
+      matches: matches.size,
+    });
+    return null;
+  }
+  const [kalshiOrderId, raw] = [...matches.entries()][0];
+  const parsed = orderFields(raw);
+  await db.execute(sql`UPDATE kamakazee_orders
+    SET kalshi_order_id=${kalshiOrderId},
+        filled_contracts=${parsed.filled},
+        order_status=${parsed.status ?? "recovered"},
+        raw_json=${JSON.stringify(raw)}::jsonb,
+        updated_at_ms=${Date.now()}
+    WHERE target_ticker=${row.target_ticker}
+      AND client_order_id=${row.client_order_id}
+      AND kalshi_order_id IS NULL`);
+  log("IDENTITY_RECOVERED", {
+    targetTicker: row.target_ticker,
+    clientOrderId: row.client_order_id,
+    kalshiOrderId,
+    status: parsed.status,
+    filledContracts: parsed.filled,
+  });
+  return kalshiOrderId;
+}
+
 async function reconcile() {
   const result = await db.execute(sql`SELECT * FROM kamakazee_orders WHERE transition_applied=FALSE ORDER BY created_at_ms ASC LIMIT 10`);
   for (const row of result.rows) {
-    if (!row.kalshi_order_id) { log("FAIL_CLOSED", { reason: "submission_identity_unknown", targetTicker: row.target_ticker }); return false; }
+    let kalshiOrderId = row.kalshi_order_id;
+    if (!kalshiOrderId) {
+      kalshiOrderId = await recoverSubmissionIdentity(row);
+      if (!kalshiOrderId) {
+        log("FAIL_CLOSED", { reason: "submission_identity_unknown", targetTicker: row.target_ticker });
+        return false;
+      }
+    }
     let exchange;
-    try { exchange = await authFetch("GET", `/portfolio/orders/${encodeURIComponent(row.kalshi_order_id)}`); }
+    try { exchange = await authFetch("GET", `/portfolio/orders/${encodeURIComponent(kalshiOrderId)}`); }
     catch (error) { log("FAIL_CLOSED", { reason: "order_read_unavailable", targetTicker: row.target_ticker, error: String(error?.message ?? error) }); return false; }
     const parsed = orderFields(exchange);
     await db.execute(sql`UPDATE kamakazee_orders SET filled_contracts=${parsed.filled}, order_status=${parsed.status ?? "unknown"}, raw_json=${JSON.stringify(exchange)}::jsonb, updated_at_ms=${Date.now()} WHERE target_ticker=${row.target_ticker}`);
