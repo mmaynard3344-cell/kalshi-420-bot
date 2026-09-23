@@ -133,7 +133,9 @@ export function ethNoOrderPayload(
     ticker, client_order_id: clientOrderId, side: "ask",
     count: `${contracts}.00`, price: (ETH_GTC_LIMIT_PRICE_CENTS / 100).toFixed(4),
     time_in_force: "good_till_canceled", self_trade_prevention_type: "taker_at_cross",
-    ...(exchangeIndex >= 0 ? { exchange_index: exchangeIndex } : {}),
+    // Kalshi V2 defaults an omitted exchange_index to shard 0. Use -1
+    // explicitly so the exchange auto-routes this ticker to its correct shard.
+    exchange_index: exchangeIndex,
   };
 }
 
@@ -154,7 +156,9 @@ export function ethYesOrderPayload(
     ticker, client_order_id: clientOrderId, side: "bid",
     count: `${contracts}.00`, price: (ETH_GTC_LIMIT_PRICE_CENTS / 100).toFixed(4),
     time_in_force: "good_till_canceled", self_trade_prevention_type: "taker_at_cross",
-    ...(exchangeIndex >= 0 ? { exchange_index: exchangeIndex } : {}),
+    // Kalshi V2 defaults an omitted exchange_index to shard 0. Use -1
+    // explicitly so the exchange auto-routes this ticker to its correct shard.
+    exchange_index: exchangeIndex,
   };
 }
 
@@ -922,8 +926,9 @@ export const runEthPreflightAndPlacement: EthPreflightAndPlacementGateway = asyn
     return;
   }
   if (!isEthMarketEligible(state.status, state.openTime, state.closeTime, ethDependencies.now())) return;
-  // A uses Kalshi auto-routing (exchange_index = -1), so a market shard is not
-  // required for order authorization. The ticker determines the destination.
+  // A uses Kalshi V2 auto-routing. Important: exchange_index must be sent as -1;
+  // omitting it defaults to shard 0 and can produce a false insufficient_balance
+  // even when the aggregate account has enough cash.
   const routingExchangeIndex = -1;
   if (!ethDependencies.isEthOrderSubmissionPermitted(state.ticker)) {
     setEthBlockerStatus("kill_switch", "ETH order submission is blocked by a runtime safety gate");
