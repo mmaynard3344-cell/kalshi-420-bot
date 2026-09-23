@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Shawshank Dashboard</title>
+<style>
+:root{color-scheme:light dark;--bg:#0c0d0e;--card:#15171a;--soft:#1b1e22;--line:#2b2f34;--text:#f4f6f8;--muted:#9299a2;--good:#35b66f;--bad:#e05b5b;--warn:#d9a441}@media(prefers-color-scheme:light){:root{--bg:#f6f7f8;--card:#fff;--soft:#f0f2f4;--line:#d9dde1;--text:#17191c;--muted:#68717b}}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell{max-width:1280px;margin:auto;padding:18px}.top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:16px}.title{font-size:22px;font-weight:800}.subtle{color:var(--muted);font-size:12px}.pill{border:1px solid var(--line);padding:5px 8px;font:11px ui-monospace,SFMono-Regular,Menlo,monospace}.pill.good{border-color:var(--good);color:var(--good)}.pill.warn{border-color:var(--warn);color:var(--warn)}.grid{display:grid;gap:12px}.g5{grid-template-columns:repeat(5,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.card,.table{border:1px solid var(--line);background:var(--card)}.card{padding:15px}.label{font:10px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.13em;color:var(--muted)}.metric{font:700 24px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:6px}.good{color:var(--good)}.bad{color:var(--bad)}.section{margin-top:16px}.section h2{margin:0 0 9px;font-size:16px}.market{font:700 15px ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;margin-top:6px}.quote{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.quote>div{background:var(--soft);padding:10px}.quote b{display:block;font:700 18px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:4px}.table{overflow:auto}table{width:100%;border-collapse:collapse;min-width:860px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}th,td{padding:10px 11px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{font-size:10px;text-transform:uppercase;color:var(--muted);background:var(--soft)}.num{text-align:right}.empty{text-align:center;color:var(--muted);padding:18px}.note{padding:11px 13px;border:1px solid var(--line);background:var(--soft);font-size:12px;color:var(--muted)}@media(max-width:900px){.g5,.g3{grid-template-columns:repeat(2,1fr)}.g2{grid-template-columns:1fr}.quote{grid-template-columns:repeat(2,1fr)}}@media(max-width:540px){.shell{padding:12px}.g5,.g3{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
+</style>
+<script defer src="/pnl-runtime.js"></script>
+</head>
+<body>
+<div class="shell">
+  <div class="top">
+    <div><div class="label">Shawshank · live read-only</div><div class="title">Trading Dashboard</div></div>
+    <div class="subtle" id="stamp">Loading…</div>
+  </div>
+
+  <div class="note"><strong>Scope:</strong> live account data plus actual Kalshi ETH orders/fills from September 22, 2026 forward. No legacy history, shadow candidate statistics, or trading controls.</div>
+
+  <section class="section">
+    <h2>Account</h2>
+    <div class="grid g3">
+      <div class="card"><div class="label">Cash balance</div><div class="metric" id="cash">—</div></div>
+      <div class="card"><div class="label">Open position value</div><div class="metric" id="portfolio">—</div></div>
+      <div class="card"><div class="label">Account equity</div><div class="metric" id="equity">—</div><div class="subtle" style="margin-top:7px"><span id="accountState" class="pill">LOADING</span></div></div>
+    </div>
+  </section>
+
+  <section class="section grid g2">
+    <div class="card">
+      <div class="label">Current ETH 15-minute market</div>
+      <div class="market" id="ticker">Loading…</div>
+      <div class="subtle" id="window" style="margin-top:6px">—</div>
+      <div class="quote">
+        <div><div class="label">YES bid</div><b id="yesBid">—</b></div>
+        <div><div class="label">YES ask</div><b id="yesAsk">—</b></div>
+        <div><div class="label">NO bid</div><b id="noBid">—</b></div>
+        <div><div class="label">NO ask</div><b id="noAsk">—</b></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="label">Today realized P&L</div>
+      <div class="metric" id="pnl">—</div>
+      <div class="grid g2" style="margin-top:14px">
+        <div><div class="label">Settled</div><div class="metric" id="settled" style="font-size:18px">—</div></div>
+        <div><div class="label">Fees</div><div class="metric" id="fees" style="font-size:18px">—</div></div>
+        <div><div class="label">Wins</div><div class="metric good" id="wins" style="font-size:18px">—</div></div>
+        <div><div class="label">Losses</div><div class="metric bad" id="losses" style="font-size:18px">—</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:end"><div><div class="label">Current exchange exposure</div><h2>Open / resting orders</h2></div><div class="subtle" id="openCount">0 open</div></div>
+    <div class="table"><table><thead><tr><th>Service</th><th>Ticker</th><th>Side</th><th class="num">Requested</th><th class="num">Filled</th><th class="num">Remaining</th><th>Status</th></tr></thead><tbody id="openRows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody></table></div>
+  </section>
+
+  <section class="section">
+    <h2>Today by service</h2>
+    <div class="table"><table style="min-width:520px"><thead><tr><th>Service</th><th class="num">Settled trades</th><th class="num">Realized P&L</th></tr></thead><tbody id="serviceRows"><tr><td colspan="3" class="empty">Loading…</td></tr></tbody></table></div>
+  </section>
+
+  <section class="section">
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:end"><div><div class="label">Actual Kalshi activity</div><h2>Sep. 22-forward transaction log</h2></div><div class="subtle" id="tradeCount">0 recent</div></div>
+    <div class="table"><table><thead><tr><th>Time ET</th><th>Service</th><th>Ticker</th><th>Side</th><th class="num">Requested</th><th class="num">Filled</th><th class="num">Avg fill</th><th>Status</th><th class="num">Fee</th><th class="num">Realized P&L</th></tr></thead><tbody id="tradeRows"><tr><td colspan="10" class="empty">Loading…</td></tr></tbody></table></div>
+  </section>
+</div>
+</body>
+</html>
