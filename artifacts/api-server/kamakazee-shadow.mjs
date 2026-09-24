@@ -148,7 +148,11 @@ async function recoverSubmissionIdentity(row) {
       clientOrderId: row.client_order_id,
       matches: matches.size,
     });
-    return null;
+    // Distinguish an authoritative zero-match history scan from an
+    // unavailable/ambiguous recovery. A finalized market with zero exact
+    // client-order matches can be closed as a durable zero-fill; ambiguous
+    // or unreadable evidence must remain fail-closed.
+    return matches.size === 0 ? false : null;
   }
   const [kalshiOrderId, raw] = [...matches.entries()][0];
   const parsed = orderFields(raw);
@@ -176,7 +180,44 @@ async function reconcile() {
   for (const row of result.rows) {
     let kalshiOrderId = row.kalshi_order_id;
     if (!kalshiOrderId) {
-      kalshiOrderId = await recoverSubmissionIdentity(row);
+      const recoveredIdentity = await recoverSubmissionIdentity(row);
+      if (recoveredIdentity === false) {
+        let staleMarket;
+        try {
+          staleMarket = await publicFetch(`/markets/${encodeURIComponent(row.target_ticker)}`);
+        } catch (error) {
+          log("FAIL_CLOSED", {
+            reason: "zero_match_market_read_unavailable",
+            targetTicker: row.target_ticker,
+            error: String(error?.message ?? error),
+          });
+          return false;
+        }
+        const rawStaleMarket = staleMarket.market ?? staleMarket;
+        const staleOfficial = typeof rawStaleMarket.result === "string" ? rawStaleMarket.result.toUpperCase() : null;
+        if (rawStaleMarket.status !== "finalized" || (staleOfficial !== "YES" && staleOfficial !== "NO")) {
+          log("FAIL_CLOSED", { reason: "submission_identity_unknown", targetTicker: row.target_ticker });
+          return false;
+        }
+        await db.execute(sql`UPDATE kamakazee_orders
+          SET official_result=${staleOfficial},
+              transition_applied=TRUE,
+              order_status='zero_fill_reconciled_no_exchange_order',
+              filled_contracts=0,
+              updated_at_ms=${Date.now()}
+          WHERE target_ticker=${row.target_ticker}
+            AND client_order_id=${row.client_order_id}
+            AND kalshi_order_id IS NULL
+            AND transition_applied=FALSE`);
+        log("ZERO_FILL_RECONCILED", {
+          targetTicker: row.target_ticker,
+          clientOrderId: row.client_order_id,
+          officialResult: staleOfficial,
+          evidence: "finalized_market_and_zero_exact_exchange_order_matches",
+        });
+        continue;
+      }
+      kalshiOrderId = recoveredIdentity;
       if (!kalshiOrderId) {
         log("FAIL_CLOSED", { reason: "submission_identity_unknown", targetTicker: row.target_ticker });
         return false;
