@@ -344,6 +344,7 @@ export async function reconcileEthBigBetAccountingForTicker(input: {
   officialResult: "yes" | "no";
   store: EthBigBetSettlementStore;
   authFetch?: BigBetAuthFetch;
+  closeSharedExposure?: (sourceOrderId: string) => Promise<boolean>;
 }): Promise<{ settled: number; unresolved: number }> {
   if (!/^KXETH15M-/.test(input.ticker)) return { settled: 0, unresolved: 0 };
   let rows: EthBigBetSettlementRow[];
@@ -352,6 +353,8 @@ export async function reconcileEthBigBetAccountingForTicker(input: {
   } catch {
     return { settled: 0, unresolved: 1 };
   }
+  const closeSharedExposure = input.closeSharedExposure ?? (async (sourceOrderId: string) =>
+    transitionProductionEthLongReversalBySourceOrderId({ sourceOrderId, to: "settled" }));
   let settled = 0;
   let unresolved = 0;
   for (const row of rows) {
@@ -374,10 +377,7 @@ export async function reconcileEthBigBetAccountingForTicker(input: {
         // Authoritative final settlement (including terminal zero-fill) releases
         // correlated long-reversal capacity. Non-member orders have no matching
         // reservation and therefore leave this as a harmless false result.
-        await transitionProductionEthLongReversalBySourceOrderId({
-          sourceOrderId: row.id,
-          to: "settled",
-        }).catch(() => false);
+        await closeSharedExposure(row.id).catch(() => false);
         settled++;
       } else unresolved++;
     } catch {
