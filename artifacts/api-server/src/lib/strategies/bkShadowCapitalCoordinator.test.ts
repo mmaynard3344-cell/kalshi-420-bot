@@ -108,6 +108,7 @@ test("approved policy has no A reserve, fixed safety reserve, or persistent unre
   });
   assert.equal(result.event.decision, "shadow_allow");
   assert.equal(result.event.freeCapitalCents, 207);
+  assert.equal(result.event.orderResult, "not_attempted_shadow");
   assert.equal(result.event.inflightReservedCents, 0);
   assert.equal(await store.activeRisk(2), 207);
 });
