@@ -11,7 +11,15 @@ import {
 } from "./ethLongReversalExposure.js";
 
 let storePromise: Promise<PostgresEthLongReversalStore> | null = null;
+let storeOverride: PostgresEthLongReversalStore | null = null;
+
+export function _setLongReversalBridgeStoreForTesting(store: PostgresEthLongReversalStore | null): void {
+  storeOverride = store;
+  storePromise = null;
+}
+
 async function productionStore(): Promise<PostgresEthLongReversalStore> {
+  if (storeOverride) return storeOverride;
   storePromise ??= import("@workspace/db").then((mod) =>
     new PostgresEthLongReversalStore(mod.db as any),
   );
