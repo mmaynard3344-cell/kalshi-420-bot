@@ -19,7 +19,7 @@ function memoryLongStore(seed: EthLongReversalReservation[] = []) {
         async sumActiveRiskCents() {
           return [...rows.values()]
             .filter((r) => ["reserved","submitted","submission_unknown","filled_unsettled"].includes(r.state))
-            .reduce((sum, r) => sum + r.requestedRiskCents, 0);
+            .reduce((sum, r) => sum + r.activeRiskCents, 0);
         },
         async insertReservation(reservation) {
           if (rows.has(reservation.id)) return false;
@@ -71,7 +71,7 @@ test("H correlated YES is blocked before Kalshi submit when shared cap is consum
   const seed: EthLongReversalReservation = {
     id: "existing", bucket: "ETH_15M_LONG_REVERSAL", service: "E", strategy: "downfade_p80_p90",
     ticker: "KXETH15M-OLD", clientOrderId: "old", sourceOrderId: "old", exchangeIndex: 1,
-    requestedRiskCents: 100, state: "submitted", createdAtMs: 1, updatedAtMs: 1,
+    requestedRiskCents: 100, activeRiskCents: 100, filledContracts: null, actualNotionalCents: null, actualFeeCents: null, lastAdjustmentReason: null, state: "submitted", createdAtMs: 1, updatedAtMs: 1,
   };
   const { store } = memoryLongStore([seed]);
   _setLongReversalBridgeStoreForTesting(store);
@@ -94,7 +94,7 @@ test("I downside YES uses shared bucket and can be blocked", async () => {
   const { store } = memoryLongStore([{
     id: "existing-i", bucket: "ETH_15M_LONG_REVERSAL", service: "L", strategy: "SWEEP_RECLAIM_V1",
     ticker: "KXETH15M-OLD2", clientOrderId: "old2", sourceOrderId: "old2", exchangeIndex: 1,
-    requestedRiskCents: 50, state: "submission_unknown", createdAtMs: 1, updatedAtMs: 1,
+    requestedRiskCents: 50, activeRiskCents: 50, filledContracts: null, actualNotionalCents: null, actualFeeCents: null, lastAdjustmentReason: null, state: "submission_unknown", createdAtMs: 1, updatedAtMs: 1,
   }]);
   _setLongReversalBridgeStoreForTesting(store);
   let submitted = false;
