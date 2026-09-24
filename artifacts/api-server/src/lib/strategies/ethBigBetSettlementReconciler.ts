@@ -1,7 +1,7 @@
 import { addDecimalStrings, normalizeKalshiFill, type KalshiFillWire } from "../kalshiFillNormalizer.js";
 import { kalshiAuthFetch } from "../kalshiAuth.js";
 import { settleEthBigBetOrder } from "./ethBigBetStore.js";
-import { transitionProductionEthLongReversalBySourceOrderId } from "./ethLongReversalExposure.js";
+import { adjustProductionEthLongReversalRiskBySourceOrderId, transitionProductionEthLongReversalBySourceOrderId } from "./ethLongReversalExposure.js";
 
 export interface EthBigBetSettlementRow {
   id: string;
@@ -39,6 +39,7 @@ interface KalshiFillsResponse { fills?: KalshiFillWire[]; cursor?: unknown; [key
 type BigBetAuthFetch = <T>(method: string, path: string) => Promise<T>;
 
 const ZERO_FILL_TERMINAL_ORDER_STATUSES = new Set(["canceled", "cancelled"]);
+const TERMINAL_ORDER_STATUSES = new Set(["canceled", "cancelled", "executed", "filled"]);
 
 function decimalText(value: unknown): string | null {
   if (typeof value !== "string" && typeof value !== "number") return null;
@@ -107,6 +108,138 @@ async function fetchAllOrderFills(
     cursor = next;
   }
   return null;
+}
+
+export interface EthBigBetTerminalExposureEvidence {
+  terminalStatus: string;
+  filledContracts: number;
+  actualNotionalCents: number;
+  actualFeeCents: number;
+  activeRiskCents: number;
+  terminalZeroFill: boolean;
+}
+
+/**
+ * Read terminal pre-settlement exposure using authenticated order/fill evidence.
+ * Open/resting partial fills intentionally return null so their full original
+ * reservation remains active: the unfilled remainder can still execute.
+ */
+export async function readEthBigBetTerminalExposureEvidence(input: {
+  row: EthBigBetSettlementRow;
+  authFetch?: BigBetAuthFetch;
+}): Promise<EthBigBetTerminalExposureEvidence | null> {
+  const authFetch = input.authFetch ?? (kalshiAuthFetch as unknown as BigBetAuthFetch);
+  let order: KalshiOrderWire;
+  try {
+    const resolved = await resolveOrder(input.row, authFetch);
+    if (!resolved) return null;
+    order = resolved;
+  } catch {
+    return null;
+  }
+
+  const status = typeof order.status === "string" ? order.status.toLowerCase() : "";
+  if (!TERMINAL_ORDER_STATUSES.has(status)) return null;
+
+  const fillCountExact = orderFillCountExact(order);
+  if (fillCountExact == null) return null;
+  const authoritativeFilled = decimalToNumber(fillCountExact);
+  if (authoritativeFilled == null) return null;
+  const orderId = exactOrderId(order);
+  if (!orderId) return null;
+
+  if (authoritativeFilled === 0) {
+    if (!ZERO_FILL_TERMINAL_ORDER_STATUSES.has(status)) return null;
+    return {
+      terminalStatus: status,
+      filledContracts: 0,
+      actualNotionalCents: 0,
+      actualFeeCents: 0,
+      activeRiskCents: 0,
+      terminalZeroFill: true,
+    };
+  }
+
+  let fills: KalshiFillWire[] | null;
+  try {
+    fills = await fetchAllOrderFills(orderId, authFetch);
+  } catch {
+    return null;
+  }
+  if (!fills || fills.length === 0) return null;
+
+  let contractsExact = "0";
+  let costDollarsExact = "0";
+  let feeDollarsExact = "0";
+  for (const fill of fills) {
+    const normalized = normalizeKalshiFill(fill, input.row.side);
+    if (!normalized) return null;
+    contractsExact = addDecimalStrings(contractsExact, normalized.contractsExact);
+    costDollarsExact = addDecimalStrings(costDollarsExact, normalized.exactCostDollars);
+    feeDollarsExact = addDecimalStrings(feeDollarsExact, normalized.exactFeeDollars);
+  }
+  const filledContracts = decimalToNumber(contractsExact);
+  if (filledContracts == null || Math.abs(filledContracts - authoritativeFilled) > 1e-9) return null;
+  const actualNotionalCents = dollarsToRoundedCents(costDollarsExact);
+  const actualFeeCents = dollarsToRoundedCents(feeDollarsExact);
+  if (actualNotionalCents == null || actualFeeCents == null) return null;
+  const activeRiskCents = actualNotionalCents + actualFeeCents;
+  if (!Number.isSafeInteger(activeRiskCents) || activeRiskCents <= 0) return null;
+
+  return {
+    terminalStatus: status,
+    filledContracts,
+    actualNotionalCents,
+    actualFeeCents,
+    activeRiskCents,
+    terminalZeroFill: false,
+  };
+}
+
+export async function refreshEthBigBetLongReversalExposureForTicker(input: {
+  ticker: string;
+  store: Pick<EthBigBetSettlementStore, "listUnresolvedForTicker">;
+  authFetch?: BigBetAuthFetch;
+  adjustRisk?: typeof adjustProductionEthLongReversalRiskBySourceOrderId;
+}): Promise<{ adjusted: number; retained: number }> {
+  if (!/^KXETH15M-/.test(input.ticker)) return { adjusted: 0, retained: 0 };
+  let rows: EthBigBetSettlementRow[];
+  try {
+    rows = await input.store.listUnresolvedForTicker(input.ticker);
+  } catch {
+    return { adjusted: 0, retained: 1 };
+  }
+  const adjustRisk = input.adjustRisk ?? adjustProductionEthLongReversalRiskBySourceOrderId;
+  let adjusted = 0;
+  let retained = 0;
+  for (const row of rows) {
+    const evidence = await readEthBigBetTerminalExposureEvidence({
+      row,
+      authFetch: input.authFetch,
+    });
+    if (!evidence) {
+      retained++;
+      continue;
+    }
+    try {
+      const wrote = await adjustRisk({
+        sourceOrderId: row.id,
+        activeRiskCents: evidence.activeRiskCents,
+        filledContracts: evidence.filledContracts,
+        actualNotionalCents: evidence.actualNotionalCents,
+        actualFeeCents: evidence.actualFeeCents,
+        terminalZeroFill: evidence.terminalZeroFill,
+        reason: evidence.terminalZeroFill
+          ? "authoritative_terminal_zero_fill"
+          : "authoritative_terminal_fill_evidence",
+      });
+      if (wrote) adjusted++;
+      else retained++;
+    } catch {
+      retained++;
+    }
+  }
+  return { adjusted, retained };
 }
 
 export interface EthBigBetSettlementEconomics {
