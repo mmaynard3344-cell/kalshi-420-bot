@@ -198,19 +198,6 @@ test("accepted order becomes SUBMITTED and shared reservation remains active", a
 });
 
 test("ambiguous submission retains shared exposure as submission_unknown", async () => {
-  const h = harness([40, 40]);
-  _setSweepReclaimExecutionDepsForTesting({
-    priceReader: async () => snapshot(40),
-    exchange: { async submit() { return { kind: "unknown" }; } },
-    claimUpdater: async (u) => { if (u.lifecycleState) (h as any)._noop = u.lifecycleState; return true; },
-    claimTransition: async ({ from, to }) => {
-      const allowed = Array.isArray(from) ? from : [from];
-      if (!allowed.includes(h.state)) return false;
-      (h as any).state = to;
-      return true;
-    },
-  });
-  // Rebuild a clean harness because state accessors are read-only above.
   const m = memoryLongStore();
   let state: SweepReclaimLifecycleState = "CLAIMED";
   _setSweepReclaimAdmissionDepsForTesting({
