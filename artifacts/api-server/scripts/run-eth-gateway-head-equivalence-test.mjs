@@ -21,7 +21,7 @@ const requiredCases = [
   /an unsettled order blocks/,
   /settlement sweep stays blocked after a transient failure/,
   /shared placement gateway preserves legacy zero, partial, and ambiguous/,
-  /daily loss -250 boundary/,
+  /daily loss boundary/,
 ];
 
 function runBundle(cwd) {
