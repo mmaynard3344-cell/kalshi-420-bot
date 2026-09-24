@@ -38,7 +38,7 @@ jobs:
       - name: Checkout exact frozen HEAD
         uses: actions/checkout@v4
         with:
-          ref: 07e69bfa3734da51605e6d56e19f7556b66982f9
+          ref: 840cc8ba2d5b6b408256b25034f8a65cd0c8ccb8
           fetch-depth: 1
 
       - name: Set up Node
@@ -58,7 +58,7 @@ jobs:
           echo "repository=mmaynard3344-cell/kalshi-420-bot" | tee -a "$SUMMARY"
           echo "source_branch=review/l-sweep-reclaim-v1-bk-integration" | tee -a "$SUMMARY"
           echo "verification_branch=verify/l-sweep-reclaim-733bf435" | tee -a "$SUMMARY"
-          echo "expected_head=07e69bfa3734da51605e6d56e19f7556b66982f9" | tee -a "$SUMMARY"
+          echo "expected_head=840cc8ba2d5b6b408256b25034f8a65cd0c8ccb8" | tee -a "$SUMMARY"
           echo "actual_head=$(git rev-parse HEAD)" | tee -a "$SUMMARY"
           echo "node=$(node --version)" | tee -a "$SUMMARY"
           echo "database_class=ephemeral GitHub Actions postgres:16 service" | tee -a "$SUMMARY"
@@ -101,6 +101,7 @@ jobs:
           run_cmd sweep_reclaim_store "node artifacts/api-server/scripts/run-sweep-reclaim-store-test.mjs"
           run_cmd long_reversal_exposure "node artifacts/api-server/scripts/run-long-reversal-exposure-test.mjs"
           run_cmd long_reversal_bridge "node artifacts/api-server/scripts/run-long-reversal-bridge-test.mjs"
+          run_cmd sweep_reclaim_execution "node artifacts/api-server/scripts/run-sweep-reclaim-execution-test.mjs"
 
           echo "" | tee -a "$SUMMARY"
           if [ "$FAIL" -eq 0 ]; then
