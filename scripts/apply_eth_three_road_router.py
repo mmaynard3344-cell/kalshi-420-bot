@@ -2,6 +2,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# The consolidated service-role architecture supersedes this historical source
+# rewrite. When that newer routing is already present, the build must be
+# idempotent and leave source unchanged rather than partially applying an old
+# patch and then aborting.
+auto_probe_path = ROOT / "artifacts/api-server/src/lib/autoTrader.ts"
+auto_probe = auto_probe_path.read_text()
+if "serviceMayRunMartingale(ethServiceRole)" in auto_probe:
+    print("three-road router patch skipped: consolidated service-role routing already present")
+    raise SystemExit(0)
+
 candidate_path = ROOT / "artifacts/api-server/src/lib/strategies/eth420SixStepCandidate.ts"
 candidate = candidate_path.read_text()
 
