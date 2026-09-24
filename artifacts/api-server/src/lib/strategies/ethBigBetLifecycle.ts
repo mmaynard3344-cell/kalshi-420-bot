@@ -9,7 +9,8 @@ export type EthBigBetStrategy =
   | "downfade_p80_p90"
   | "downfade_p90_p95"
   | "downfade_p95_p99"
-  | "probe_g";
+  | "probe_g"
+  | "ash_v2_i";
 export type EthBigBetSide = "yes" | "no";
 
 export interface EthBigBetOrderIntent {
