@@ -89,7 +89,9 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
   }
   const exchange = createEthBigBetKalshiSubmitter(input.exchangeIndex);
   if (!exchange) return finish("routing_unavailable", "exchange_route_unavailable");
-  const executionCapital = capitalBase ?? { availableBalanceCents: freshAvailableBalanceCents!, martingaleReserveCents: 0, safetyReserveCents: 0, otherBigBetReservedCents: 0 };
+  const executionCapital = flagEnabled
+    ? { availableBalanceCents: freshAvailableBalanceCents!, martingaleReserveCents: 0, safetyReserveCents: 0, otherBigBetReservedCents: 0 }
+    : capitalBase!;
   const outcome = await submitEthBigBetIntent({ intent, store: ethBigBetExecutionStore, exchange, capital: executionCapital, requestedRiskCents });
   logger.info(bkCapitalTelemetry(admission, outcome), "BK capital admission");
   const rejectionReason = outcome === "submitted" ? null

@@ -95,7 +95,9 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
     intent,
     store: ethBigBetExecutionStore,
     exchange,
-    capital: capitalBase ?? { availableBalanceCents: freshAvailableBalanceCents!, martingaleReserveCents: 0, safetyReserveCents: 0, otherBigBetReservedCents: 0 },
+    capital: flagEnabled
+      ? { availableBalanceCents: freshAvailableBalanceCents!, martingaleReserveCents: 0, safetyReserveCents: 0, otherBigBetReservedCents: 0 }
+      : capitalBase!,
     requestedRiskCents,
   });
   logger.info(bkCapitalTelemetry(admission, outcome), "BK capital admission");
