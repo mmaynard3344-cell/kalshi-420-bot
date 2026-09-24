@@ -90,6 +90,7 @@ import {
   sol30StrategyOrders,
   sol30PositionEvents,
   sol30DecisionEvents,
+  sweepReclaimClaims,
 } from "@workspace/db";
 import type { EvaluationEvent } from "./evaluationEventStore.js";
 import { loadCoverageWindowAudits } from "./marketDataCoverage.js";
@@ -7248,6 +7249,142 @@ export async function listMarketResultsForTickers(tickers: string[]): Promise<Ma
   } catch (err) {
     logger.warn({ err }, "eth2125 prospective settlement lookup failed");
     return new Map();
+  }
+}
+
+export type SweepReclaimLifecycleState =
+  | "EVALUATED" | "QUALIFIED" | "CLAIMED" | "ADMISSION_PENDING" | "ADMITTED"
+  | "SUBMITTING" | "SUBMISSION_UNKNOWN" | "RECONCILING" | "SUBMITTED"
+  | "PARTIALLY_FILLED" | "FILLED" | "CANCELED" | "SETTLED" | "REJECTED" | "SKIPPED";
+
+export interface SweepReclaimClaimParams {
+  id: string;
+  strategyId: string;
+  serviceCode: "L";
+  displayLabel: string;
+  sourceVenue: string;
+  sourceCandleOpenMs: number;
+  sourceCandleCloseMs: number;
+  sourceOpen: number;
+  sourceHigh: number;
+  sourceLow: number;
+  sourceClose: number;
+  prior24hLow: number;
+  candleRange: number;
+  realBody: number;
+  lowerWick: number;
+  midpoint: number;
+  closePositionFraction: number;
+  sweptPrevious24hLow: boolean;
+  wickCondition: boolean;
+  upperHalfClose: boolean;
+  qualified: boolean;
+  destinationTicker: string;
+  side: "yes";
+  claimedAtMs: number;
+}
+
+export interface SweepReclaimClaimUpdate {
+  id: string;
+  observedYesPriceCents?: number | null;
+  configuredPriceCapCents?: number | null;
+  requestedContracts?: number | null;
+  requestedRiskCents?: number | null;
+  correlatedExposureBeforeCents?: number | null;
+  proposedExposureCents?: number | null;
+  sharedExposureCapCents?: number | null;
+  admissionOutcome?: string | null;
+  rejectionReason?: string | null;
+  lifecycleState?: SweepReclaimLifecycleState;
+  clientOrderId?: string | null;
+  kalshiOrderId?: string | null;
+  filledContracts?: number | null;
+  averageFillPriceCents?: number | null;
+  settlementResult?: "yes" | "no" | null;
+  realizedPnlCents?: number | null;
+}
+
+/**
+ * Permanent database-enforced L claim. Exactly one worker may create the
+ * (strategyId, source candle, destination ticker) identity. Storage failure
+ * fails closed and never authorizes an order.
+ */
+export async function claimSweepReclaimSignal(params: SweepReclaimClaimParams): Promise<boolean> {
+  if (!_db || !_healthy) {
+    logger.warn({ destinationTicker: params.destinationTicker }, "sweepReclaim: storage degraded; claim blocked");
+    return false;
+  }
+  try {
+    const inserted = await _db.insert(sweepReclaimClaims).values({
+      ...params,
+      lifecycleState: "CLAIMED",
+      updatedAtMs: params.claimedAtMs,
+    }).onConflictDoNothing().returning({ id: sweepReclaimClaims.id });
+    const claimed = inserted.length === 1;
+    if (claimed) _lastWriteMs = Date.now();
+    return claimed;
+  } catch (err) {
+    _healthy = false;
+    _lastErrorMsg = String(err);
+    _degradedReason = `sweepReclaim.claim failed: ${_lastErrorMsg}`;
+    recordDbBlockedOperation("entry");
+    _scheduleRetry();
+    logger.error({ err, destinationTicker: params.destinationTicker }, "sweepReclaim: durable claim failed closed");
+    return false;
+  }
+}
+
+export async function updateSweepReclaimClaim(update: SweepReclaimClaimUpdate): Promise<boolean> {
+  if (!_db || !_healthy) return false;
+  const patch: Record<string, unknown> = { updatedAtMs: Date.now(), updatedAt: new Date() };
+  for (const [key, value] of Object.entries(update)) {
+    if (key !== "id" && value !== undefined) patch[key] = value;
+  }
+  try {
+    const rows = await _db.update(sweepReclaimClaims).set(patch as any)
+      .where(eq(sweepReclaimClaims.id, update.id))
+      .returning({ id: sweepReclaimClaims.id });
+    if (rows.length === 1) _lastWriteMs = Date.now();
+    return rows.length === 1;
+  } catch (err) {
+    _healthy = false;
+    _lastErrorMsg = String(err);
+    _degradedReason = `sweepReclaim.update failed: ${_lastErrorMsg}`;
+    _scheduleRetry();
+    logger.error({ err, id: update.id }, "sweepReclaim: durable claim update failed closed");
+    return false;
+  }
+}
+
+export async function getSweepReclaimClaim(id: string) {
+  if (!_db || !_healthy) return null;
+  try {
+    const rows = await _db.select().from(sweepReclaimClaims)
+      .where(eq(sweepReclaimClaims.id, id)).limit(1);
+    return rows[0] ?? null;
+  } catch (err) {
+    logger.warn({ err, id }, "sweepReclaim: claim lookup failed");
+    return null;
+  }
+}
+
+export async function findSweepReclaimClaimBySignal(
+  strategyId: string,
+  sourceCandleOpenMs: number,
+  destinationTicker: string,
+) {
+  if (!_db || !_healthy) return null;
+  try {
+    const rows = await _db.select().from(sweepReclaimClaims)
+      .where(and(
+        eq(sweepReclaimClaims.strategyId, strategyId),
+        eq(sweepReclaimClaims.sourceCandleOpenMs, sourceCandleOpenMs),
+        eq(sweepReclaimClaims.destinationTicker, destinationTicker),
+      )).limit(1);
+    return rows[0] ?? null;
+  } catch (err) {
+    logger.warn({ err, strategyId, sourceCandleOpenMs, destinationTicker }, "sweepReclaim: signal lookup failed");
+    return null;
   }
 }
 
