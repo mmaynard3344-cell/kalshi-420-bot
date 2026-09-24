@@ -11,6 +11,7 @@ import { prepareEthReversalServiceIntent } from "./ethReversalServiceRuntime.js"
 import { currentEthServiceEnablement } from "./ethServiceEnablementContract.js";
 import { currentEthServiceRole, serviceOwnsReversal } from "./ethServiceRole.js";
 import { scheduleEthSignalEvidence } from "./ethSignalEvidenceLedger.js";
+import { bkCapitalTelemetry, evaluateBkCapitalAdmission, isBkFreshBalanceCapitalPolicyEnabled, readBkFreshSameShardBalance } from "./bkFreshBalanceCapitalPolicy.js";
 
 export const ETH_REVERSAL_SERVICE_EXECUTION_APPROVED = true;
 export function isEthReversalServiceExecutionPermitted(role = currentEthServiceRole()): boolean {
@@ -38,11 +39,10 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input:{store:Re
   const intent=await prepareEthReversalServiceIntent({store:input.store,market:input.market,windowEntries:getWindowLog(),onEvaluation:(context)=>{priorOutcomes=context.priorOutcomes;consecutiveNoOutcomes=context.consecutiveNoOutcomes;currentMove=context.currentMove;p95=context.p95;p99=context.p99;signalRejectionReason=context.rejectionReason;}});
   if(!intent)return finish("no_signal",signalRejectionReason??"signal_not_qualified");
   if(input.exchangeIndex==null||!Number.isInteger(input.exchangeIndex)||input.exchangeIndex<0)return finish("routing_unavailable","invalid_exchange_index");
-  const capitalBase=await readApprovedEthBigBetCapitalBase(input.exchangeIndex);if(!capitalBase)return finish("capital_unavailable","capital_base_unavailable");
   const requestedRiskCents=ethBigBetCapitalRiskCents(intent.wagerCents,intent.limitPriceCents);if(requestedRiskCents<1)return finish("capital_unavailable","invalid_requested_risk");
-  const capital=evaluateEthAccountCapital({...capitalBase,requestedRiskCents});if(!capital.allowed)return finish(capital.reason==="invalid_input"?"capital_unavailable":"capital_blocked",capital.reason);
+  const flagEnabled=isBkFreshBalanceCapitalPolicyEnabled();const capitalBase=flagEnabled?null:await readApprovedEthBigBetCapitalBase(input.exchangeIndex);if(!flagEnabled&&!capitalBase)return finish("capital_unavailable","capital_base_unavailable");const oldCapital=capitalBase?evaluateEthAccountCapital({...capitalBase,requestedRiskCents}):null;const freshAvailableBalanceCents=flagEnabled?await readBkFreshSameShardBalance(input.exchangeIndex):capitalBase!.availableBalanceCents;const admission=evaluateBkCapitalAdmission({service:"C",ticker:input.market.ticker,exchangeIndex:input.exchangeIndex,requestedRiskCents,freshAvailableBalanceCents,oldPolicyDecision:flagEnabled?"unavailable":oldCapital!.allowed?"allow":oldCapital!.reason==="invalid_input"?"unavailable":"block",oldPolicyBlocker:flagEnabled?"not_evaluated_flagged_fresh_balance_policy":oldCapital!.allowed?null:oldCapital!.reason});if(!admission.finalAllowed){logger.info(bkCapitalTelemetry(admission,"not_attempted"),"BK capital admission");return finish(admission.finalDecision==="unavailable"?"capital_unavailable":"capital_blocked",admission.flagEnabled?`bk_fresh_balance_${admission.newPolicyDecision}`:(oldCapital!.allowed?null:oldCapital!.reason));}
   const exchange=createEthBigBetKalshiSubmitter(input.exchangeIndex);if(!exchange)return finish("routing_unavailable","exchange_route_unavailable");
   try{await ensureStoreReady();}catch{return finish("storage_unavailable","execution_store_unavailable");}
-  const outcome=await submitEthBigBetIntent({intent,store:ethBigBetExecutionStore,exchange,capital:capitalBase,requestedRiskCents});
+  const outcome=await submitEthBigBetIntent({intent,store:ethBigBetExecutionStore,exchange,capital:flagEnabled?{availableBalanceCents:freshAvailableBalanceCents!,martingaleReserveCents:0,safetyReserveCents:0,otherBigBetReservedCents:0}:capitalBase!,requestedRiskCents});logger.info(bkCapitalTelemetry(admission,outcome),"BK capital admission");
   return finish(outcome,outcome==="submitted"?null:outcome==="rejected"?"exchange_rejected_reason_not_exposed_by_executor":outcome);
 }
