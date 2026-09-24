@@ -43,6 +43,7 @@ export interface BkShadowCapitalDecisionEvent {
   requestedRiskCents: number;
   freeCapitalCents: number | null;
   decision: "shadow_allow" | "shadow_block" | "shadow_unavailable";
+  orderResult: "not_attempted_shadow";
   reason:
     | "sufficient_fresh_available_balance"
     | "insufficient_fresh_available_balance"
@@ -143,6 +144,7 @@ export async function shadowAcquireBkCapitalReservation(input: {
     ticker: admission.ticker,
     exchangeIndex: admission.exchangeIndex,
     requestedRiskCents: admission.requestedRiskCents,
+    orderResult: "not_attempted_shadow",
   } as const;
 
   if (!validAdmissionInput(admission)) {
