@@ -38,7 +38,7 @@ jobs:
       - name: Checkout exact frozen HEAD
         uses: actions/checkout@v4
         with:
-          ref: a6507d8a89709168e332ac069ecf8549bf0d7ef7
+          ref: daa58d965a61c8249c57cf4cba443640149d04d0
           fetch-depth: 1
 
       - name: Set up Node
@@ -58,7 +58,7 @@ jobs:
           echo "repository=mmaynard3344-cell/kalshi-420-bot" | tee -a "$SUMMARY"
           echo "source_branch=review/l-sweep-reclaim-v1-bk-integration" | tee -a "$SUMMARY"
           echo "verification_branch=verify/l-sweep-reclaim-733bf435" | tee -a "$SUMMARY"
-          echo "expected_head=a6507d8a89709168e332ac069ecf8549bf0d7ef7" | tee -a "$SUMMARY"
+          echo "expected_head=daa58d965a61c8249c57cf4cba443640149d04d0" | tee -a "$SUMMARY"
           echo "actual_head=$(git rev-parse HEAD)" | tee -a "$SUMMARY"
           echo "node=$(node --version)" | tee -a "$SUMMARY"
           echo "database_class=ephemeral GitHub Actions postgres:16 service" | tee -a "$SUMMARY"
