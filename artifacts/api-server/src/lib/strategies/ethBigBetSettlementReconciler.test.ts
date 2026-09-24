@@ -66,7 +66,6 @@ test("authoritative canceled zero fill settles accounting-neutral without inferr
   const economics = await readEthBigBetSettlementEconomics({
     row: jumpRow,
     officialResult: "no",
-    closeSharedExposure: async () => true,
     authFetch: async <T>(_method: string, path: string): Promise<T> => {
       if (path.startsWith("/portfolio/orders/")) {
         return { order: { order_id: "order-jump-1", status: "canceled", fill_count_fp: "0" } } as T;
@@ -157,6 +156,7 @@ test("reconciler settles complete rows and leaves incomplete rows unresolved wit
       async listUnresolvedForTicker() { return [jumpRow, incomplete]; },
       async settle(input) { writes.push(input); return true; },
     },
+    closeSharedExposure: async () => true,
     authFetch: async <T>(_method: string, path: string): Promise<T> => {
       if (path.includes("missing-order")) return { order: null } as T;
       if (path.startsWith("/portfolio/orders/")) return { order: { order_id: "order-jump-1", status: "executed", fill_count_fp: "1" } } as T;
