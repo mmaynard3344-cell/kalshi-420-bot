@@ -24,7 +24,7 @@ export async function initEthDownfadeExecutionStore(): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(42015001)`);
     await tx.execute(sql`ALTER TABLE eth_big_bet_orders DROP CONSTRAINT IF EXISTS eth_big_bet_orders_strategy_check`);
-    await tx.execute(sql`ALTER TABLE eth_big_bet_orders ADD CONSTRAINT eth_big_bet_orders_strategy_check CHECK (strategy IN ('jump', 'reversal', 'breakout_reversal', 'downfade_p80_p90', 'downfade_p90_p95', 'downfade_p95_p99', 'probe_g', 'ash_v2_i'))`);
+    await tx.execute(sql`ALTER TABLE eth_big_bet_orders ADD CONSTRAINT eth_big_bet_orders_strategy_check CHECK (strategy IN ('jump', 'reversal', 'breakout_reversal', 'downfade_p80_p90', 'downfade_p90_p95', 'downfade_p95_p99', 'probe_g', 'ash_v2_i', 'a2_baseline_reversion'))`);
   });
 }
 
