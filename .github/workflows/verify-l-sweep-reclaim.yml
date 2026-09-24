@@ -1,0 +1,116 @@
+name: Verify frozen L Sweep/Reclaim review
+
+on:
+  push:
+    branches:
+      - verify/l-sweep-reclaim-733bf435
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kalshi_review
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d kalshi_review"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kalshi_review
+      CI: "true"
+
+    steps:
+      - name: Checkout exact frozen HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: 733bf4353230da54b74a53b9bcf5ed34c488dfe5
+          fetch-depth: 1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run auditable verification harness
+        shell: bash
+        run: |
+          set +e
+          mkdir -p verification/logs
+          SUMMARY="verification/summary.txt"
+          : > "$SUMMARY"
+
+          echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a "$SUMMARY"
+          echo "repository=mmaynard3344-cell/kalshi-420-bot" | tee -a "$SUMMARY"
+          echo "source_branch=review/l-sweep-reclaim-v1-bk-integration" | tee -a "$SUMMARY"
+          echo "verification_branch=verify/l-sweep-reclaim-733bf435" | tee -a "$SUMMARY"
+          echo "expected_head=733bf4353230da54b74a53b9bcf5ed34c488dfe5" | tee -a "$SUMMARY"
+          echo "actual_head=$(git rev-parse HEAD)" | tee -a "$SUMMARY"
+          echo "node=$(node --version)" | tee -a "$SUMMARY"
+          echo "database_class=ephemeral GitHub Actions postgres:16 service" | tee -a "$SUMMARY"
+          echo "database_name=kalshi_review" | tee -a "$SUMMARY"
+          echo "database_host=localhost" | tee -a "$SUMMARY"
+          echo "production_database_used=no" | tee -a "$SUMMARY"
+          git status --short > verification/git-status.txt
+
+          FAIL=0
+          INDEX=0
+          run_cmd() {
+            INDEX=$((INDEX+1))
+            NAME="$1"
+            shift
+            CMD="$*"
+            LOG="verification/logs/$(printf '%02d' "$INDEX")-$NAME.log"
+            echo "" | tee -a "$SUMMARY"
+            echo "[$INDEX] $NAME" | tee -a "$SUMMARY"
+            echo "command=$CMD" | tee -a "$SUMMARY"
+            bash -o pipefail -lc "$CMD" 2>&1 | tee "$LOG"
+            RC=${PIPESTATUS[0]}
+            echo "exit_code=$RC" | tee -a "$SUMMARY"
+            if [ "$RC" -ne 0 ]; then
+              FAIL=1
+            fi
+          }
+
+          run_cmd corepack_enable "corepack enable"
+          run_cmd pnpm_activate "corepack prepare pnpm@10.26.1 --activate"
+          run_cmd pnpm_version "pnpm --version"
+          run_cmd dependency_install "pnpm install --frozen-lockfile"
+          run_cmd schema_apply_ephemeral_db "pnpm --filter @workspace/db push-force"
+          run_cmd api_typecheck "pnpm --filter @workspace/api-server typecheck"
+          run_cmd api_build "pnpm --filter @workspace/api-server build"
+          run_cmd api_full_test "pnpm --filter @workspace/api-server test"
+          run_cmd sweep_reclaim_v1 "node artifacts/api-server/scripts/run-sweep-reclaim-v1-test.mjs"
+          run_cmd kraken_eth15m_candle "node artifacts/api-server/scripts/run-kraken-eth15m-candle-test.mjs"
+          run_cmd sweep_reclaim_store "node artifacts/api-server/scripts/run-sweep-reclaim-store-test.mjs"
+          run_cmd long_reversal_exposure "node artifacts/api-server/scripts/run-long-reversal-exposure-test.mjs"
+          run_cmd long_reversal_bridge "node artifacts/api-server/scripts/run-long-reversal-bridge-test.mjs"
+
+          echo "" | tee -a "$SUMMARY"
+          if [ "$FAIL" -eq 0 ]; then
+            echo "overall_result=PASS" | tee -a "$SUMMARY"
+            exit 0
+          else
+            echo "overall_result=FAIL" | tee -a "$SUMMARY"
+            exit 1
+          fi
+
+      - name: Upload verification record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: l-sweep-reclaim-verification-733bf435
+          path: verification/
+          if-no-files-found: error
+          retention-days: 30
