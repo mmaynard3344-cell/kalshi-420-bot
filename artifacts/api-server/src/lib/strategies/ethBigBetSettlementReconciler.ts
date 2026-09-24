@@ -1,6 +1,7 @@
 import { addDecimalStrings, normalizeKalshiFill, type KalshiFillWire } from "../kalshiFillNormalizer.js";
 import { kalshiAuthFetch } from "../kalshiAuth.js";
 import { settleEthBigBetOrder } from "./ethBigBetStore.js";
+import { transitionProductionEthLongReversalBySourceOrderId } from "./ethLongReversalExposure.js";
 
 export interface EthBigBetSettlementRow {
   id: string;
@@ -236,8 +237,16 @@ export async function reconcileEthBigBetAccountingForTicker(input: {
         ...economics,
         settlementResult: input.officialResult,
       });
-      if (wrote) settled++;
-      else unresolved++;
+      if (wrote) {
+        // Authoritative final settlement (including terminal zero-fill) releases
+        // correlated long-reversal capacity. Non-member orders have no matching
+        // reservation and therefore leave this as a harmless false result.
+        await transitionProductionEthLongReversalBySourceOrderId({
+          sourceOrderId: row.id,
+          to: "settled",
+        }).catch(() => false);
+        settled++;
+      } else unresolved++;
     } catch {
       unresolved++;
     }
