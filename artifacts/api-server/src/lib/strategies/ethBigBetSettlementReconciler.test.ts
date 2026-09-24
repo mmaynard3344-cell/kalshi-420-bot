@@ -66,6 +66,7 @@ test("authoritative canceled zero fill settles accounting-neutral without inferr
   const economics = await readEthBigBetSettlementEconomics({
     row: jumpRow,
     officialResult: "no",
+    closeSharedExposure: async () => true,
     authFetch: async <T>(_method: string, path: string): Promise<T> => {
       if (path.startsWith("/portfolio/orders/")) {
         return { order: { order_id: "order-jump-1", status: "canceled", fill_count_fp: "0" } } as T;
@@ -175,6 +176,7 @@ test("non-ETH ticker is ignored by B/C accounting reconciler", async () => {
       async listUnresolvedForTicker() { read = true; return []; },
       async settle() { return true; },
     },
+    closeSharedExposure: async () => true,
   }), { settled: 0, unresolved: 0 });
   assert.equal(read, false);
 });
