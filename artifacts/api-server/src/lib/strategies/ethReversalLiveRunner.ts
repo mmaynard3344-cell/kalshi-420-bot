@@ -9,6 +9,8 @@ import { initEthBigBetStore } from "./ethBigBetStore.js";
 import { prepareEthReversalServiceIntent } from "./ethReversalServiceRuntime.js";
 import { currentEthServiceEnablement } from "./ethServiceEnablementContract.js";
 import { currentEthServiceRole, serviceOwnsReversal } from "./ethServiceRole.js";
+import { bkCapitalTelemetry, evaluateBkCapitalAdmission } from "./bkFreshBalanceCapitalPolicy.js";
+import { logger } from "../logger.js";
 
 /**
  * Service C code-side approval. Runtime execution still requires the exact
@@ -70,7 +72,14 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
   const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
   if (requestedRiskCents < 1) return "capital_unavailable";
   const capital = evaluateEthAccountCapital({ ...capitalBase, requestedRiskCents });
-  if (!capital.allowed) return capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked";
+  const admission = evaluateBkCapitalAdmission({ service: "C", ticker: input.market.ticker, exchangeIndex: input.exchangeIndex,
+    requestedRiskCents, freshAvailableBalanceCents: capitalBase.availableBalanceCents,
+    oldPolicyDecision: capital.allowed ? "allow" : capital.reason === "invalid_input" ? "unavailable" : "block",
+    oldPolicyBlocker: capital.allowed ? null : capital.reason });
+  if (!admission.finalAllowed) {
+    logger.info(bkCapitalTelemetry(admission, "not_attempted"), "BK capital admission");
+    return admission.finalDecision === "unavailable" ? "capital_unavailable" : "capital_blocked";
+  }
   const exchange = createEthBigBetKalshiSubmitter(input.exchangeIndex);
   if (!exchange) return "routing_unavailable";
   try {
@@ -78,11 +87,13 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
   } catch {
     return "storage_unavailable";
   }
-  return submitEthBigBetIntent({
+  const outcome = await submitEthBigBetIntent({
     intent,
     store: ethBigBetExecutionStore,
     exchange,
     capital: capitalBase,
     requestedRiskCents,
   });
+  logger.info(bkCapitalTelemetry(admission, outcome), "BK capital admission");
+  return outcome;
 }

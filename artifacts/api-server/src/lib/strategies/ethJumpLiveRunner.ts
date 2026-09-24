@@ -11,6 +11,7 @@ import { evaluateEthAccountCapital } from "./ethAccountCapitalGuard.js";
 import { readApprovedEthBigBetCapitalBase } from "./ethBigBetApprovedCapitalProvider.js";
 import { currentEthServiceEnablement } from "./ethServiceEnablementContract.js";
 import { currentEthServiceRole, serviceOwnsJump, serviceOwnsDownfade } from "./ethServiceRole.js";
+import { bkCapitalTelemetry, evaluateBkCapitalAdmission } from "./bkFreshBalanceCapitalPolicy.js";
 
 export const ETH_JUMP_SERVICE_EXECUTION_APPROVED = true;
 
@@ -73,10 +74,19 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
   const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
   if (requestedRiskCents < 1) return finish("capital_unavailable", "invalid_requested_risk");
   const capital = evaluateEthAccountCapital({ ...capitalBase, requestedRiskCents });
-  if (!capital.allowed) return finish(capital.reason === "invalid_input" ? "capital_unavailable" : "capital_blocked", capital.reason);
+  const admission = evaluateBkCapitalAdmission({ service: "B", ticker: input.market.ticker, exchangeIndex: input.exchangeIndex,
+    requestedRiskCents, freshAvailableBalanceCents: capitalBase.availableBalanceCents,
+    oldPolicyDecision: capital.allowed ? "allow" : capital.reason === "invalid_input" ? "unavailable" : "block",
+    oldPolicyBlocker: capital.allowed ? null : capital.reason });
+  if (!admission.finalAllowed) {
+    logger.info(bkCapitalTelemetry(admission, "not_attempted"), "BK capital admission");
+    return finish(admission.finalDecision === "unavailable" ? "capital_unavailable" : "capital_blocked",
+      admission.flagEnabled ? `bk_fresh_balance_${admission.newPolicyDecision}` : (capital.allowed ? null : capital.reason));
+  }
   const exchange = createEthBigBetKalshiSubmitter(input.exchangeIndex);
   if (!exchange) return finish("routing_unavailable", "exchange_route_unavailable");
   const outcome = await submitEthBigBetIntent({ intent, store: ethBigBetExecutionStore, exchange, capital: capitalBase, requestedRiskCents });
+  logger.info(bkCapitalTelemetry(admission, outcome), "BK capital admission");
   const rejectionReason = outcome === "submitted" ? null
     : outcome === "blocked_duplicate" ? "duplicate_strategy_market"
     : outcome === "blocked_invalid_size" ? "invalid_order_size"
