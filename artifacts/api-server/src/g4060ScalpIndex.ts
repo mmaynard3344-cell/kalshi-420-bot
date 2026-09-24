@@ -470,6 +470,7 @@ async function main(): Promise<void> {
     principalsCents: PRINCIPALS_CENTS,
     contracts: CONTRACTS,
     entryWindowMs: ENTRY_WINDOW_MS,
+    entrySchedule: "all_hours_all_days",
     trigger: "exactly_two_same_side_settlements_then_opposite",
     progression: "100-200-400_same_side_on_losses_reset_on_win_or_step3_loss",
   }, "Service G ETH streak reversal runner started");
@@ -494,6 +495,7 @@ async function main(): Promise<void> {
         principals_cents: PRINCIPALS_CENTS,
         contracts: CONTRACTS,
         entry_window_ms: ENTRY_WINDOW_MS,
+        entry_schedule: "all_hours_all_days",
         ladder_side: state.ladderSide,
         ladder_step: state.step,
         unresolved_orders: outstanding.length,
