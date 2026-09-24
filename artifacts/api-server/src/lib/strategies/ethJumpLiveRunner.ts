@@ -85,7 +85,7 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
   if (!admission.finalAllowed) {
     logger.info(bkCapitalTelemetry(admission, "not_attempted"), "BK capital admission");
     return finish(admission.finalDecision === "unavailable" ? "capital_unavailable" : "capital_blocked",
-      admission.flagEnabled ? `bk_fresh_balance_${admission.newPolicyDecision}` : (capital.allowed ? null : capital.reason));
+      admission.flagEnabled ? `bk_fresh_balance_${admission.newPolicyDecision}` : (oldCapital!.allowed ? null : oldCapital!.reason));
   }
   const exchange = createEthBigBetKalshiSubmitter(input.exchangeIndex);
   if (!exchange) return finish("routing_unavailable", "exchange_route_unavailable");
