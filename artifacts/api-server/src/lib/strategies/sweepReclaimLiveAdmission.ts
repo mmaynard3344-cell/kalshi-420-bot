@@ -58,6 +58,21 @@ async function updateClaim(input: Parameters<ClaimUpdater>[0]): Promise<boolean>
   return (claimUpdaterOverride ?? updateSweepReclaimClaim)(input);
 }
 
+
+export async function transitionSweepReclaimSharedReservation(input: {
+  reservationId: string;
+  from: "reserved" | "submitted" | "submission_unknown" | Array<"reserved" | "submitted" | "submission_unknown">;
+  to: "submitted" | "submission_unknown" | "released" | "rejected";
+}): Promise<boolean> {
+  const store = await productionStore();
+  return store.transition({
+    id: input.reservationId,
+    from: input.from,
+    to: input.to,
+    updatedAtMs: Date.now(),
+  });
+}
+
 /**
  * Final L gate immediately before any future exchange submission.
  *
