@@ -1410,7 +1410,8 @@ test("live ETH 420 telemetry is append-only, adjacent-validated, and requires 50
     const atP95 = evaluateEth420Candidate({ ...boundaryInput, floorStrike: 100 * (1 + threshold.p95!) });
     const atP99 = evaluateEth420Candidate({ ...boundaryInput, floorStrike: 100 * (1 + threshold.p99!) });
     assert.equal(atP95.sweetSpotTell, true, "p95 is inclusive");
-    assert.equal(atP95.effectiveWagerCents, 42_000, "p95 jump override remains $420");
+    assert.equal(atP95.effectiveWagerCents, 32_000, "Service A observes p95 telemetry without overriding its step-6 wager");
+    assert.equal(atP95.overrideIncreasedWager, false, "Service B exclusively owns the standalone $420 jump order");
     assert.equal(atP99.sweetSpotTell, false, "p99 is exclusive");
 
     let dangerousStateCalls = 0;
