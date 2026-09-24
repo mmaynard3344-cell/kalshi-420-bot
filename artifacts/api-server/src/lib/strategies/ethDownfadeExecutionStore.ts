@@ -4,6 +4,7 @@ import type { EthBigBetOrderIntent } from "./ethBigBetLifecycle.js";
 import { ethBigBetCapitalRiskCents } from "./ethBigBetLifecycle.js";
 import { evaluateEthAccountCapital } from "./ethAccountCapitalGuard.js";
 import { initEthBigBetStore } from "./ethBigBetStore.js";
+import { evaluateBkFreshBalanceOnly, isBkFreshBalanceCapitalPolicyEnabled } from "./bkFreshBalanceCapitalPolicy.js";
 
 const DOWNFADE_STRATEGIES = new Set([
   "downfade_p80_p90",
@@ -108,10 +109,14 @@ export const ethDownfadeExecutionStore: EthBigBetExecutionStore = {
     try {
       return await db.transaction(async (tx) => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(42015000)`);
-        const otherBigBetReservedCents = await allUnresolvedRiskCents(tx);
-        if (otherBigBetReservedCents == null) return "reservation_failed";
-        const capital = evaluateEthAccountCapital({ ...input.capital, otherBigBetReservedCents, requestedRiskCents: input.requestedRiskCents });
-        if (!capital.allowed) return "capital_blocked";
+        if (isBkFreshBalanceCapitalPolicyEnabled()) {
+          if (evaluateBkFreshBalanceOnly(input.capital.availableBalanceCents, input.requestedRiskCents) !== "allow") return "capital_blocked";
+        } else {
+          const otherBigBetReservedCents = await allUnresolvedRiskCents(tx);
+          if (otherBigBetReservedCents == null) return "reservation_failed";
+          const capital = evaluateEthAccountCapital({ ...input.capital, otherBigBetReservedCents, requestedRiskCents: input.requestedRiskCents });
+          if (!capital.allowed) return "capital_blocked";
+        }
         const result = await tx.execute(sql`
           INSERT INTO eth_big_bet_orders
             (id, strategy, order_tag, ticker, market_open_time_ms, side,
