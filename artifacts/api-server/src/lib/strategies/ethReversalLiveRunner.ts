@@ -70,7 +70,7 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
   const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
   if (requestedRiskCents < 1) return "capital_unavailable";
   const flagEnabled = isBkFreshBalanceCapitalPolicyEnabled();
-  const capitalBase = await readApprovedEthBigBetCapitalBase(input.exchangeIndex);
+  const capitalBase = flagEnabled ? null : await readApprovedEthBigBetCapitalBase(input.exchangeIndex);
   if (!flagEnabled && !capitalBase) return "capital_unavailable";
   const oldCapital = capitalBase ? evaluateEthAccountCapital({ ...capitalBase, requestedRiskCents }) : null;
   const freshAvailableBalanceCents = flagEnabled
@@ -78,8 +78,8 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
     : capitalBase!.availableBalanceCents;
   const admission = evaluateBkCapitalAdmission({ service: "C", ticker: input.market.ticker, exchangeIndex: input.exchangeIndex,
     requestedRiskCents, freshAvailableBalanceCents,
-    oldPolicyDecision: oldCapital == null ? "unavailable" : oldCapital.allowed ? "allow" : oldCapital.reason === "invalid_input" ? "unavailable" : "block",
-    oldPolicyBlocker: oldCapital == null || oldCapital.allowed ? null : oldCapital.reason });
+    oldPolicyDecision: flagEnabled ? "unavailable" : oldCapital!.allowed ? "allow" : oldCapital!.reason === "invalid_input" ? "unavailable" : "block",
+    oldPolicyBlocker: flagEnabled ? "not_evaluated_flagged_fresh_balance_policy" : oldCapital!.allowed ? null : oldCapital!.reason });
   if (!admission.finalAllowed) {
     logger.info(bkCapitalTelemetry(admission, "not_attempted"), "BK capital admission");
     return admission.finalDecision === "unavailable" ? "capital_unavailable" : "capital_blocked";

@@ -6,6 +6,8 @@ import {
   evaluateBkFreshBalanceOnly,
   isBkFreshBalanceCapitalPolicyEnabled,
   bkCapitalTelemetry,
+  _setBkFreshBalanceReadForTesting,
+  readBkFreshSameShardBalance,
 } from "./bkFreshBalanceCapitalPolicy.js";
 import {
   _setEthBigBetStoreDbForTesting,
@@ -165,4 +167,36 @@ test("telemetry names the enabled comparison as fresh_balance_policy_decision", 
     final_decision: "allow",
     order_result: "not_attempted",
   });
+});
+
+test("fresh same-shard reader rejects invalid exchange index without calling Kalshi", async () => {
+  let called = false;
+  _setBkFreshBalanceReadForTesting((async () => { called = true; return { value: { balance: 77 }, stale: false }; }) as any);
+  try {
+    assert.equal(await readBkFreshSameShardBalance(-1), null);
+    assert.equal(called, false);
+  } finally {
+    _setBkFreshBalanceReadForTesting(null);
+  }
+});
+
+test("fresh same-shard reader fails closed on stale, malformed, or failed balance reads", async () => {
+  try {
+    _setBkFreshBalanceReadForTesting((async () => ({ value: { balance: 77 }, stale: true })) as any);
+    assert.equal(await readBkFreshSameShardBalance(2), null);
+
+    _setBkFreshBalanceReadForTesting((async () => ({ value: { balance: "77" }, stale: false })) as any);
+    assert.equal(await readBkFreshSameShardBalance(2), null);
+
+    _setBkFreshBalanceReadForTesting((async () => { throw new Error("unavailable"); }) as any);
+    assert.equal(await readBkFreshSameShardBalance(2), null);
+
+    _setBkFreshBalanceReadForTesting((async (exchangeIndex: number) => {
+      assert.equal(exchangeIndex, 2);
+      return { value: { balance: 77 }, stale: false };
+    }) as any);
+    assert.equal(await readBkFreshSameShardBalance(2), 77);
+  } finally {
+    _setBkFreshBalanceReadForTesting(null);
+  }
 });

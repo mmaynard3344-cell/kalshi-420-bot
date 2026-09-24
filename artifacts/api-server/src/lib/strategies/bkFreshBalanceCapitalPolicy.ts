@@ -1,5 +1,12 @@
 import { fetchFreshKalshiBalanceForExchangeRead, kalshiBalanceCents } from "../kalshiBalance.js";
 
+type BkFreshBalanceRead = typeof fetchFreshKalshiBalanceForExchangeRead;
+let bkFreshBalanceRead: BkFreshBalanceRead = fetchFreshKalshiBalanceForExchangeRead;
+
+export function _setBkFreshBalanceReadForTesting(reader: BkFreshBalanceRead | null): void {
+  bkFreshBalanceRead = reader ?? fetchFreshKalshiBalanceForExchangeRead;
+}
+
 export const BK_FRESH_BALANCE_CAPITAL_POLICY_ENV = "BK_FRESH_BALANCE_CAPITAL_POLICY" as const;
 
 export const BK_CAPITAL_SERVICES = ["B","C","D","E","F","G","H","I","J","K"] as const;
@@ -77,7 +84,7 @@ export function evaluateBkCapitalAdmission(input: BkCapitalAdmissionInput): BkCa
 export async function readBkFreshSameShardBalance(exchangeIndex: number): Promise<number | null> {
   if (!validNonnegativeInteger(exchangeIndex)) return null;
   try {
-    const balance = await fetchFreshKalshiBalanceForExchangeRead(exchangeIndex);
+    const balance = await bkFreshBalanceRead(exchangeIndex);
     if (balance.stale) return null;
     return kalshiBalanceCents(balance.value);
   } catch {
