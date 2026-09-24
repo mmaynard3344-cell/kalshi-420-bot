@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   buildEthAshV2ShadowCapitalEvent,
   type EthAshV2ShadowCapitalInput,
@@ -85,8 +84,10 @@ async function walk(dir: string): Promise<string[]> {
 }
 
 test("no non-test application source imports the I shadow adapter", async () => {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const srcRoot = path.resolve(here, "../../..");
+  // The test is bundled to /tmp by run-all-tests.mjs, so import.meta.url no
+  // longer points inside the repository. The runner executes with cwd at the
+  // API-server root; scan that source tree explicitly.
+  const srcRoot = path.resolve(process.cwd(), "src");
   const files = (await walk(srcRoot))
     .filter((file) => /\.(ts|mts|cts|js|mjs|cjs)$/.test(file))
     .filter((file) => !file.endsWith("ethAshV2ShadowCapitalTelemetry.ts"))
