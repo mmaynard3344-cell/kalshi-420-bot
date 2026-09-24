@@ -11,6 +11,7 @@ import { readApprovedEthBigBetCapitalBase } from "./ethBigBetApprovedCapitalProv
 import { currentEthServiceEnablement } from "./ethServiceEnablementContract.js";
 import { currentEthServiceRole } from "./ethServiceRole.js";
 import { scheduleEthSignalEvidence } from "./ethSignalEvidenceLedger.js";
+import { bkCapitalTelemetry, evaluateBkCapitalAdmission, isBkFreshBalanceCapitalPolicyEnabled, readBkFreshSameShardBalance } from "./bkFreshBalanceCapitalPolicy.js";
 
 export const ETH_DOWNFADE_SERVICE_EXECUTION_APPROVED = true;
 export type EthDownfadeLiveOutcome = "disabled"|"no_signal"|"capital_unavailable"|"capital_blocked"|"routing_unavailable"|"storage_unavailable"|"submitted"|"blocked_duplicate"|"blocked_invalid_size"|"reservation_failed"|"submission_unknown"|"rejected";
@@ -44,11 +45,10 @@ export async function runEthDownfadeServiceWhenExplicitlyEnabled(input:{market:E
   if(!intent)return finish("no_signal");
   if(input.exchangeIndex==null||!Number.isInteger(input.exchangeIndex)||input.exchangeIndex<0)return finish("routing_unavailable","invalid_exchange_index");
   try{await ensureStoreReady();}catch{return finish("storage_unavailable","execution_store_unavailable");}
-  const capitalBase=await readApprovedEthBigBetCapitalBase(input.exchangeIndex);if(!capitalBase)return finish("capital_unavailable","capital_base_unavailable");
   const requestedRiskCents=ethBigBetCapitalRiskCents(intent.wagerCents,intent.limitPriceCents);if(requestedRiskCents<1)return finish("capital_unavailable","invalid_requested_risk");
-  const capital=evaluateEthAccountCapital({...capitalBase,requestedRiskCents});if(!capital.allowed)return finish(capital.reason==="invalid_input"?"capital_unavailable":"capital_blocked",capital.reason);
+  const flagEnabled=isBkFreshBalanceCapitalPolicyEnabled();const capitalBase=flagEnabled?null:await readApprovedEthBigBetCapitalBase(input.exchangeIndex);if(!flagEnabled&&!capitalBase)return finish("capital_unavailable","capital_base_unavailable");const oldCapital=capitalBase?evaluateEthAccountCapital({...capitalBase,requestedRiskCents}):null;const freshAvailableBalanceCents=flagEnabled?await readBkFreshSameShardBalance(input.exchangeIndex):capitalBase!.availableBalanceCents;const service=role==="downfade_e"?"E":"F";const admission=evaluateBkCapitalAdmission({service,ticker:input.market.ticker,exchangeIndex:input.exchangeIndex,requestedRiskCents,freshAvailableBalanceCents,oldPolicyDecision:flagEnabled?"unavailable":oldCapital!.allowed?"allow":oldCapital!.reason==="invalid_input"?"unavailable":"block",oldPolicyBlocker:flagEnabled?"not_evaluated_flagged_fresh_balance_policy":oldCapital!.allowed?null:oldCapital!.reason});if(!admission.finalAllowed){logger.info(bkCapitalTelemetry(admission,"not_attempted"),"BK capital admission");return finish(admission.finalDecision==="unavailable"?"capital_unavailable":"capital_blocked",admission.flagEnabled?`bk_fresh_balance_${admission.newPolicyDecision}`:(oldCapital!.allowed?null:oldCapital!.reason));}
   const exchange=createEthBigBetKalshiSubmitter(input.exchangeIndex);if(!exchange)return finish("routing_unavailable","exchange_route_unavailable");
-  const outcome=await submitEthBigBetIntent({intent,store:ethDownfadeExecutionStore,exchange,capital:capitalBase,requestedRiskCents});
+  const outcome=await submitEthBigBetIntent({intent,store:ethDownfadeExecutionStore,exchange,capital:flagEnabled?{availableBalanceCents:freshAvailableBalanceCents!,martingaleReserveCents:0,safetyReserveCents:0,otherBigBetReservedCents:0}:capitalBase!,requestedRiskCents});logger.info(bkCapitalTelemetry(admission,outcome),"BK capital admission");
   const rejectionReason=outcome==="submitted"?null:outcome==="blocked_duplicate"?"duplicate_strategy_market":outcome==="blocked_invalid_size"?"invalid_order_size":outcome==="capital_blocked"?"capital_guard_blocked":outcome==="reservation_failed"?"durable_reservation_failed":outcome==="submission_unknown"?"exchange_submission_unknown":outcome==="rejected"?"exchange_rejected_reason_not_exposed_by_executor":outcome;
   return finish(outcome,rejectionReason);
 }
