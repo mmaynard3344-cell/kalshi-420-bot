@@ -38,7 +38,7 @@ jobs:
       - name: Checkout exact A2 review HEAD
         uses: actions/checkout@v4
         with:
-          ref: f29e871f776a01d6183fc457c29928d30f4380b4
+          ref: ed7eb375dbff74b9208872ac6647c8e0c4a29fb6
           fetch-depth: 1
 
       - name: Set up Node
