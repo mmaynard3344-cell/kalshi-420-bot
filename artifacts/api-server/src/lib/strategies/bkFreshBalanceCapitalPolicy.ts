@@ -1,3 +1,5 @@
+import { fetchFreshKalshiBalanceForExchangeRead, kalshiBalanceCents } from "../kalshiBalance.js";
+
 export const BK_FRESH_BALANCE_CAPITAL_POLICY_ENV = "BK_FRESH_BALANCE_CAPITAL_POLICY" as const;
 
 export const BK_CAPITAL_SERVICES = ["B","C","D","E","F","G","H","I","J","K"] as const;
@@ -72,6 +74,17 @@ export function evaluateBkCapitalAdmission(input: BkCapitalAdmissionInput): BkCa
   };
 }
 
+export async function readBkFreshSameShardBalance(exchangeIndex: number): Promise<number | null> {
+  if (!validNonnegativeInteger(exchangeIndex)) return null;
+  try {
+    const balance = await fetchFreshKalshiBalanceForExchangeRead(exchangeIndex);
+    if (balance.stale) return null;
+    return kalshiBalanceCents(balance.value);
+  } catch {
+    return null;
+  }
+}
+
 export function bkCapitalTelemetry(
   decision: BkCapitalAdmissionDecision,
   orderResult: string,
@@ -84,7 +97,7 @@ export function bkCapitalTelemetry(
     fresh_available_balance_cents: decision.freshAvailableBalanceCents,
     old_policy_decision: decision.oldPolicyDecision,
     bk_flag_enabled: decision.flagEnabled,
-    new_policy_decision: decision.newPolicyDecision,
+    fresh_balance_policy_decision: decision.newPolicyDecision,
     final_decision: decision.finalDecision,
     order_result: orderResult,
   };

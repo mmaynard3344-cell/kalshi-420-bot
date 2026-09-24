@@ -9,7 +9,7 @@ import { initEthBigBetStore } from "./ethBigBetStore.js";
 import { prepareEthReversalServiceIntent } from "./ethReversalServiceRuntime.js";
 import { currentEthServiceEnablement } from "./ethServiceEnablementContract.js";
 import { currentEthServiceRole, serviceOwnsReversal } from "./ethServiceRole.js";
-import { bkCapitalTelemetry, evaluateBkCapitalAdmission } from "./bkFreshBalanceCapitalPolicy.js";
+import { bkCapitalTelemetry, evaluateBkCapitalAdmission, isBkFreshBalanceCapitalPolicyEnabled, readBkFreshSameShardBalance } from "./bkFreshBalanceCapitalPolicy.js";
 import { logger } from "../logger.js";
 
 /**
@@ -67,15 +67,19 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
   if (input.exchangeIndex == null || !Number.isInteger(input.exchangeIndex) || input.exchangeIndex < 0) {
     return "routing_unavailable";
   }
-  const capitalBase = await readApprovedEthBigBetCapitalBase(input.exchangeIndex);
-  if (!capitalBase) return "capital_unavailable";
   const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
   if (requestedRiskCents < 1) return "capital_unavailable";
-  const capital = evaluateEthAccountCapital({ ...capitalBase, requestedRiskCents });
+  const flagEnabled = isBkFreshBalanceCapitalPolicyEnabled();
+  const capitalBase = await readApprovedEthBigBetCapitalBase(input.exchangeIndex);
+  if (!flagEnabled && !capitalBase) return "capital_unavailable";
+  const oldCapital = capitalBase ? evaluateEthAccountCapital({ ...capitalBase, requestedRiskCents }) : null;
+  const freshAvailableBalanceCents = flagEnabled
+    ? await readBkFreshSameShardBalance(input.exchangeIndex)
+    : capitalBase!.availableBalanceCents;
   const admission = evaluateBkCapitalAdmission({ service: "C", ticker: input.market.ticker, exchangeIndex: input.exchangeIndex,
-    requestedRiskCents, freshAvailableBalanceCents: capitalBase.availableBalanceCents,
-    oldPolicyDecision: capital.allowed ? "allow" : capital.reason === "invalid_input" ? "unavailable" : "block",
-    oldPolicyBlocker: capital.allowed ? null : capital.reason });
+    requestedRiskCents, freshAvailableBalanceCents,
+    oldPolicyDecision: oldCapital == null ? "unavailable" : oldCapital.allowed ? "allow" : oldCapital.reason === "invalid_input" ? "unavailable" : "block",
+    oldPolicyBlocker: oldCapital == null || oldCapital.allowed ? null : oldCapital.reason });
   if (!admission.finalAllowed) {
     logger.info(bkCapitalTelemetry(admission, "not_attempted"), "BK capital admission");
     return admission.finalDecision === "unavailable" ? "capital_unavailable" : "capital_blocked";
@@ -91,7 +95,7 @@ export async function runEthReversalServiceWhenExplicitlyEnabled(input: {
     intent,
     store: ethBigBetExecutionStore,
     exchange,
-    capital: capitalBase,
+    capital: capitalBase ?? { availableBalanceCents: freshAvailableBalanceCents!, martingaleReserveCents: 0, safetyReserveCents: 0, otherBigBetReservedCents: 0 },
     requestedRiskCents,
   });
   logger.info(bkCapitalTelemetry(admission, outcome), "BK capital admission");

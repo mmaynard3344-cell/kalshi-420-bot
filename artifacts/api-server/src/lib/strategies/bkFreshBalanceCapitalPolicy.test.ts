@@ -5,6 +5,7 @@ import {
   evaluateBkCapitalAdmission,
   evaluateBkFreshBalanceOnly,
   isBkFreshBalanceCapitalPolicyEnabled,
+  bkCapitalTelemetry,
 } from "./bkFreshBalanceCapitalPolicy.js";
 import {
   _setEthBigBetStoreDbForTesting,
@@ -148,4 +149,20 @@ test("flag true durable reservation recheck blocks one cent short", async () => 
     if (old == null) delete process.env["BK_FRESH_BALANCE_CAPITAL_POLICY"];
     else process.env["BK_FRESH_BALANCE_CAPITAL_POLICY"] = old;
   }
+});
+
+test("telemetry names the enabled comparison as fresh_balance_policy_decision", () => {
+  const decision = evaluateBkCapitalAdmission({ ...base, flagRaw: "true" });
+  assert.deepEqual(bkCapitalTelemetry(decision, "not_attempted"), {
+    service: "B",
+    ticker: "KXETH15M-TEST",
+    exchange_index: 2,
+    requested_risk_cents: 77,
+    fresh_available_balance_cents: 77,
+    old_policy_decision: "block",
+    bk_flag_enabled: true,
+    fresh_balance_policy_decision: "allow",
+    final_decision: "allow",
+    order_result: "not_attempted",
+  });
 });
