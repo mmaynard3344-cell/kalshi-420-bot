@@ -30,7 +30,7 @@ function memoryStore(seed: EthLongReversalReservation[] = []): EthLongReversalSt
     withAdmissionLock: async (fn) => fn({
       sumActiveRiskCents: async () => [...rows.values()]
         .filter((r) => ["reserved","submitted","submission_unknown","filled_unsettled"].includes(r.state))
-        .reduce((sum, r) => sum + r.requestedRiskCents, 0),
+        .reduce((sum, r) => sum + r.activeRiskCents, 0),
       insertReservation: async (r) => {
         if (rows.has(r.id) || [...rows.values()].some((x) => x.clientOrderId === r.clientOrderId)) return false;
         rows.set(r.id, r);
@@ -87,7 +87,7 @@ test("existing E/H/I long-reversal exposure blocks L over shared cap", async () 
   const store = memoryStore([{
     id:"e-existing",bucket:"ETH_15M_LONG_REVERSAL",service:"E",strategy:"downfade",
     ticker:"KXETH15M-OLD",clientOrderId:"cid-e",sourceOrderId:"e-order",exchangeIndex:1,
-    requestedRiskCents:150,state:"submitted",createdAtMs:1,updatedAtMs:1,
+    requestedRiskCents:150,activeRiskCents:150,filledContracts:null,actualNotionalCents:null,actualFeeCents:null,lastAdjustmentReason:null,state:"submitted",createdAtMs:1,updatedAtMs:1,
   }]);
   _setSweepReclaimAdmissionDepsForTesting({ store, claimUpdater: async () => true });
   const result = await admitSweepReclaimBeforeSubmit(input({ requestedRiskCents: 60 }));
