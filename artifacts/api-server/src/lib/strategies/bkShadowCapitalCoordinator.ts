@@ -417,7 +417,7 @@ export class PostgresBkShadowCapitalStore implements BkShadowCapitalStore {
   constructor(private readonly db: DbLike) {}
 
   async ensureSchema(): Promise<void> {
-    await this.db.execute(sql\`
+    await this.db.execute(sql`
       CREATE TABLE IF NOT EXISTS eth_inflight_capital_reservations (
         id TEXT PRIMARY KEY,
         service TEXT NOT NULL CHECK (service IN ('B','C','D','E','F','G','H','I','J','K')),
@@ -432,12 +432,12 @@ export class PostgresBkShadowCapitalStore implements BkShadowCapitalStore {
         exchange_order_id TEXT,
         last_recovery_reason TEXT
       )
-    \`);
-    await this.db.execute(sql\`
+    `);
+    await this.db.execute(sql`
       CREATE INDEX IF NOT EXISTS eth_inflight_capital_reservations_active_idx
       ON eth_inflight_capital_reservations (exchange_index, state, created_at_ms)
       WHERE state IN ('inflight','accepted_pending_refresh','submission_unknown')
-    \`);
+    `);
   }
 
   async withExchangeAdmissionLock<T>(
@@ -446,16 +446,16 @@ export class PostgresBkShadowCapitalStore implements BkShadowCapitalStore {
   ): Promise<T> {
     if (!validNonnegativeSafeInteger(exchangeIndex)) throw new Error("invalid exchange index");
     return this.db.transaction(async (tx) => {
-      await tx.execute(sql\`SELECT pg_advisory_xact_lock(${BK_CAPITAL_ADVISORY_LOCK_NAMESPACE}, ${exchangeIndex})\`);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${BK_CAPITAL_ADVISORY_LOCK_NAMESPACE}, ${exchangeIndex})`);
       const locked: BkShadowLockedStore = {
         sumActiveRiskCents: async (targetExchangeIndex) => {
           if (targetExchangeIndex !== exchangeIndex) throw new Error("exchange index changed while locked");
-          const result = await tx.execute(sql\`
+          const result = await tx.execute(sql`
             SELECT COALESCE(SUM(requested_risk_cents), 0)::bigint AS reserved_cents
             FROM eth_inflight_capital_reservations
             WHERE exchange_index=${exchangeIndex}
               AND state IN ('inflight','accepted_pending_refresh','submission_unknown')
-          \`);
+          `);
           const raw = rowsOf(result)[0]?.["reserved_cents"] ?? 0;
           const amount = Number(raw);
           if (!validNonnegativeSafeInteger(amount)) throw new Error("invalid in-flight reserve sum");
@@ -463,7 +463,7 @@ export class PostgresBkShadowCapitalStore implements BkShadowCapitalStore {
         },
         insertInflight: async (reservation) => {
           if (reservation.exchangeIndex !== exchangeIndex || reservation.state !== "inflight") return false;
-          const result = await tx.execute(sql\`
+          const result = await tx.execute(sql`
             INSERT INTO eth_inflight_capital_reservations
               (id, service, strategy, ticker, client_order_id, exchange_index,
                requested_risk_cents, state, created_at_ms, updated_at_ms,
@@ -474,7 +474,7 @@ export class PostgresBkShadowCapitalStore implements BkShadowCapitalStore {
                'inflight', ${reservation.createdAtMs}, ${reservation.updatedAtMs}, NULL, NULL)
             ON CONFLICT DO NOTHING
             RETURNING id
-          \`);
+          `);
           return rowsOf(result).length === 1;
         },
       };
@@ -492,7 +492,7 @@ export class PostgresBkShadowCapitalStore implements BkShadowCapitalStore {
   }): Promise<boolean> {
     const fromStates = Array.isArray(input.from) ? input.from : [input.from];
     if (!input.id || fromStates.length === 0 || !validNonnegativeSafeInteger(input.updatedAtMs)) return false;
-    const result = await this.db.execute(sql\`
+    const result = await this.db.execute(sql`
       UPDATE eth_inflight_capital_reservations
       SET state=${input.to},
           updated_at_ms=${input.updatedAtMs},
@@ -501,20 +501,20 @@ export class PostgresBkShadowCapitalStore implements BkShadowCapitalStore {
       WHERE id=${input.id}
         AND state = ANY(${fromStates})
       RETURNING id
-    \`);
+    `);
     return rowsOf(result).length === 1;
   }
 
   async getById(id: string): Promise<BkInflightCapitalReservation | null> {
     if (!id) return null;
-    const result = await this.db.execute(sql\`
+    const result = await this.db.execute(sql`
       SELECT id, service, strategy, ticker, client_order_id, exchange_index,
              requested_risk_cents, state, created_at_ms, updated_at_ms,
              exchange_order_id, last_recovery_reason
       FROM eth_inflight_capital_reservations
       WHERE id=${id}
       LIMIT 1
-    \`);
+    `);
     const row = rowsOf(result)[0];
     return row ? parseReservationRow(row) : null;
   }
