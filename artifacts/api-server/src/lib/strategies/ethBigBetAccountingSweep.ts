@@ -1,7 +1,8 @@
 import { kalshiAuthFetch } from "../kalshiAuth.js";
-import { reconcilePersistedEthBigBetsForTicker } from "./ethBigBetSettlementReconciler.js";
+import { reconcilePersistedEthBigBetsForTicker, refreshEthBigBetLongReversalExposureForTicker } from "./ethBigBetSettlementReconciler.js";
 import {
   listUnresolvedEthBigBetTickers,
+  listUnresolvedEthBigBetSettlementRowsForTicker,
   promoteStaleReservedEthBigBetsToSubmissionUnknown,
 } from "./ethBigBetSettlementStore.js";
 
@@ -24,6 +25,8 @@ export interface EthBigBetAccountingSweepResult {
   tickersUnsettled: number;
   settledRows: number;
   unresolvedRows: number;
+  exposureAdjustedRows: number;
+  exposureRetainedRows: number;
   errors: number;
 }
 
@@ -54,6 +57,8 @@ export async function sweepUnresolvedEthBigBetAccounting(input: {
     tickersUnsettled: 0,
     settledRows: 0,
     unresolvedRows: 0,
+    exposureAdjustedRows: 0,
+    exposureRetainedRows: 0,
     errors: 0,
   };
 
@@ -74,6 +79,21 @@ export async function sweepUnresolvedEthBigBetAccounting(input: {
 
   for (const ticker of tickers) {
     result.tickersChecked++;
+
+    // Pre-settlement correlated-risk refresh. Only authoritative terminal
+    // order/fill evidence can shrink or release a shared reservation. Open,
+    // ambiguous, or incomplete orders retain their full original capacity.
+    try {
+      const exposure = await refreshEthBigBetLongReversalExposureForTicker({
+        ticker,
+        store: { listUnresolvedForTicker: listUnresolvedEthBigBetSettlementRowsForTicker },
+        authFetch,
+      });
+      result.exposureAdjustedRows += exposure.adjusted;
+      result.exposureRetainedRows += exposure.retained;
+    } catch {
+      result.errors++;
+    }
     let officialResult: "yes" | "no" | null = null;
     try {
       const response = await authFetch<MarketResponse>("GET", `/markets/${encodeURIComponent(ticker)}`);
