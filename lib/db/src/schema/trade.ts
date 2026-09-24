@@ -560,6 +560,7 @@ export const sweepReclaimClaims = pgTable(
     kalshiOrderId: text("kalshi_order_id"),
     filledContracts: doublePrecision("filled_contracts"),
     averageFillPriceCents: integer("average_fill_price_cents"),
+    actualFeeCents: integer("actual_fee_cents"),
     settlementResult: text("settlement_result"),
     realizedPnlCents: integer("realized_pnl_cents"),
     claimedAtMs: bigint("claimed_at_ms", { mode: "number" }).notNull(),
