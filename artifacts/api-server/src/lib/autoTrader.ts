@@ -3751,7 +3751,11 @@ function onEthMarketLifecycle(event: KalshiMarketLifecycleEvent): void {
   configureEthBoundarySettlementOrchestration();
   configureEth420BoundarySettlementOrchestration();
   if (event.eventType === "created") {
-    scheduleEthBoundaryDiscovery({ ticker: event.ticker, open_time: event.openTime });
+    // Created is pre-registration only. A stale/replayed created event must
+    // never cause an immediate REST probe of an already-open market.
+    if (openTimeMs > Date.now()) {
+      scheduleEthBoundaryDiscovery({ ticker: event.ticker, open_time: event.openTime });
+    }
     return;
   }
   // Kalshi's next-market activation occurs at the prior market close. It only
