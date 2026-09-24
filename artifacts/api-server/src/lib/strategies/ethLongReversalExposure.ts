@@ -24,6 +24,11 @@ export interface EthLongReversalReservation {
   sourceOrderId: string | null;
   exchangeIndex: number;
   requestedRiskCents: number;
+  activeRiskCents: number;
+  filledContracts: number | null;
+  actualNotionalCents: number | null;
+  actualFeeCents: number | null;
+  lastAdjustmentReason: string | null;
   state: EthLongReversalState;
   createdAtMs: number;
   updatedAtMs: number;
@@ -46,6 +51,17 @@ export interface EthLongReversalStore {
     sourceOrderId: string;
     from: EthLongReversalState | EthLongReversalState[];
     to: EthLongReversalState;
+    updatedAtMs: number;
+  }): Promise<boolean>;
+  adjustActiveRiskBySourceOrderId?(input: {
+    sourceOrderId: string;
+    from: EthLongReversalState | EthLongReversalState[];
+    to: "filled_unsettled" | "released";
+    activeRiskCents: number;
+    filledContracts: number;
+    actualNotionalCents: number;
+    actualFeeCents: number;
+    reason: string;
     updatedAtMs: number;
   }): Promise<boolean>;
 }
@@ -180,6 +196,11 @@ export async function acquireEthLongReversalExposure(input: {
         sourceOrderId: input.sourceOrderId ?? null,
         exchangeIndex: input.exchangeIndex,
         requestedRiskCents: input.requestedRiskCents,
+        activeRiskCents: input.requestedRiskCents,
+        filledContracts: null,
+        actualNotionalCents: null,
+        actualFeeCents: null,
+        lastAdjustmentReason: null,
         state: "reserved",
         createdAtMs: nowMs,
         updatedAtMs: nowMs,
@@ -225,7 +246,7 @@ export class PostgresEthLongReversalStore implements EthLongReversalStore {
       const locked: EthLongReversalLockedStore = {
         sumActiveRiskCents: async () => {
           const result = await tx.execute(sql`
-            SELECT COALESCE(SUM(requested_risk_cents), 0)::bigint AS active_risk_cents
+            SELECT COALESCE(SUM(active_risk_cents), 0)::bigint AS active_risk_cents
             FROM eth_long_reversal_reservations
             WHERE bucket=${ETH_LONG_REVERSAL_BUCKET}
               AND state IN ('reserved','submitted','submission_unknown','filled_unsettled')
@@ -238,11 +259,11 @@ export class PostgresEthLongReversalStore implements EthLongReversalStore {
           const result = await tx.execute(sql`
             INSERT INTO eth_long_reversal_reservations
               (id,bucket,service,strategy,ticker,client_order_id,source_order_id,exchange_index,
-               requested_risk_cents,state,created_at_ms,updated_at_ms)
+               requested_risk_cents,active_risk_cents,filled_contracts,actual_notional_cents,actual_fee_cents,last_adjustment_reason,state,created_at_ms,updated_at_ms)
             VALUES
               (${reservation.id},${reservation.bucket},${reservation.service},${reservation.strategy},
                ${reservation.ticker},${reservation.clientOrderId},${reservation.sourceOrderId},
-               ${reservation.exchangeIndex},${reservation.requestedRiskCents},'reserved',
+               ${reservation.exchangeIndex},${reservation.requestedRiskCents},${reservation.activeRiskCents},NULL,NULL,NULL,NULL,'reserved',
                ${reservation.createdAtMs},${reservation.updatedAtMs})
             ON CONFLICT DO NOTHING
             RETURNING id
@@ -266,6 +287,42 @@ export class PostgresEthLongReversalStore implements EthLongReversalStore {
       UPDATE eth_long_reversal_reservations
       SET state=${input.to}, updated_at_ms=${input.updatedAtMs}
       WHERE id=${input.id} AND state = ANY(${from})
+      RETURNING id
+    `);
+    return rowsOf(result).length === 1;
+  }
+
+
+  async adjustActiveRiskBySourceOrderId(input: {
+    sourceOrderId: string;
+    from: EthLongReversalState | EthLongReversalState[];
+    to: "filled_unsettled" | "released";
+    activeRiskCents: number;
+    filledContracts: number;
+    actualNotionalCents: number;
+    actualFeeCents: number;
+    reason: string;
+    updatedAtMs: number;
+  }): Promise<boolean> {
+    const from = Array.isArray(input.from) ? input.from : [input.from];
+    if (!input.sourceOrderId || from.length === 0
+      || !nonnegativeSafeInteger(input.activeRiskCents)
+      || !Number.isFinite(input.filledContracts) || input.filledContracts < 0
+      || !nonnegativeSafeInteger(input.actualNotionalCents)
+      || !nonnegativeSafeInteger(input.actualFeeCents)
+      || !input.reason
+      || !nonnegativeSafeInteger(input.updatedAtMs)) return false;
+    const result = await this.db.execute(sql`
+      UPDATE eth_long_reversal_reservations
+      SET state=${input.to},
+          active_risk_cents=${input.activeRiskCents},
+          filled_contracts=${input.filledContracts},
+          actual_notional_cents=${input.actualNotionalCents},
+          actual_fee_cents=${input.actualFeeCents},
+          last_adjustment_reason=${input.reason},
+          updated_at_ms=${input.updatedAtMs}
+      WHERE source_order_id=${input.sourceOrderId}
+        AND state = ANY(${from})
       RETURNING id
     `);
     return rowsOf(result).length === 1;
@@ -308,4 +365,30 @@ export async function transitionProductionEthLongReversalBySourceOrderId(input: 
 
 export function activeEthLongReversalStates(): readonly EthLongReversalState[] {
   return ACTIVE_STATES;
+}
+
+export async function adjustProductionEthLongReversalRiskBySourceOrderId(input: {
+  sourceOrderId: string;
+  activeRiskCents: number;
+  filledContracts: number;
+  actualNotionalCents: number;
+  actualFeeCents: number;
+  terminalZeroFill?: boolean;
+  reason: string;
+  updatedAtMs?: number;
+}): Promise<boolean> {
+  const mod = await import("@workspace/db");
+  const store = new PostgresEthLongReversalStore(mod.db as any);
+  if (!store.adjustActiveRiskBySourceOrderId) return false;
+  return store.adjustActiveRiskBySourceOrderId({
+    sourceOrderId: input.sourceOrderId,
+    from: ["submitted","submission_unknown","filled_unsettled"],
+    to: input.terminalZeroFill ? "released" : "filled_unsettled",
+    activeRiskCents: input.activeRiskCents,
+    filledContracts: input.filledContracts,
+    actualNotionalCents: input.actualNotionalCents,
+    actualFeeCents: input.actualFeeCents,
+    reason: input.reason,
+    updatedAtMs: input.updatedAtMs ?? Date.now(),
+  });
 }
