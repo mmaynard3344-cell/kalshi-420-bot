@@ -97,7 +97,10 @@ export function evaluateA2BaselineReversion(input: {
   }
 
   const sourceDropFraction = (input.source.open - input.source.close) / input.source.open;
-  if (!Number.isFinite(sourceDropFraction) || sourceDropFraction < A2_DROP_THRESHOLD) {
+  const thresholdClose = input.source.open * (1 - A2_DROP_THRESHOLD);
+  const numericTolerance = Math.max(1, Math.abs(input.source.open)) * 1e-12;
+  if (!Number.isFinite(sourceDropFraction)
+    || input.source.close > thresholdClose + numericTolerance) {
     return { signal: false, reason: "drop_below_threshold", sourceDropFraction };
   }
 
