@@ -1258,7 +1258,10 @@ describe("fillReconciler endpoint URL", () => {
     // like "550e8400-e29b-41d4-a716-446655440000".  We build one from random
     // hex that has no "-N" analytics suffix.
     const hex = () => Math.floor(Math.random() * 0x10000).toString(16).padStart(4, "0");
-    const rawSqlPk = `${hex()}${hex()}-${hex()}-4${hex().slice(1)}-${hex()}-${hex()}${hex()}${hex()}`;
+    // Keep the SQL-PK fixture deterministic at the suffix boundary: a UUID can
+    // legitimately end in decimal digits, which would make /-\\d+$/ mistake
+    // the UUID tail for the analytics "-N" suffix this test is excluding.
+    const rawSqlPk = "550e8400-e29b-41d4-a716-44665544abcd";
 
     // Confirm the fixture itself is suffix-free.
     assert.ok(
