@@ -51,11 +51,12 @@ function params(id: string, ticker: string, openMs = TEST_OPEN_MS): SweepReclaim
 }
 
 async function clean(): Promise<void> {
-  await db.execute(drizzleSql\`
-    DELETE FROM sweep_reclaim_claims
-    WHERE source_candle_open_ms >= ${TEST_OPEN_MS}
-      AND source_candle_open_ms < ${TEST_OPEN_MS + 24 * 60 * 60_000}
-  \`);
+  await db.execute(drizzleSql.raw(
+    "DELETE FROM sweep_reclaim_claims WHERE source_candle_open_ms >= " +
+      TEST_OPEN_MS +
+      " AND source_candle_open_ms < " +
+      (TEST_OPEN_MS + 24 * 60 * 60_000),
+  ));
 }
 
 describe("tradeStore — Sweep/Reclaim durable claims", async () => {
