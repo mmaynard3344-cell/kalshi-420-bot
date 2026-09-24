@@ -5,6 +5,7 @@ import {
 } from "./ethBigBetAccountingSweep.js";
 
 const noRecovery = async () => 0;
+const noExposureRefresh = async () => ({ adjusted: 0, retained: 0 });
 
 test("accounting sweep recovers stale reserved rows before ticker discovery", async () => {
   const sequence: string[] = [];
@@ -14,6 +15,7 @@ test("accounting sweep recovers stale reserved rows before ticker discovery", as
       sequence.push(`recover:${nowMs}`);
       return 2;
     },
+    refreshExposure: noExposureRefresh,
     listTickers: async () => {
       sequence.push("list");
       return [];
@@ -28,6 +30,7 @@ test("accounting sweep reconciles only tickers with authoritative YES/NO", async
   const reconciled: Array<[string, string]> = [];
   const result = await sweepUnresolvedEthBigBetAccounting({
     recoverReserved: noRecovery,
+    refreshExposure: noExposureRefresh,
     listTickers: async (limit) => {
       assert.equal(limit, 50);
       return ["KXETH15M-YES", "KXETH15M-PENDING", "KXETH15M-NO"];
@@ -52,6 +55,8 @@ test("accounting sweep reconciles only tickers with authoritative YES/NO", async
     tickersUnsettled: 1,
     settledRows: 2,
     unresolvedRows: 0,
+    exposureAdjustedRows: 0,
+    exposureRetainedRows: 0,
     errors: 0,
   });
 });
@@ -59,6 +64,7 @@ test("accounting sweep reconciles only tickers with authoritative YES/NO", async
 test("accounting sweep leaves incomplete reconciliation unresolved for later retry", async () => {
   const result = await sweepUnresolvedEthBigBetAccounting({
     recoverReserved: noRecovery,
+    refreshExposure: noExposureRefresh,
     listTickers: async () => ["KXETH15M-X"],
     authFetch: async <T>(): Promise<T> => ({ market: { result: "yes" } } as T),
     reconcile: async () => ({ settled: 0, unresolved: 2 }),
@@ -71,6 +77,7 @@ test("accounting sweep leaves incomplete reconciliation unresolved for later ret
 test("reserved recovery failure is isolated and submitted rows still reconcile", async () => {
   const result = await sweepUnresolvedEthBigBetAccounting({
     recoverReserved: async () => { throw new Error("recovery db failure"); },
+    refreshExposure: noExposureRefresh,
     listTickers: async () => ["KXETH15M-X"],
     authFetch: async <T>(): Promise<T> => ({ market: { result: "yes" } } as T),
     reconcile: async () => ({ settled: 1, unresolved: 0 }),
@@ -83,6 +90,7 @@ test("market API failure is isolated and later tickers continue", async () => {
   const reconciled: string[] = [];
   const result = await sweepUnresolvedEthBigBetAccounting({
     recoverReserved: noRecovery,
+    refreshExposure: noExposureRefresh,
     listTickers: async () => ["KXETH15M-BAD", "KXETH15M-GOOD"],
     authFetch: async <T>(_method: string, path: string): Promise<T> => {
       if (path.includes("BAD")) throw new Error("network");
@@ -102,6 +110,7 @@ test("ticker discovery failure fails isolated with no market reads", async () =>
   let marketRead = false;
   const result = await sweepUnresolvedEthBigBetAccounting({
     recoverReserved: noRecovery,
+    refreshExposure: noExposureRefresh,
     listTickers: async () => { throw new Error("db unavailable"); },
     authFetch: async <T>(): Promise<T> => { marketRead = true; return {} as T; },
   });
@@ -112,6 +121,8 @@ test("ticker discovery failure fails isolated with no market reads", async () =>
     tickersUnsettled: 0,
     settledRows: 0,
     unresolvedRows: 0,
+    exposureAdjustedRows: 0,
+    exposureRetainedRows: 0,
     errors: 1,
   });
 });
@@ -121,6 +132,7 @@ test("custom sweep limit is passed through to bounded ticker discovery", async (
   await sweepUnresolvedEthBigBetAccounting({
     limit: 7,
     recoverReserved: noRecovery,
+    refreshExposure: noExposureRefresh,
     listTickers: async (limit) => { seenLimit = limit; return []; },
   });
   assert.equal(seenLimit, 7);
