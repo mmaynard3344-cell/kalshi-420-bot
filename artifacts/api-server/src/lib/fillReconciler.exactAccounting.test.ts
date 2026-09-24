@@ -27,6 +27,7 @@ import {
   computeFillParams,
   reconcileOrder,
   _setKalshiAuthFetchForTesting,
+  _setVerifyReconciliationOwnershipForTesting,
 } from "./fillReconciler.js";
 import { normalizeKalshiFill, type KalshiFillWire } from "./kalshiFillNormalizer.js";
 import {
@@ -320,11 +321,13 @@ describe("EA-9: mixed fill response — one fill missing fill_id rejects the who
 describe("EA-10: absent or malformed fee rejects entire response through fetchFills", () => {
   beforeEach(() => {
     _resetStateForTesting();
+    _setVerifyReconciliationOwnershipForTesting(async () => true);
     mock.timers.enable({ apis: ["setTimeout"] });
   });
 
   afterEach(() => {
     _setKalshiAuthFetchForTesting(null);
+    _setVerifyReconciliationOwnershipForTesting(null);
     mock.timers.reset();
   });
 
