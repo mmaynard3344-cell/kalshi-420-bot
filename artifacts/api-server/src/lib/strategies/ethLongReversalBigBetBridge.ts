@@ -8,17 +8,18 @@ import {
   isEthLongReversalExposure,
   readEthLongReversalCapCents,
   type EthLongReversalService,
+  type EthLongReversalStore,
 } from "./ethLongReversalExposure.js";
 
-let storePromise: Promise<PostgresEthLongReversalStore> | null = null;
-let storeOverride: PostgresEthLongReversalStore | null = null;
+let storePromise: Promise<EthLongReversalStore> | null = null;
+let storeOverride: EthLongReversalStore | null = null;
 
-export function _setLongReversalBridgeStoreForTesting(store: PostgresEthLongReversalStore | null): void {
+export function _setLongReversalBridgeStoreForTesting(store: EthLongReversalStore | null): void {
   storeOverride = store;
   storePromise = null;
 }
 
-async function productionStore(): Promise<PostgresEthLongReversalStore> {
+async function productionStore(): Promise<EthLongReversalStore> {
   if (storeOverride) return storeOverride;
   storePromise ??= import("@workspace/db").then((mod) =>
     new PostgresEthLongReversalStore(mod.db as any),
