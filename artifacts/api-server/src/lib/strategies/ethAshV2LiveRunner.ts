@@ -2,7 +2,7 @@ import { logger } from "../logger.js";
 import type { Eth420CandidateMarket } from "./eth420SixStepCandidate.js";
 import { prepareEthAshV2Intent } from "./ethAshV2ServiceRuntime.js";
 import { createEthBigBetKalshiSubmitter } from "./ethBigBetKalshiExchange.js";
-import { submitEthBigBetIntent } from "./ethBigBetExecutor.js";
+import { submitEthBigBetWithLongReversalAdmission } from "./ethLongReversalBigBetBridge.js";
 import { ethDownfadeExecutionStore, initEthDownfadeExecutionStore } from "./ethDownfadeExecutionStore.js";
 import { ethBigBetCapitalRiskCents } from "./ethBigBetLifecycle.js";
 import { evaluateEthAccountCapital } from "./ethAccountCapitalGuard.js";
@@ -25,7 +25,9 @@ export type EthAshV2LiveOutcome =
   | "blocked_invalid_size"
   | "reservation_failed"
   | "submission_unknown"
-  | "rejected";
+  | "rejected"
+  | "correlated_cap_unavailable"
+  | "correlated_cap_blocked";
 
 let storeReady: Promise<void> | null = null;
 async function ensureStoreReady(): Promise<void> {
@@ -102,14 +104,18 @@ export async function runEthAshV2WhenExplicitlyEnabled(input: {
 
   const exchange = createEthBigBetKalshiSubmitter(input.exchangeIndex);
   if (!exchange) return finish("routing_unavailable", "exchange_route_unavailable");
-  const outcome = await submitEthBigBetIntent({
+  const outcome = await submitEthBigBetWithLongReversalAdmission({
+    service: "I",
     intent,
-    store: ethDownfadeExecutionStore,
+    exchangeIndex: input.exchangeIndex,
+    executionStore: ethDownfadeExecutionStore,
     exchange,
     capital: capitalBase,
     requestedRiskCents,
   });
   const rejectionReason = outcome === "submitted" ? null
+    : outcome === "correlated_cap_unavailable" ? "long_reversal_cap_unavailable"
+    : outcome === "correlated_cap_blocked" ? "long_reversal_cap_blocked"
     : outcome === "blocked_duplicate" ? "duplicate_strategy_market"
     : outcome === "blocked_invalid_size" ? "invalid_order_size"
     : outcome === "capital_blocked" ? "capital_guard_blocked"
