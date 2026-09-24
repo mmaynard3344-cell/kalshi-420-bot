@@ -20,6 +20,25 @@ function effectivePrincipalCents(_nowMs = Date.now()) {
   return PRINCIPAL_CENTS[0];
 }
 
+function feeInclusiveRequestedRiskCents(principalCents, limitPriceCents) {
+  const contracts = Math.floor(principalCents / limitPriceCents);
+  if (!Number.isSafeInteger(contracts) || contracts < 1) return null;
+  const feeHeadroomCents = Math.ceil(0.07 * contracts * limitPriceCents * (100 - limitPriceCents) / 100);
+  const risk = principalCents + feeHeadroomCents;
+  return Number.isSafeInteger(risk) && risk > 0 ? risk : null;
+}
+
+async function freshSameShardBalanceCents(exchangeIndex) {
+  if (!Number.isInteger(exchangeIndex) || exchangeIndex < 0) return null;
+  try {
+    const raw = await authFetch("GET", `/portfolio/balance?exchange_index=${exchangeIndex}`);
+    const value = Number(raw?.balance);
+    return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 function log(event, data = {}) {
   console.log(JSON.stringify({ ts: new Date().toISOString(), service: "K", strategy: "Kamakazee!", mode: "LIVE", event, ...data }));
 }
@@ -286,6 +305,31 @@ async function evaluate() {
   if (!Number.isInteger(payload.exchange_index) || payload.exchange_index < 0) {
     await db.execute(sql`UPDATE kamakazee_orders SET order_status='blocked_missing_exchange_index', updated_at_ms=${Date.now()} WHERE target_ticker=${targetTicker}`);
     log("FAIL_CLOSED", { reason: "missing_exchange_index", targetTicker });
+    return;
+  }
+  const requestedRiskCents = feeInclusiveRequestedRiskCents(principalCents, LIMIT_CENTS);
+  const flagEnabled = process.env.BK_FRESH_BALANCE_CAPITAL_POLICY === "true";
+  const freshAvailableBalanceCents = flagEnabled ? await freshSameShardBalanceCents(payload.exchange_index) : null;
+  const freshBalancePolicyDecision = freshAvailableBalanceCents == null || requestedRiskCents == null
+    ? "unavailable"
+    : freshAvailableBalanceCents >= requestedRiskCents ? "allow" : "block";
+  const finalDecision = flagEnabled ? freshBalancePolicyDecision : "allow";
+  log("BK_CAPITAL_ADMISSION", {
+    ticker: targetTicker,
+    exchange_index: payload.exchange_index,
+    requested_risk_cents: requestedRiskCents,
+    fresh_available_balance_cents: freshAvailableBalanceCents,
+    old_policy_decision: "allow",
+    bk_flag_enabled: flagEnabled,
+    fresh_balance_policy_decision: freshBalancePolicyDecision,
+    final_decision: finalDecision,
+    order_result: finalDecision === "allow" ? "pending_submit" : "not_attempted",
+  });
+  if (finalDecision !== "allow") {
+    await db.execute(sql`UPDATE kamakazee_orders
+      SET order_status='capital_blocked', transition_applied=TRUE, updated_at_ms=${Date.now()}
+      WHERE target_ticker=${targetTicker} AND client_order_id=${clientId}`);
+    log("FAIL_CLOSED", { reason: `bk_fresh_balance_${freshBalancePolicyDecision}`, targetTicker, requestedRiskCents, freshAvailableBalanceCents });
     return;
   }
   try {
