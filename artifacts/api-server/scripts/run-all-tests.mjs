@@ -98,3 +98,4 @@ run(process.execPath, ["scripts/run-db-contention-test.mjs"]);
 run(process.execPath, ["scripts/run-daily-verified-test.mjs"]);
 run(process.execPath, ["scripts/run-eth-no-martingale-test.mjs"]);
 run(process.execPath, ["scripts/run-eth-gateway-head-equivalence-test.mjs"]);
+run(process.execPath, ["scripts/run-sweep-reclaim-execution-test.mjs"]);
