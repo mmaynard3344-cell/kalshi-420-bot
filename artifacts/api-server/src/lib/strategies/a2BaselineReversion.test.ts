@@ -45,7 +45,7 @@ test("exact 0.8% finalized BTC drop qualifies at 45 cents", () => {
   assert.equal(decision.side, "yes");
   assert.equal(decision.stakeCents, A2_FIXED_STAKE_CENTS);
   assert.equal(decision.maxEntryPriceCents, A2_MAX_ENTRY_PRICE_CENTS);
-  assert.ok(decision.sourceDropFraction >= A2_DROP_THRESHOLD);
+  assert.ok(Math.abs(decision.sourceDropFraction - A2_DROP_THRESHOLD) < 1e-12);
 });
 
 test("drop below 0.8% does not qualify", () => {
