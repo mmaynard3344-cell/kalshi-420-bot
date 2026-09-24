@@ -18,6 +18,7 @@ type SweepReconcile = (
   ticker: string,
   result: "yes" | "no",
 ) => Promise<{ settled: number; unresolved: number }>;
+type SweepRefreshExposure = (input: { ticker: string; authFetch?: SweepAuthFetch }) => Promise<{ adjusted: number; retained: number }>;
 
 export interface EthBigBetAccountingSweepResult {
   recoveredReservedRows: number;
@@ -45,12 +46,19 @@ export async function sweepUnresolvedEthBigBetAccounting(input: {
   recoverReserved?: SweepRecoverReserved;
   listTickers?: SweepListTickers;
   reconcile?: SweepReconcile;
+  refreshExposure?: SweepRefreshExposure;
 } = {}): Promise<EthBigBetAccountingSweepResult> {
   const limit = input.limit ?? 50;
   const authFetch = input.authFetch ?? (kalshiAuthFetch as unknown as SweepAuthFetch);
   const recoverReserved = input.recoverReserved ?? promoteStaleReservedEthBigBetsToSubmissionUnknown;
   const listTickers = input.listTickers ?? listUnresolvedEthBigBetTickers;
   const reconcile = input.reconcile ?? reconcilePersistedEthBigBetsForTicker;
+  const refreshExposure: SweepRefreshExposure = input.refreshExposure ?? (async ({ ticker, authFetch }) =>
+    refreshEthBigBetLongReversalExposureForTicker({
+      ticker,
+      store: { listUnresolvedForTicker: listUnresolvedEthBigBetSettlementRowsForTicker },
+      authFetch,
+    }));
   const result: EthBigBetAccountingSweepResult = {
     recoveredReservedRows: 0,
     tickersChecked: 0,
@@ -84,11 +92,7 @@ export async function sweepUnresolvedEthBigBetAccounting(input: {
     // order/fill evidence can shrink or release a shared reservation. Open,
     // ambiguous, or incomplete orders retain their full original capacity.
     try {
-      const exposure = await refreshEthBigBetLongReversalExposureForTicker({
-        ticker,
-        store: { listUnresolvedForTicker: listUnresolvedEthBigBetSettlementRowsForTicker },
-        authFetch,
-      });
+      const exposure = await refreshExposure({ ticker, authFetch });
       result.exposureAdjustedRows += exposure.adjusted;
       result.exposureRetainedRows += exposure.retained;
     } catch {
