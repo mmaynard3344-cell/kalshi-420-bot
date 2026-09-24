@@ -1,0 +1,62 @@
+name: Verify A2 Baseline Reversion review
+
+on:
+  push:
+    branches:
+      - verify/a2-baseline-reversion-v1
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kalshi_a2_review
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d kalshi_a2_review"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kalshi_a2_review
+      CI: "true"
+      ETH_MARTINGALE_MAX_STEP_CENTS: "1"
+      ETH_B_WAGER_CENTS: "1"
+      ETH_C_WAGER_CENTS: "1"
+
+    steps:
+      - name: Checkout exact A2 review HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: 6f56eef63330fc6ee2b5f8e67a1ec8e2962c50ce
+          fetch-depth: 1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify A2 review candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "tested_head=$(git rev-parse HEAD)"
+          corepack enable
+          corepack prepare pnpm@10.26.1 --activate
+          pnpm install --frozen-lockfile
+          pnpm --filter @workspace/db push-force
+          pnpm run typecheck:libs
+          pnpm --filter @workspace/api-server typecheck
+          pnpm --filter @workspace/api-server build
+          pnpm --filter @workspace/api-server test
+          node artifacts/api-server/scripts/run-a2-baseline-reversion-test.mjs
