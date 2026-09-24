@@ -153,7 +153,7 @@ test("shared placement gateway preserves legacy zero, partial, and ambiguous lif
   }
 });
 
-test("daily loss -250 boundary is enforced by the shared preflight-and-placement gateway", async () => {
+test("daily loss boundary is enforced by the shared preflight-and-placement gateway", async () => {
   const restore = setEnabled();
   const now = Date.now();
   const calls: string[] = [];
@@ -164,7 +164,7 @@ test("daily loss -250 boundary is enforced by the shared preflight-and-placement
     store: makeStore({
       getEthMartingaleState: async () => ({
         easternDate: easternDay(new Date(now)), side: "no", martingaleStep: 0,
-        spentCents: 0, realizedPnlCents: -25_000,
+        spentCents: 0, realizedPnlCents: ETH_DAILY_LOSS_STOP_CENTS,
       }),
       reserveEthMartingaleEntry: async () => { calls.push("reserve"); return true; },
     }),
@@ -292,8 +292,8 @@ test("shared gateway uses an explicitly supplied realized P&L for its loss-stop 
     };
     await runEthPreflightAndPlacement({ ...request, realizedPnlCents: -120_000 });
     assert.equal(reservations, 0, "candidate loss boundary blocks on candidate P&L, not live P&L");
-    await runEthPreflightAndPlacement({ ...request, realizedPnlCents: -119_999 });
-    assert.equal(reservations, 1, "candidate P&L just above its stop permits the protected lifecycle");
+    await runEthPreflightAndPlacement({ ...request, realizedPnlCents: -70_000 });
+    assert.equal(reservations, 1, "candidate P&L with enough room for the prospective full-loss guard permits the protected lifecycle");
   } finally {
     _setEthNoMartingaleDependenciesForTesting(null);
     restore();
@@ -3063,20 +3063,20 @@ test("new entry is permitted when realized P&L is above the loss-stop", async ()
     store: makeStore({
       getEthMartingaleState: async () => ({
         easternDate: today, side: "no" as const, martingaleStep: 0,
-        spentCents: 0, realizedPnlCents: ETH_DAILY_LOSS_STOP_CENTS + 1,
+        spentCents: 0, realizedPnlCents: ETH_DAILY_LOSS_STOP_CENTS + 2_000,
       }),
       reserveEthMartingaleEntry: async () => { reservations++; return true; },
     }),
   } as any);
   try {
     await evaluateEthNoMartingale(openMarket("KXETH15M-26AUG221200-T69000", now));
-    assert.equal(reservations, 1, "entry must be permitted above the floor");
+    assert.equal(reservations, 1, "entry is permitted only when current P&L plus the prospective full-loss guard remains above the floor");
   } finally { _setEthNoMartingaleDependenciesForTesting(null); restore(); }
 });
 
 // ── day-reset via easternDay ──────────────────────────────────────────────────
 
-test("state resets when ET day changes and initializes the current ET day immediately", async () => {
+test("ET day change resets daily accounting but preserves durable martingale side and rung", async () => {
   const restore = setEnabled();
   let reservedParams: any = null;
   const now = Date.now();
@@ -3097,8 +3097,8 @@ test("state resets when ET day changes and initializes the current ET day immedi
   } as any);
   try {
     await evaluateEthNoMartingale(openMarket("KXETH15M-26AUG221200-T69000", now));
-    assert.equal(reservedParams?.martingaleStep, 0, "new day uses step 0 regardless of stale state");
-    assert.equal(reservedParams?.side, "no", "new day always starts on side=no");
+    assert.equal(reservedParams?.martingaleStep, 2, "martingale rung continues across ET midnight");
+    assert.equal(reservedParams?.side, "yes", "martingale side continues across ET midnight");
   } finally { _setEthNoMartingaleDependenciesForTesting(null); restore(); }
 });
 
