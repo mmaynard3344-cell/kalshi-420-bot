@@ -28,6 +28,7 @@ const testFiles = [
   "src/lib/strategies/ethBigBetExecutor.test.ts",
   "src/lib/strategies/ethAccountCapitalGuard.test.ts",
   "src/lib/strategies/bkShadowCapitalCoordinator.test.ts",
+  "src/lib/strategies/ethAshV2ShadowCapitalTelemetry.test.ts",
   "src/lib/strategies/ethBigBetCapitalFacts.test.ts",
   "src/lib/strategies/ethBigBetCapitalPolicy.test.ts",
   "src/lib/strategies/ethServiceACutover.test.ts",
