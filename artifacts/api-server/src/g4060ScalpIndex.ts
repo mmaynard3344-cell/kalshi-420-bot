@@ -467,7 +467,9 @@ async function tick(): Promise<void> {
         "G streak reversal two-consecutive-side trigger armed");
     }
 
-    await submitOrder(market, state.ladderSide, state.step);
+    const side = state.ladderSide;
+    if (side == null) return;
+    await submitOrder(market, side, state.step);
   } catch (err) {
     logger.warn({ err }, "G streak reversal tick failed");
   } finally {
