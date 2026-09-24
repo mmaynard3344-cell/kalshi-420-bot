@@ -6,6 +6,8 @@ import { kalshiFetch } from "../kalshi.js";
 import { captureOrderbook, parseOrderbookResponse, computeSnapshotFields, type OrderbookSnapshot } from "../orderbookCapture.js";
 import { parseKalshiOrderResponse } from "../orderResponseParser.js";
 import { logger } from "../logger.js";
+import { ethBigBetCapitalRiskCents } from "./ethBigBetLifecycle.js";
+import { bkCapitalTelemetry, evaluateBkCapitalAdmission, isBkFreshBalanceCapitalPolicyEnabled, readBkFreshSameShardBalance } from "./bkFreshBalanceCapitalPolicy.js";
 
 export const JACKPOT_WAGER_CENTS = 100; // Reduced live test cap: $1.
 export const JACKPOT_MAX_PRICE_CENTS = 90; // HARD live ceiling during validation.
@@ -285,6 +287,18 @@ async function submitJackpot(order: JackpotAOrder): Promise<void> {
     await patchAttempt(order.id, { status: "blocked", reason: "missing_exchange_index" });
     return;
   }
+  const requestedRiskCents = ethBigBetCapitalRiskCents(JACKPOT_WAGER_CENTS, JACKPOT_MAX_PRICE_CENTS);
+  const flagEnabled = isBkFreshBalanceCapitalPolicyEnabled();
+  const freshAvailableBalanceCents = flagEnabled ? await readBkFreshSameShardBalance(exchangeIndex) : null;
+  const admission = evaluateBkCapitalAdmission({
+    service: "J", ticker: order.ticker, exchangeIndex, requestedRiskCents, freshAvailableBalanceCents,
+    oldPolicyDecision: "allow", oldPolicyBlocker: null,
+  });
+  if (!admission.finalAllowed) {
+    logger.info(bkCapitalTelemetry(admission, "not_attempted"), "BK capital admission");
+    await patchAttempt(order.id, { status: "blocked", reason: `bk_fresh_balance_${admission.newPolicyDecision}` });
+    return;
+  }
   const clientId = `${randomUUID()}:jackpot-j`;
   const payload = jackpotWireOrder({ ticker: order.ticker, side: order.side, clientOrderId: clientId, exchangeIndex });
   let raw: Record<string, unknown>;
@@ -307,6 +321,7 @@ async function submitJackpot(order: JackpotAOrder): Promise<void> {
     feeCents: Number.isFinite(feeDollars) ? Math.round(feeDollars * 100) : parsed.reportedFeeCents,
     raw,
   });
+  logger.info(bkCapitalTelemetry(admission, parsed.fillCount > 0 ? "submitted_filled" : "submitted_zero_fill"), "BK capital admission");
   logger.info({
     service: "J", strategy: "Jackpot", ticker: order.ticker, side: order.side,
     contracts: jackpotContracts(), maxPriceCents: JACKPOT_MAX_PRICE_CENTS,
