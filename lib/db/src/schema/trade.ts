@@ -486,6 +486,71 @@ export const coverageWindowAudits = pgTable("coverage_window_audits", {
   updatedAt:               timestamp("updated_at").defaultNow(),
 });
 
+
+
+// ── A2 Baseline Reversion shadow-only research ledgers ───────────────────────
+// These tables are evidence/idempotency only. They contain no exchange order
+// identifiers and cannot authorize, submit, cancel, or modify a Kalshi order.
+export const a2BaselineReversionEvidence = pgTable(
+  "a2_baseline_reversion_evidence",
+  {
+    id: text("id").primaryKey(),
+    observedAtMs: bigint("observed_at_ms", { mode: "number" }).notNull(),
+    sourceOpenTimeMs: bigint("source_open_time_ms", { mode: "number" }).notNull(),
+    sourceCloseTimeMs: bigint("source_close_time_ms", { mode: "number" }).notNull(),
+    sourceOpen: doublePrecision("source_open").notNull(),
+    sourceHigh: doublePrecision("source_high").notNull(),
+    sourceLow: doublePrecision("source_low").notNull(),
+    sourceClose: doublePrecision("source_close").notNull(),
+    sourceDropFraction: doublePrecision("source_drop_fraction"),
+    destinationTicker: text("destination_ticker").notNull(),
+    destinationOpenTimeMs: bigint("destination_open_time_ms", { mode: "number" }).notNull(),
+    destinationCloseTimeMs: bigint("destination_close_time_ms", { mode: "number" }).notNull(),
+    yesSemanticsVerified: boolean("yes_semantics_verified").notNull(),
+    observedYesAskCents: integer("observed_yes_ask_cents"),
+    signal: boolean("signal").notNull(),
+    reason: text("reason"),
+    stakeCents: integer("stake_cents").notNull(),
+    maxEntryPriceCents: integer("max_entry_price_cents").notNull(),
+    activeExposureCountObserved: integer("active_exposure_count_observed").notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("a2_baseline_reversion_evidence_destination_idx").on(table.destinationTicker),
+    index("a2_baseline_reversion_evidence_observed_idx").on(table.observedAtMs),
+  ],
+);
+
+export const a2BaselineReversionShadowClaims = pgTable(
+  "a2_baseline_reversion_shadow_claims",
+  {
+    id: text("id").primaryKey(),
+    strategyId: text("strategy_id").notNull(),
+    sourceOpenTimeMs: bigint("source_open_time_ms", { mode: "number" }).notNull(),
+    sourceCloseTimeMs: bigint("source_close_time_ms", { mode: "number" }).notNull(),
+    destinationTicker: text("destination_ticker").notNull(),
+    destinationOpenTimeMs: bigint("destination_open_time_ms", { mode: "number" }).notNull(),
+    side: text("side").notNull().default("yes"),
+    stakeCents: integer("stake_cents").notNull(),
+    maxEntryPriceCents: integer("max_entry_price_cents").notNull(),
+    observedYesAskCents: integer("observed_yes_ask_cents").notNull(),
+    sourceDropFraction: doublePrecision("source_drop_fraction").notNull(),
+    state: text("state").notNull().default("shadow_open"),
+    settlementResult: text("settlement_result"),
+    claimedAtMs: bigint("claimed_at_ms", { mode: "number" }).notNull(),
+    settledAtMs: bigint("settled_at_ms", { mode: "number" }),
+    updatedAtMs: bigint("updated_at_ms", { mode: "number" }).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("a2_baseline_reversion_shadow_identity_uq")
+      .on(table.sourceOpenTimeMs, table.destinationTicker),
+    index("a2_baseline_reversion_shadow_state_idx").on(table.state),
+    index("a2_baseline_reversion_shadow_destination_idx").on(table.destinationTicker),
+  ],
+);
+
 // ── ETH_30_50 isolated strategy tables ───────────────────────────────────────
 // These three tables support the isolated ETH_30_50 strategy, which requires:
 //   1. Permanent (non-expiring) atomic ticker claims.
