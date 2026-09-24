@@ -486,6 +486,62 @@ export const coverageWindowAudits = pgTable("coverage_window_audits", {
   updatedAt:               timestamp("updated_at").defaultNow(),
 });
 
+// ── L Sweep/Reclaim durable decision + permanent claim ledger ────────────────
+export const sweepReclaimClaims = pgTable(
+  "sweep_reclaim_claims",
+  {
+    id: text("id").primaryKey(),
+    strategyId: text("strategy_id").notNull(),
+    serviceCode: text("service_code").notNull(),
+    displayLabel: text("display_label").notNull(),
+    sourceVenue: text("source_venue").notNull(),
+    sourceCandleOpenMs: bigint("source_candle_open_ms", { mode: "number" }).notNull(),
+    sourceCandleCloseMs: bigint("source_candle_close_ms", { mode: "number" }).notNull(),
+    sourceOpen: doublePrecision("source_open").notNull(),
+    sourceHigh: doublePrecision("source_high").notNull(),
+    sourceLow: doublePrecision("source_low").notNull(),
+    sourceClose: doublePrecision("source_close").notNull(),
+    prior24hLow: doublePrecision("prior_24h_low").notNull(),
+    candleRange: doublePrecision("candle_range").notNull(),
+    realBody: doublePrecision("real_body").notNull(),
+    lowerWick: doublePrecision("lower_wick").notNull(),
+    midpoint: doublePrecision("midpoint").notNull(),
+    closePositionFraction: doublePrecision("close_position_fraction").notNull(),
+    sweptPrevious24hLow: boolean("swept_previous_24h_low").notNull(),
+    wickCondition: boolean("wick_condition").notNull(),
+    upperHalfClose: boolean("upper_half_close").notNull(),
+    qualified: boolean("qualified").notNull(),
+    destinationTicker: text("destination_ticker").notNull(),
+    side: text("side").notNull().default("yes"),
+    observedYesPriceCents: integer("observed_yes_price_cents"),
+    configuredPriceCapCents: integer("configured_price_cap_cents"),
+    requestedContracts: integer("requested_contracts"),
+    requestedRiskCents: integer("requested_risk_cents"),
+    correlatedExposureBeforeCents: integer("correlated_exposure_before_cents"),
+    proposedExposureCents: integer("proposed_exposure_cents"),
+    sharedExposureCapCents: integer("shared_exposure_cap_cents"),
+    admissionOutcome: text("admission_outcome"),
+    rejectionReason: text("rejection_reason"),
+    lifecycleState: text("lifecycle_state").notNull().default("CLAIMED"),
+    clientOrderId: text("client_order_id"),
+    kalshiOrderId: text("kalshi_order_id"),
+    filledContracts: doublePrecision("filled_contracts"),
+    averageFillPriceCents: integer("average_fill_price_cents"),
+    settlementResult: text("settlement_result"),
+    realizedPnlCents: integer("realized_pnl_cents"),
+    claimedAtMs: bigint("claimed_at_ms", { mode: "number" }).notNull(),
+    updatedAtMs: bigint("updated_at_ms", { mode: "number" }).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("sweep_reclaim_claim_identity_uq").on(table.strategyId, table.sourceCandleOpenMs, table.destinationTicker),
+    index("sweep_reclaim_claims_destination_idx").on(table.destinationTicker),
+    index("sweep_reclaim_claims_source_open_idx").on(table.sourceCandleOpenMs),
+    index("sweep_reclaim_claims_state_idx").on(table.lifecycleState),
+  ],
+);
+
 // ── ETH_30_50 isolated strategy tables ───────────────────────────────────────
 // These three tables support the isolated ETH_30_50 strategy, which requires:
 //   1. Permanent (non-expiring) atomic ticker claims.
