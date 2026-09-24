@@ -42,6 +42,12 @@ export interface EthLongReversalStore {
     to: EthLongReversalState;
     updatedAtMs: number;
   }): Promise<boolean>;
+  transitionBySourceOrderId?(input: {
+    sourceOrderId: string;
+    from: EthLongReversalState | EthLongReversalState[];
+    to: EthLongReversalState;
+    updatedAtMs: number;
+  }): Promise<boolean>;
 }
 
 export type EthLongReversalAdmissionDecision =
@@ -264,6 +270,40 @@ export class PostgresEthLongReversalStore implements EthLongReversalStore {
     `);
     return rowsOf(result).length === 1;
   }
+
+  async transitionBySourceOrderId(input: {
+    sourceOrderId: string;
+    from: EthLongReversalState | EthLongReversalState[];
+    to: EthLongReversalState;
+    updatedAtMs: number;
+  }): Promise<boolean> {
+    const from = Array.isArray(input.from) ? input.from : [input.from];
+    if (!input.sourceOrderId || from.length === 0 || !nonnegativeSafeInteger(input.updatedAtMs)) return false;
+    const result = await this.db.execute(sql`
+      UPDATE eth_long_reversal_reservations
+      SET state=${input.to}, updated_at_ms=${input.updatedAtMs}
+      WHERE source_order_id=${input.sourceOrderId}
+        AND state = ANY(${from})
+      RETURNING id
+    `);
+    return rowsOf(result).length === 1;
+  }
+}
+
+export async function transitionProductionEthLongReversalBySourceOrderId(input: {
+  sourceOrderId: string;
+  to: "settled" | "released" | "rejected" | "filled_unsettled";
+  from?: EthLongReversalState | EthLongReversalState[];
+  updatedAtMs?: number;
+}): Promise<boolean> {
+  const mod = await import("@workspace/db");
+  const store = new PostgresEthLongReversalStore(mod.db as any);
+  return store.transitionBySourceOrderId({
+    sourceOrderId: input.sourceOrderId,
+    from: input.from ?? ["reserved","submitted","submission_unknown","filled_unsettled"],
+    to: input.to,
+    updatedAtMs: input.updatedAtMs ?? Date.now(),
+  });
 }
 
 export function activeEthLongReversalStates(): readonly EthLongReversalState[] {
