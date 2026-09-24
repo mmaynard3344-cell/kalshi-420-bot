@@ -30,12 +30,15 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kalshi_review
       CI: "true"
+      ETH_MARTINGALE_MAX_STEP_CENTS: "1"
+      ETH_B_WAGER_CENTS: "1"
+      ETH_C_WAGER_CENTS: "1"
 
     steps:
       - name: Checkout exact frozen HEAD
         uses: actions/checkout@v4
         with:
-          ref: 733bf4353230da54b74a53b9bcf5ed34c488dfe5
+          ref: 717fb36e2adc3525ef6b0c0647fe43cab75d03cf
           fetch-depth: 1
 
       - name: Set up Node
@@ -55,13 +58,14 @@ jobs:
           echo "repository=mmaynard3344-cell/kalshi-420-bot" | tee -a "$SUMMARY"
           echo "source_branch=review/l-sweep-reclaim-v1-bk-integration" | tee -a "$SUMMARY"
           echo "verification_branch=verify/l-sweep-reclaim-733bf435" | tee -a "$SUMMARY"
-          echo "expected_head=733bf4353230da54b74a53b9bcf5ed34c488dfe5" | tee -a "$SUMMARY"
+          echo "expected_head=717fb36e2adc3525ef6b0c0647fe43cab75d03cf" | tee -a "$SUMMARY"
           echo "actual_head=$(git rev-parse HEAD)" | tee -a "$SUMMARY"
           echo "node=$(node --version)" | tee -a "$SUMMARY"
           echo "database_class=ephemeral GitHub Actions postgres:16 service" | tee -a "$SUMMARY"
           echo "database_name=kalshi_review" | tee -a "$SUMMARY"
           echo "database_host=localhost" | tee -a "$SUMMARY"
           echo "production_database_used=no" | tee -a "$SUMMARY"
+          echo "test_only_env=ETH_MARTINGALE_MAX_STEP_CENTS=1,ETH_B_WAGER_CENTS=1,ETH_C_WAGER_CENTS=1" | tee -a "$SUMMARY"
           git status --short > verification/git-status.txt
 
           FAIL=0
@@ -88,6 +92,7 @@ jobs:
           run_cmd pnpm_version "pnpm --version"
           run_cmd dependency_install "pnpm install --frozen-lockfile"
           run_cmd schema_apply_ephemeral_db "pnpm --filter @workspace/db push-force"
+          run_cmd workspace_typecheck_libs "pnpm run typecheck:libs"
           run_cmd api_typecheck "pnpm --filter @workspace/api-server typecheck"
           run_cmd api_build "pnpm --filter @workspace/api-server build"
           run_cmd api_full_test "pnpm --filter @workspace/api-server test"
