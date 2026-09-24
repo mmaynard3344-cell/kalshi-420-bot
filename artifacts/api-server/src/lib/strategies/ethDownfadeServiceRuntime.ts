@@ -153,43 +153,6 @@ export async function prepareEthDownfadeServiceIntent(input: {
   };
   if (!/^KXETH15M-/.test(input.market.ticker) || !Number.isInteger(input.market.openTimeMs)) return empty("invalid_market_identity");
 
-  if (input.role === "downfade_g") {
-    const elapsedMs = Date.now() - input.market.openTimeMs!;
-    if (elapsedMs < PROBE_START_MS) return empty("probe_waiting_for_five_minutes_remaining");
-    if (elapsedMs >= ETH_15M_MS) return empty("probe_market_expired");
-    try {
-      const response = await marketFetcher<{ market?: Record<string, unknown> }>(`/markets/${input.market.ticker}`);
-      const raw = response.market;
-      if (!raw) return empty("probe_quote_unavailable");
-      const rawOpenMs = typeof raw["open_time"] === "string" ? Date.parse(raw["open_time"] as string) : NaN;
-      if (Number.isFinite(rawOpenMs) && rawOpenMs !== input.market.openTimeMs) return empty("probe_market_identity_mismatch");
-      const yesBid = quoteCents(raw["yes_bid_dollars"], raw["yes_bid"]);
-      const noBid = quoteCents(raw["no_bid_dollars"], raw["no_bid"]);
-      if (yesBid == null || noBid == null) return empty("probe_quote_unavailable");
-      if (yesBid === noBid) return empty("probe_tied_market");
-      const config = ETH_DOWNFADE_CONFIG.downfade_g;
-      input.onEvaluation?.({
-        ticker: input.market.ticker,
-        marketOpenTimeMs: input.market.openTimeMs!,
-        currentMove: Math.min(yesBid, noBid) / 100,
-        direction: yesBid < noBid ? "down" : "up",
-        p80: null, p90: null, p95: null, p99: null,
-        validObservationCount: 0,
-        rejectionReason: null,
-      });
-      return {
-        strategy: "probe_g",
-        orderTag: config.orderTag,
-        ticker: input.market.ticker,
-        side: yesBid < noBid ? "yes" : "no",
-        wagerCents: config.wagerCents,
-        limitPriceCents: 30,
-        marketOpenTimeMs: input.market.openTimeMs!,
-      };
-    } catch {
-      return empty("probe_quote_unavailable");
-    }
-  }
 
   const facts = await ensureHistory(input.market.openTimeMs!);
   if (!facts) return empty("history_unavailable");
