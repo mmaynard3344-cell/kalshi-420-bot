@@ -13,6 +13,7 @@ import type { SweepReclaimRuntimeConfig } from "./sweepReclaimV1.js";
 function config(overrides: Partial<SweepReclaimRuntimeConfig> = {}): SweepReclaimRuntimeConfig {
   return {
     enabled: true,
+    liveExecutionEnabled: false,
     maxEntryPriceCents: 50,
     stakeCents: 1000,
     sharedCorrelatedExposureCapCents: 200,
