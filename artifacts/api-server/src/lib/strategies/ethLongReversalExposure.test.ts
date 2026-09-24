@@ -21,7 +21,7 @@ function memoryStore(): EthLongReversalStore {
         return await fn({
           sumActiveRiskCents: async () => [...rows.values()]
             .filter((r) => ["reserved","submitted","submission_unknown","filled_unsettled"].includes(r.state))
-            .reduce((sum, r) => sum + r.requestedRiskCents, 0),
+            .reduce((sum, r) => sum + r.activeRiskCents, 0),
           insertReservation: async (reservation) => {
             if (rows.has(reservation.id) || [...rows.values()].some((r) => r.clientOrderId === reservation.clientOrderId)) return false;
             rows.set(reservation.id, reservation);
