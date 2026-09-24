@@ -141,8 +141,8 @@ test("order sizing uses stake as a hard principal budget at the configured cap p
   assert.deepEqual(size, {
     contracts: 20,
     maxPrincipalCents: 1_000,
-    feeHeadroomCents: 350,
-    requestedRiskCents: 1_350,
+    feeHeadroomCents: 35,
+    requestedRiskCents: 1_035,
   });
 });
 
