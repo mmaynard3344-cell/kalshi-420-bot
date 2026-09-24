@@ -486,6 +486,34 @@ export const coverageWindowAudits = pgTable("coverage_window_audits", {
   updatedAt:               timestamp("updated_at").defaultNow(),
 });
 
+// ── Shared ETH long-reversal correlated exposure reservations ────────────────
+// Central cap bucket for E, H, I-downside(YES), and L. Active rows retain
+// fee-inclusive requested risk until explicitly released/settled/rejected.
+export const ethLongReversalReservations = pgTable(
+  "eth_long_reversal_reservations",
+  {
+    id: text("id").primaryKey(),
+    bucket: text("bucket").notNull(),
+    service: text("service").notNull(),
+    strategy: text("strategy").notNull(),
+    ticker: text("ticker").notNull(),
+    clientOrderId: text("client_order_id").notNull(),
+    sourceOrderId: text("source_order_id"),
+    exchangeIndex: integer("exchange_index").notNull(),
+    requestedRiskCents: integer("requested_risk_cents").notNull(),
+    state: text("state").notNull(),
+    createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
+    updatedAtMs: bigint("updated_at_ms", { mode: "number" }).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("eth_long_reversal_client_order_uq").on(table.clientOrderId),
+    index("eth_long_reversal_active_idx").on(table.bucket, table.state, table.createdAtMs),
+    index("eth_long_reversal_service_idx").on(table.service, table.state),
+  ],
+);
+
 // ── L Sweep/Reclaim durable decision + permanent claim ledger ────────────────
 export const sweepReclaimClaims = pgTable(
   "sweep_reclaim_claims",
