@@ -11,6 +11,7 @@ const DOWNFADE_STRATEGIES = new Set([
   "downfade_p90_p95",
   "downfade_p95_p99",
   "probe_g",
+  "ash_v2_i",
 ]);
 
 type DbLike = { execute: (query: unknown) => Promise<unknown>; transaction: <T>(fn: (tx: DbLike) => Promise<T>) => Promise<T>; };
@@ -31,6 +32,7 @@ export async function initEthDownfadeExecutionStore(): Promise<void> {
 function validIntent(intent: EthBigBetOrderIntent): boolean {
   if (!DOWNFADE_STRATEGIES.has(intent.strategy) || !/^KXETH15M-/.test(intent.ticker) || !Number.isInteger(intent.marketOpenTimeMs) || intent.marketOpenTimeMs <= 0 || !Number.isInteger(intent.wagerCents) || intent.wagerCents <= 0) return false;
   if (intent.strategy === "probe_g") return (intent.side === "yes" || intent.side === "no") && intent.wagerCents === 500 && intent.limitPriceCents === 30;
+  if (intent.strategy === "ash_v2_i") return (intent.side === "yes" || intent.side === "no") && intent.wagerCents === 1_500 && intent.limitPriceCents === 50;
   return intent.side === "yes" && intent.limitPriceCents === 50;
 }
 
