@@ -156,6 +156,7 @@ export function isImmediateFollowingEth15mWindow(
 
 export interface SweepReclaimRuntimeConfig {
   enabled: boolean;
+  liveExecutionEnabled: boolean;
   maxEntryPriceCents: number | null;
   stakeCents: number | null;
   sharedCorrelatedExposureCapCents: number | null;
@@ -177,6 +178,7 @@ function positiveIntEnv(env: NodeJS.ProcessEnv, key: string): number | null {
  */
 export function loadSweepReclaimRuntimeConfig(env: NodeJS.ProcessEnv = process.env): SweepReclaimRuntimeConfig {
   const enabled = env["L_SWEEP_RECLAIM_ENABLED"] === "true";
+  const liveExecutionEnabled = env["L_SWEEP_RECLAIM_LIVE_EXECUTION_ENABLED"] === "true";
   const maxEntryPriceCents = positiveIntEnv(env, "L_SWEEP_RECLAIM_MAX_ENTRY_PRICE_CENTS");
   const stakeCents = positiveIntEnv(env, "L_SWEEP_RECLAIM_STAKE_CENTS");
   const sharedCorrelatedExposureCapCents = positiveIntEnv(env, "ETH_LONG_REVERSAL_SHARED_CAP_CENTS");
@@ -192,6 +194,7 @@ export function loadSweepReclaimRuntimeConfig(env: NodeJS.ProcessEnv = process.e
 
   return {
     enabled,
+    liveExecutionEnabled,
     maxEntryPriceCents,
     stakeCents,
     sharedCorrelatedExposureCapCents,
