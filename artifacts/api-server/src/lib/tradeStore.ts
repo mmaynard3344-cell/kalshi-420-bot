@@ -7271,7 +7271,7 @@ export interface SweepReclaimClaimUpdate {
   proposedExposureCents?: number|null; sharedExposureCapCents?: number|null; admissionOutcome?: string|null;
   rejectionReason?: string|null; lifecycleState?: SweepReclaimLifecycleState; clientOrderId?: string|null;
   kalshiOrderId?: string|null; filledContracts?: number|null; averageFillPriceCents?: number|null;
-  settlementResult?: "yes"|"no"|null; realizedPnlCents?: number|null;
+  actualFeeCents?: number|null; settlementResult?: "yes"|"no"|null; realizedPnlCents?: number|null;
 }
 export async function claimSweepReclaimSignal(params: SweepReclaimClaimParams): Promise<boolean> {
   if (!_db || !_healthy) return false;
@@ -7294,6 +7294,36 @@ export async function updateSweepReclaimClaim(update: SweepReclaimClaimUpdate): 
     if(rows.length===1)_lastWriteMs=Date.now(); return rows.length===1;
   } catch(err){_healthy=false;_lastErrorMsg=String(err);_degradedReason=`sweepReclaim.update failed: ${_lastErrorMsg}`;_scheduleRetry();logger.error({err,id:update.id},"sweepReclaim: durable claim update failed closed");return false;}
 }
+export async function transitionSweepReclaimClaim(input:{
+  id:string;
+  from:SweepReclaimLifecycleState|SweepReclaimLifecycleState[];
+  to:SweepReclaimLifecycleState;
+  patch?:Omit<SweepReclaimClaimUpdate,"id"|"lifecycleState">;
+}):Promise<boolean>{
+  if(!_db||!_healthy)return false;
+  const from=Array.isArray(input.from)?input.from:[input.from];
+  if(!input.id||from.length===0)return false;
+  const patch:Record<string,unknown>={
+    ...(input.patch??{}),
+    lifecycleState:input.to,
+    updatedAtMs:Date.now(),
+    updatedAt:new Date(),
+  };
+  try{
+    const rows=await _db.update(sweepReclaimClaims).set(patch as any)
+      .where(and(eq(sweepReclaimClaims.id,input.id),inArray(sweepReclaimClaims.lifecycleState,from)))
+      .returning({id:sweepReclaimClaims.id});
+    if(rows.length===1)_lastWriteMs=Date.now();
+    return rows.length===1;
+  }catch(err){
+    _healthy=false;_lastErrorMsg=String(err);
+    _degradedReason=`sweepReclaim.transition failed: ${_lastErrorMsg}`;
+    recordDbBlockedOperation("entry");_scheduleRetry();
+    logger.error({err,id:input.id,from,to:input.to},"sweepReclaim: lifecycle transition failed closed");
+    return false;
+  }
+}
+
 export async function getSweepReclaimClaim(id:string){
   if(!_db||!_healthy)return null;
   try{const rows=await _db.select().from(sweepReclaimClaims).where(eq(sweepReclaimClaims.id,id)).limit(1);return rows[0]??null;}
