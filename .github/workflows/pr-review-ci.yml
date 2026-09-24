@@ -1,0 +1,61 @@
+name: pr-review-ci
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: "true"
+
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Activate pnpm 10.26.1
+        run: corepack prepare pnpm@10.26.1 --activate
+
+      - name: Show tool versions
+        run: |
+          node --version
+          pnpm --version
+          pnpm exec tsc --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Run standard API test suite
+        id: tests
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/api-server/test-output
+          cd artifacts/api-server
+          node scripts/run-all-tests.mjs 2>&1 | tee test-output/run-all-tests.log
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-review-ci-failure-${{ github.run_id }}
+          path: |
+            artifacts/api-server/test-output/
+          if-no-files-found: ignore
+          retention-days: 7

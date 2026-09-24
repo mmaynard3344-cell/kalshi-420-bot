@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { evaluateEthAccountCapital, type EthAccountCapitalInput } from "./ethAccountCapitalGuard.js";
 import type { EthBigBetOrderIntent, EthBigBetSide, EthBigBetStrategy } from "./ethBigBetLifecycle.js";
 import { ethBigBetCapitalRiskCents, ethBigBetContracts, ethBigBetOrderId } from "./ethBigBetLifecycle.js";
+import { evaluateBkFreshBalanceOnly, isBkFreshBalanceCapitalPolicyEnabled } from "./bkFreshBalanceCapitalPolicy.js";
 
 export type EthBigBetOrderStatus =
   | "reserved"
@@ -188,14 +189,21 @@ export async function reserveEthBigBetIntentWithCapital(params: {
     return await db.transaction(async (tx) => {
       // Stable project-local key; transaction-scoped so crashes cannot strand it.
       await tx.execute(sql`SELECT pg_advisory_xact_lock(42015000)`);
-      const otherBigBetReservedCents = await unresolvedCapitalRiskCents(tx);
-      if (otherBigBetReservedCents == null) return "reservation_failed";
-      const capital = evaluateEthAccountCapital({
-        ...params.capital,
-        otherBigBetReservedCents,
-        requestedRiskCents: params.requestedRiskCents,
-      });
-      if (!capital.allowed) return "capital_blocked";
+      if (isBkFreshBalanceCapitalPolicyEnabled()) {
+        if (evaluateBkFreshBalanceOnly(
+          params.capital.availableBalanceCents,
+          params.requestedRiskCents,
+        ) !== "allow") return "capital_blocked";
+      } else {
+        const otherBigBetReservedCents = await unresolvedCapitalRiskCents(tx);
+        if (otherBigBetReservedCents == null) return "reservation_failed";
+        const capital = evaluateEthAccountCapital({
+          ...params.capital,
+          otherBigBetReservedCents,
+          requestedRiskCents: params.requestedRiskCents,
+        });
+        if (!capital.allowed) return "capital_blocked";
+      }
       const result = await tx.execute(sql`
         INSERT INTO eth_big_bet_orders
           (id, strategy, order_tag, ticker, market_open_time_ms, side,

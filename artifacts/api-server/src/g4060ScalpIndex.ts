@@ -6,6 +6,7 @@ import { parseKalshiOrderResponse } from "./lib/orderResponseParser.js";
 import { fetchFreshKalshiBalanceForExchangeRead, kalshiBalanceCents } from "./lib/kalshiBalance.js";
 import { logger } from "./lib/logger.js";
 import { currentEthServiceRole } from "./lib/strategies/ethServiceRole.js";
+import { bkCapitalTelemetry, evaluateBkCapitalAdmission } from "./lib/strategies/bkFreshBalanceCapitalPolicy.js";
 
 const SERIES = "KXETH15M";
 const LIMIT_PRICE_CENTS = 50;
@@ -374,7 +375,18 @@ async function submitOrder(market: { ticker: string; closeMs: number; exchangeIn
     logger.warn({ err, ticker: market.ticker, exchangeIndex: market.exchangeIndex }, "G streak reversal balance preflight failed");
     return;
   }
-  if (available == null || available < requiredCents) {
+  const oldPolicyDecision = available == null ? "unavailable" : available >= requiredCents ? "allow" : "block";
+  const admission = evaluateBkCapitalAdmission({
+    service: "G",
+    ticker: market.ticker,
+    exchangeIndex: market.exchangeIndex,
+    requestedRiskCents: requiredCents,
+    freshAvailableBalanceCents: available,
+    oldPolicyDecision,
+    oldPolicyBlocker: oldPolicyDecision === "allow" ? null : "insufficient_exchange_scoped_capital",
+  });
+  if (!admission.finalAllowed) {
+    logger.info(bkCapitalTelemetry(admission, "not_attempted"), "BK capital admission");
     logger.warn({ ticker: market.ticker, step, requiredCents, available }, "G streak reversal insufficient exchange-scoped capital; rung retained");
     return;
   }
@@ -414,6 +426,7 @@ async function submitOrder(market: { ticker: string; closeMs: number; exchangeIn
       `);
       logger.info({ ticker: market.ticker, side, step, principalCents, contracts, orderId: parsed.kalshiOrderId },
         "G streak reversal order submitted");
+      logger.info(bkCapitalTelemetry(admission, "submitted"), "BK capital admission");
       return;
     }
     await d.execute(sql`
@@ -421,12 +434,14 @@ async function submitOrder(market: { ticker: string; closeMs: number; exchangeIn
       SET status='submission_unknown', updated_at_ms=${Date.now()}, last_error='POST returned no authoritative order id'
       WHERE id=${id}
     `);
+    logger.info(bkCapitalTelemetry(admission, "submission_unknown"), "BK capital admission");
   } catch (err) {
     await d.execute(sql`
       UPDATE eth_g_streak_reversal_orders
       SET status='submission_unknown', updated_at_ms=${Date.now()}, last_error=${String(err)} WHERE id=${id}
     `);
     logger.warn({ err, ticker: market.ticker, side, step }, "G streak reversal submission uncertain; durable fence retained");
+    logger.info(bkCapitalTelemetry(admission, "submission_unknown"), "BK capital admission");
   }
 }
 
