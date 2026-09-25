@@ -1,0 +1,24 @@
+name: Verify current shadow performance dashboard
+
+on:
+  push:
+    branches:
+      - fix/shadow-performance-dashboard-current
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck:libs
+      - run: pnpm --filter @workspace/kalshi-reader typecheck
+      - run: node --check artifacts/kalshi-reader/server.mjs
+      - run: pnpm --filter @workspace/kalshi-reader build
