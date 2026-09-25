@@ -439,6 +439,152 @@ async function serviceLedgerTodayDiagnostics(req, res) {
   }
 }
 
+
+async function shadowPerformanceDiagnostics(req, res) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
+  try {
+    const data = await withReadOnlyDb(async (client) => {
+      const tableExists = async (name) => {
+        const q = await client.query(
+          `SELECT to_regclass($1) IS NOT NULL AS present`,
+          ['public.' + name],
+        );
+        return q.rows?.[0]?.present === true;
+      };
+
+      const [a2Exists, lExists] = await Promise.all([
+        tableExists('a2_execution_intents'),
+        tableExists('l_sweep_reclaim_dry_run_intents'),
+      ]);
+
+      let a2Rows = [];
+      let lRows = [];
+
+      if (a2Exists) {
+        const q = await client.query(`
+          SELECT id, signal_id, market_ticker, client_order_id, state,
+                 executable_yes_price_cents, quantity, max_notional_cents,
+                 filled_quantity, fill_cost_cents, fill_fee_cents,
+                 terminal_reason, settlement_result, realized_pnl_cents,
+                 created_at_ms, updated_at_ms, settled_at_ms
+            FROM a2_execution_intents
+           ORDER BY created_at_ms DESC
+           LIMIT 100
+        `);
+        a2Rows = q.rows.map((row) => ({
+          strategy: 'A2',
+          id: String(row.id ?? ''),
+          signalId: String(row.signal_id ?? ''),
+          ticker: String(row.market_ticker ?? ''),
+          clientOrderId: String(row.client_order_id ?? ''),
+          state: String(row.state ?? ''),
+          entryPriceCents: row.executable_yes_price_cents == null ? null : Number(row.executable_yes_price_cents),
+          contracts: row.quantity == null ? null : Number(row.quantity),
+          principalCents: row.max_notional_cents == null ? null : Number(row.max_notional_cents),
+          filledContracts: row.filled_quantity == null ? null : Number(row.filled_quantity),
+          fillCostCents: row.fill_cost_cents == null ? null : Number(row.fill_cost_cents),
+          fillFeeCents: row.fill_fee_cents == null ? null : Number(row.fill_fee_cents),
+          terminalReason: row.terminal_reason == null ? null : String(row.terminal_reason),
+          settlementResult: row.settlement_result == null ? null : String(row.settlement_result),
+          pnlCents: row.realized_pnl_cents == null ? null : Number(row.realized_pnl_cents),
+          createdAtMs: Number(row.created_at_ms ?? 0),
+          updatedAtMs: Number(row.updated_at_ms ?? 0),
+          settledAtMs: row.settled_at_ms == null ? null : Number(row.settled_at_ms),
+        }));
+      }
+
+      if (lExists) {
+        const q = await client.query(`
+          SELECT id, source_open_time_ms, destination_ticker, state,
+                 executable_yes_price_cents, contracts, principal_cents,
+                 fee_headroom_cents, requested_risk_cents,
+                 settlement_result, simulated_pnl_cents,
+                 created_at_ms, updated_at_ms
+            FROM l_sweep_reclaim_dry_run_intents
+           ORDER BY created_at_ms DESC
+           LIMIT 100
+        `);
+        lRows = q.rows.map((row) => ({
+          strategy: 'L',
+          id: String(row.id ?? ''),
+          signalId: String(row.id ?? ''),
+          ticker: String(row.destination_ticker ?? ''),
+          clientOrderId: String(row.id ?? ''),
+          state: String(row.state ?? ''),
+          entryPriceCents: row.executable_yes_price_cents == null ? null : Number(row.executable_yes_price_cents),
+          contracts: row.contracts == null ? null : Number(row.contracts),
+          principalCents: row.principal_cents == null ? null : Number(row.principal_cents),
+          feeHeadroomCents: row.fee_headroom_cents == null ? null : Number(row.fee_headroom_cents),
+          requestedRiskCents: row.requested_risk_cents == null ? null : Number(row.requested_risk_cents),
+          terminalReason: null,
+          settlementResult: row.settlement_result == null ? null : String(row.settlement_result),
+          pnlCents: row.simulated_pnl_cents == null ? null : Number(row.simulated_pnl_cents),
+          createdAtMs: Number(row.created_at_ms ?? 0),
+          updatedAtMs: Number(row.updated_at_ms ?? 0),
+          settledAtMs: String(row.state ?? '') === 'SETTLED' ? Number(row.updated_at_ms ?? 0) : null,
+        }));
+      }
+
+      const summarize = (strategy, rows, available) => {
+        const settled = rows.filter((row) => row.settlementResult === 'yes' || row.settlementResult === 'no');
+        const wins = settled.filter((row) => row.settlementResult === 'yes').length;
+        const losses = settled.filter((row) => row.settlementResult === 'no').length;
+        const pnlRows = settled.filter((row) => Number.isFinite(row.pnlCents));
+        const pnlCents = pnlRows.reduce((sum, row) => sum + Number(row.pnlCents), 0);
+        const priced = rows.filter((row) => Number.isFinite(row.entryPriceCents));
+        const active = rows.filter((row) => !['EXPOSURE_RELEASED','SETTLED','REJECTED','PRICE_TOO_HIGH','EXPIRED_UNSUBMITTED'].includes(row.state)).length;
+        const blocked = rows.filter((row) =>
+          row.state === 'REJECTED'
+          || row.state === 'PRICE_TOO_HIGH'
+          || row.state === 'EXPIRED_UNSUBMITTED'
+          || String(row.terminalReason ?? '').length > 0
+        ).length;
+        return {
+          strategy,
+          available,
+          signals: rows.length,
+          settled: settled.length,
+          wins,
+          losses,
+          winRate: settled.length ? wins / settled.length : null,
+          simulatedPnlCents: pnlRows.length ? pnlCents : 0,
+          active,
+          blocked,
+          averageEntryPriceCents: priced.length
+            ? priced.reduce((sum, row) => sum + Number(row.entryPriceCents), 0) / priced.length
+            : null,
+          latestAtMs: rows.length ? Math.max(...rows.map((row) => Number(row.updatedAtMs || row.createdAtMs || 0))) : null,
+        };
+      };
+
+      const rows = [...a2Rows, ...lRows]
+        .sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0))
+        .slice(0, 100);
+
+      return {
+        generatedAtMs: Date.now(),
+        note: 'Live shadow-trading results only. No live Kalshi orders are submitted by A2 or L.',
+        summaries: [
+          summarize('A2', a2Rows, a2Exists),
+          summarize('L', lRows, lExists),
+        ],
+        rows,
+      };
+    });
+
+    if (req.method === 'HEAD') return send(res, 200, '', 'application/json; charset=utf-8');
+    return send(res, 200, JSON.stringify(data), 'application/json; charset=utf-8');
+  } catch (error) {
+    console.error('Shadow performance diagnostic read failed', error);
+    return send(res, 500, JSON.stringify({
+      error: 'Shadow performance unavailable',
+      generatedAtMs: Date.now(),
+      summaries: [],
+      rows: [],
+    }), 'application/json; charset=utf-8');
+  }
+}
+
 async function candidateLifecycleDiagnostics(req, res, url) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
   const ticker = String(url.searchParams.get('ticker') ?? '').trim();
@@ -652,6 +798,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   if (url.pathname === '/api/diagnostics/service-ownership') return void serviceOwnershipDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/service-ledger-today') return void serviceLedgerTodayDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/shadow-performance') return void shadowPerformanceDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/exchange-ticker') return void exchangeTickerDiagnostics(req, res, url);
   if (url.pathname === '/api/diagnostics/candidate-lifecycle') return void candidateLifecycleDiagnostics(req, res, url);
   if (url.pathname === '/api/diagnostics/settlement-latency') return void settlementLatencyDiagnostics(req, res, url);
