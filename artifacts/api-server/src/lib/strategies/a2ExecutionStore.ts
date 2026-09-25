@@ -90,7 +90,7 @@ export async function ensureA2ExecutionSchema(db: DbLike): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now(),
       UNIQUE(intent_id, settlement_version)
     );
-  \`);
+  `);
 }
 
 export class PostgresA2ExecutionStore implements A2ExecutionStore {
@@ -105,14 +105,14 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
   }): Promise<A2AcquireResult> {
     try {
       return await this.db.transaction(async (tx) => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(${A2_EXECUTION_ADVISORY_LOCK})\`);
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${A2_EXECUTION_ADVISORY_LOCK})`);
 
         const duplicate = await tx.execute(sql`
           SELECT * FROM a2_execution_intents
           WHERE client_order_id=${input.clientOrderId}
              OR (signal_id=${input.signalId} AND market_ticker=${input.marketTicker})
           LIMIT 1
-        \`);
+        `);
         const existing = toIntent(rowsOf(duplicate)[0]);
         if (existing) return { outcome: "duplicate", intent: existing } as const;
 
@@ -123,7 +123,7 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
             'SUBMISSION_UNKNOWN','OPEN','PARTIALLY_FILLED','FILLED'
           )
           LIMIT 1
-        \`);
+        `);
         if (rowsOf(active).length > 0) {
           return { outcome: "active_exposure_limit", intent: null } as const;
         }
@@ -135,7 +135,7 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
             (${input.id}, ${input.signalId}, ${input.marketTicker}, ${input.clientOrderId},
              'EXPOSURE_LOCKED', ${input.nowMs}, ${input.nowMs})
           RETURNING *
-        \`);
+        `);
         const intent = toIntent(rowsOf(inserted)[0]);
         return intent
           ? { outcome: "acquired", intent } as const
@@ -168,7 +168,7 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
         WHERE id=${input.id}
           AND state='EXPOSURE_LOCKED'
         RETURNING id
-      \`);
+      `);
       return rowsOf(result).length === 1;
     } catch {
       return false;
@@ -191,7 +191,7 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
         WHERE id=${input.id}
           AND state IN ('EXPOSURE_LOCKED','PRICE_CONFIRMED','ORDER_INTENT_CREATED','DRY_RUN_READY')
         RETURNING id
-      \`);
+      `);
       return rowsOf(result).length === 1;
     } catch {
       return false;
@@ -206,7 +206,7 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
         WHERE id=${input.id}
           AND state='DRY_RUN_READY'
         RETURNING id
-      \`);
+      `);
       return rowsOf(result).length === 1;
     } catch {
       return false;
@@ -229,7 +229,7 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
         WHERE id=${input.id}
           AND state IN ('SUBMISSION_UNKNOWN','OPEN','PARTIALLY_FILLED','FILLED')
         RETURNING id
-      \`);
+      `);
       return rowsOf(result).length === 1;
     } catch {
       return false;
@@ -244,10 +244,10 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
   }): Promise<boolean> {
     try {
       return await this.db.transaction(async (tx) => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(${A2_EXECUTION_ADVISORY_LOCK})\`);
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${A2_EXECUTION_ADVISORY_LOCK})`);
         const found = await tx.execute(sql`
           SELECT * FROM a2_execution_intents WHERE id=${input.id} LIMIT 1
-        \`);
+        `);
         const intent = toIntent(rowsOf(found)[0]);
         if (!intent) return false;
         if (intent.state === "EXPOSURE_RELEASED") return true;
@@ -259,7 +259,7 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
             (${"settlement:" + input.id}, ${input.id}, ${intent.marketTicker}, 1,
              ${input.result}, ${input.realizedPnlCents}, ${input.nowMs})
           ON CONFLICT (intent_id, settlement_version) DO NOTHING
-        \`);
+        `);
 
         const updated = await tx.execute(sql`
           UPDATE a2_execution_intents
@@ -271,7 +271,7 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
               updated_at=now()
           WHERE id=${input.id}
           RETURNING id
-        \`);
+        `);
         return rowsOf(updated).length === 1;
       });
     } catch {
@@ -285,7 +285,7 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
         SELECT * FROM a2_execution_intents
         WHERE client_order_id=${clientOrderId}
         LIMIT 1
-      \`);
+      `);
       return toIntent(rowsOf(result)[0]);
     } catch {
       return null;
