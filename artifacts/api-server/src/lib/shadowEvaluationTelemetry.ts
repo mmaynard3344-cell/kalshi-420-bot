@@ -83,13 +83,21 @@ export function shadowEvaluationRetentionDays(env: NodeJS.ProcessEnv = process.e
   return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_RETENTION_DAYS;
 }
 
+export function shadowEvaluationRetentionCutoffMs(
+  nowMs: number,
+  retentionDays = shadowEvaluationRetentionDays(),
+): number {
+  if (!Number.isSafeInteger(nowMs) || !Number.isInteger(retentionDays) || retentionDays <= 0) {
+    throw new Error("invalid shadow evaluation retention inputs");
+  }
+  return nowMs - retentionDays * 86_400_000;
+}
+
 export async function pruneShadowEvaluationEvents(
   retentionDays = shadowEvaluationRetentionDays(),
+  nowMs = Date.now(),
 ): Promise<number> {
-  if (!Number.isInteger(retentionDays) || retentionDays <= 0) {
-    throw new Error("retentionDays must be a positive integer");
-  }
-  const cutoffMs = Date.now() - retentionDays * 86_400_000;
+  const cutoffMs = shadowEvaluationRetentionCutoffMs(nowMs, retentionDays);
   const result = await db.execute(sql`
     DELETE FROM shadow_evaluation_events
     WHERE evaluated_at_ms < ${cutoffMs}
