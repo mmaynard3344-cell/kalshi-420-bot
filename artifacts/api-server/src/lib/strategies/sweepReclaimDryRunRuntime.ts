@@ -20,11 +20,11 @@ function rowsOf(result: unknown): Array<Record<string, unknown>> {
 }
 
 function deterministicId(sourceOpenTimeMs: number, ticker: string): string {
-  return \`l:\${sourceOpenTimeMs}:\${ticker}:v1\`;
+  return `l:${sourceOpenTimeMs}:${ticker}:v1`;
 }
 
 export async function ensureLSweepReclaimDryRunSchema(): Promise<void> {
-  await db.execute(sql\`
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS l_sweep_reclaim_dry_run_intents (
       id text PRIMARY KEY,
       source_open_time_ms bigint NOT NULL,
@@ -45,7 +45,7 @@ export async function ensureLSweepReclaimDryRunSchema(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS l_sweep_reclaim_dry_run_state_idx
       ON l_sweep_reclaim_dry_run_intents(state, updated_at_ms);
-  \`);
+  `);
 }
 
 export function parseKrakenEth15mRows(
@@ -85,7 +85,7 @@ export function parseKrakenEth15mRows(
 async function fetchEthHistory(sourceOpenTimeMs: number, nowMs: number): Promise<{prior96:Eth15mCandle[];source:Eth15mCandle}|null> {
   const start = sourceOpenTimeMs - PRIOR_24H_CANDLES * ETH_15M_MS;
   const since = Math.floor(start / 1000);
-  const response = await fetch(\`https://api.kraken.com/0/public/OHLC?pair=ETHUSD&interval=15&since=\${since}\`);
+  const response = await fetch(`https://api.kraken.com/0/public/OHLC?pair=ETHUSD&interval=15&since=${since}`);
   if (!response.ok) return null;
   const rows = parseKrakenEth15mRows(await response.json(), start, PRIOR_24H_CANDLES + 1, nowMs);
   if (rows.length !== PRIOR_24H_CANDLES + 1) return null;
@@ -110,7 +110,7 @@ async function currentMarket(): Promise<RawMarket|null> {
 
 async function fetchMarket(ticker:string):Promise<RawMarket|null>{
   try{
-    const r=await kalshiFetch<{market?:RawMarket}>(\`/markets/\${ticker}\`);
+    const r=await kalshiFetch<{market?:RawMarket}>(`/markets/${ticker}`);
     return r.market??null;
   }catch{return null;}
 }
@@ -120,31 +120,31 @@ async function persistDryRun(input:{
 }):Promise<"created"|"duplicate"|"blocked">{
   try{
     return await db.transaction(async tx=>{
-      const active=await tx.execute(sql\`
+      const active=await tx.execute(sql`
         SELECT id FROM l_sweep_reclaim_dry_run_intents
         WHERE state IN ('DRY_RUN_READY','SIMULATED_OPEN')
         LIMIT 1
-      \`);
+      `);
       if(rowsOf(active).length>0) return "blocked";
-      const r=await tx.execute(sql\`
+      const r=await tx.execute(sql`
         INSERT INTO l_sweep_reclaim_dry_run_intents
           (id,source_open_time_ms,destination_ticker,state,executable_yes_price_cents,contracts,principal_cents,fee_headroom_cents,requested_risk_cents,payload_json,created_at_ms,updated_at_ms)
         VALUES
-          (\${input.id},\${input.sourceOpenTimeMs},\${input.ticker},'DRY_RUN_READY',\${input.price},\${input.contracts},\${input.principal},\${input.fee},\${input.risk},\${JSON.stringify(input.payload)}::jsonb,\${input.nowMs},\${input.nowMs})
+          (${input.id},${input.sourceOpenTimeMs},${input.ticker},'DRY_RUN_READY',${input.price},${input.contracts},${input.principal},${input.fee},${input.risk},${JSON.stringify(input.payload)}::jsonb,${input.nowMs},${input.nowMs})
         ON CONFLICT (id) DO NOTHING
         RETURNING id
-      \`);
+      `);
       return rowsOf(r).length===1?"created":"duplicate";
     });
   }catch{return "blocked";}
 }
 
 async function settleOpen(nowMs:number):Promise<void>{
-  const open=await db.execute(sql\`
+  const open=await db.execute(sql`
     SELECT * FROM l_sweep_reclaim_dry_run_intents
     WHERE state IN ('DRY_RUN_READY','SIMULATED_OPEN')
     ORDER BY created_at_ms ASC
-  \`);
+  `);
   for(const row of rowsOf(open)){
     const ticker=String(row["destination_ticker"]??"");
     if(!ticker) continue;
@@ -156,11 +156,11 @@ async function settleOpen(nowMs:number):Promise<void>{
     const principal=Number(row["principal_cents"]??0);
     const fee=Number(row["fee_headroom_cents"]??0);
     const pnl=result==="yes"?contracts*100-principal-fee:-(principal+fee);
-    await db.execute(sql\`
+    await db.execute(sql`
       UPDATE l_sweep_reclaim_dry_run_intents
-      SET state='SETTLED',settlement_result=\${result},simulated_pnl_cents=\${pnl},updated_at_ms=\${nowMs}
-      WHERE id=\${String(row["id"])} AND state IN ('DRY_RUN_READY','SIMULATED_OPEN')
-    \`);
+      SET state='SETTLED',settlement_result=${result},simulated_pnl_cents=${pnl},updated_at_ms=${nowMs}
+      WHERE id=${String(row["id"])} AND state IN ('DRY_RUN_READY','SIMULATED_OPEN')
+    `);
   }
 }
 
