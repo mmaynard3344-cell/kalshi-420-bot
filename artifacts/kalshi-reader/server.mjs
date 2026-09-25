@@ -452,15 +452,19 @@ async function shadowPerformanceDiagnostics(req, res) {
         return q.rows?.[0]?.present === true;
       };
 
-      const [a2Exists, lExists] = await Promise.all([
+      const [a2IntentExists, a2EvalExists, lIntentExists, lEvalExists] = await Promise.all([
         tableExists('a2_execution_intents'),
+        tableExists('a2_baseline_reversion_evidence'),
         tableExists('l_sweep_reclaim_dry_run_intents'),
+        tableExists('l_sweep_reclaim_dry_run_evaluations'),
       ]);
 
       let a2Rows = [];
       let lRows = [];
+      let a2Evaluations = [];
+      let lEvaluations = [];
 
-      if (a2Exists) {
+      if (a2IntentExists) {
         const q = await client.query(`
           SELECT id, signal_id, market_ticker, client_order_id, state,
                  executable_yes_price_cents, quantity, max_notional_cents,
@@ -493,7 +497,7 @@ async function shadowPerformanceDiagnostics(req, res) {
         }));
       }
 
-      if (lExists) {
+      if (lIntentExists) {
         const q = await client.query(`
           SELECT id, source_open_time_ms, destination_ticker, state,
                  executable_yes_price_cents, contracts, principal_cents,
@@ -525,7 +529,56 @@ async function shadowPerformanceDiagnostics(req, res) {
         }));
       }
 
-      const summarize = (strategy, rows, available) => {
+      if (a2EvalExists) {
+        const q = await client.query(`
+          SELECT observed_at_ms, destination_ticker, signal, reason,
+                 source_drop_fraction, observed_yes_ask_cents,
+                 yes_semantics_verified, active_exposure_count_observed
+            FROM a2_baseline_reversion_evidence
+           ORDER BY observed_at_ms DESC
+           LIMIT 500
+        `);
+        a2Evaluations = q.rows.map((row) => ({
+          service: 'A2',
+          evaluatedAtMs: Number(row.observed_at_ms ?? 0),
+          ticker: String(row.destination_ticker ?? ''),
+          decision: row.signal === true ? 'qualified' : 'no_signal',
+          primaryReason: row.reason == null ? null : String(row.reason),
+          qualifies: row.signal === true,
+          wouldSubmit: false,
+          intentId: null,
+          evidence: {
+            sourceDropPct: row.source_drop_fraction == null ? null : Number(row.source_drop_fraction) * 100,
+            dropThresholdPct: 0.8,
+            observedYesAskCents: row.observed_yes_ask_cents == null ? null : Number(row.observed_yes_ask_cents),
+            yesSemanticsVerified: row.yes_semantics_verified === true,
+            activeExposureCountObserved: Number(row.active_exposure_count_observed ?? 0),
+          },
+        }));
+      }
+
+      if (lEvalExists) {
+        const q = await client.query(`
+          SELECT evaluated_at_ms, destination_ticker, decision, primary_reason,
+                 evidence_json, qualifies, would_submit, intent_id
+            FROM l_sweep_reclaim_dry_run_evaluations
+           ORDER BY evaluated_at_ms DESC
+           LIMIT 500
+        `);
+        lEvaluations = q.rows.map((row) => ({
+          service: 'L',
+          evaluatedAtMs: Number(row.evaluated_at_ms ?? 0),
+          ticker: row.destination_ticker == null ? '' : String(row.destination_ticker),
+          decision: String(row.decision ?? ''),
+          primaryReason: row.primary_reason == null ? null : String(row.primary_reason),
+          qualifies: row.qualifies === true,
+          wouldSubmit: row.would_submit === true,
+          intentId: row.intent_id == null ? null : String(row.intent_id),
+          evidence: row.evidence_json ?? null,
+        }));
+      }
+
+      const summarizeTrades = (strategy, rows, available) => {
         const settled = rows.filter((row) => row.settlementResult === 'yes' || row.settlementResult === 'no');
         const wins = settled.filter((row) => row.settlementResult === 'yes').length;
         const losses = settled.filter((row) => row.settlementResult === 'no').length;
@@ -547,7 +600,7 @@ async function shadowPerformanceDiagnostics(req, res) {
           wins,
           losses,
           winRate: settled.length ? wins / settled.length : null,
-          simulatedPnlCents: pnlRows.length ? pnlCents : 0,
+          simulatedPnlCents: pnlRows.length ? pnlCents : null,
           active,
           blocked,
           averageEntryPriceCents: priced.length
@@ -557,17 +610,50 @@ async function shadowPerformanceDiagnostics(req, res) {
         };
       };
 
+      const serviceHealth = (service, evaluations, intents, evalAvailable) => {
+        const latest = evaluations[0] ?? null;
+        const ageMs = latest ? Date.now() - latest.evaluatedAtMs : null;
+        const healthy = latest != null && ageMs >= 0 && ageMs <= 60_000;
+        const qualifiedRecent = evaluations.filter((row) => row.qualifies).length;
+        const wouldSubmitRecent = service === 'A2'
+          ? intents.length
+          : evaluations.filter((row) => row.wouldSubmit).length;
+        const settledIntentsRecent = intents.filter((row) => row.settlementResult === 'yes' || row.settlementResult === 'no').length;
+        return {
+          service,
+          health: !evalAvailable ? 'unavailable' : latest == null ? 'no_data' : healthy ? 'healthy' : 'stale',
+          lastEvaluationAtMs: latest?.evaluatedAtMs ?? null,
+          latestTicker: latest?.ticker || null,
+          latestDecision: latest?.decision ?? null,
+          latestReason: latest?.primaryReason ?? null,
+          latestEvidence: latest?.evidence ?? null,
+          evaluationsRecent: evaluations.length,
+          qualifiedRecent,
+          wouldSubmitRecent,
+          shadowIntentsRecent: intents.length,
+          settledIntentsRecent,
+        };
+      };
+
       const rows = [...a2Rows, ...lRows]
         .sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0))
+        .slice(0, 100);
+      const evaluations = [...a2Evaluations, ...lEvaluations]
+        .sort((a, b) => b.evaluatedAtMs - a.evaluatedAtMs)
         .slice(0, 100);
 
       return {
         generatedAtMs: Date.now(),
-        note: 'Live shadow-trading results only. No live Kalshi orders are submitted by A2 or L.',
-        summaries: [
-          summarize('A2', a2Rows, a2Exists),
-          summarize('L', lRows, lExists),
+        note: 'A2 and L are live dry-run/shadow evaluators only. Evaluation activity is separate from simulated trade intents and P&L.',
+        services: [
+          serviceHealth('A2', a2Evaluations, a2Rows, a2EvalExists),
+          serviceHealth('L', lEvaluations, lRows, lEvalExists),
         ],
+        summaries: [
+          summarizeTrades('A2', a2Rows, a2IntentExists),
+          summarizeTrades('L', lRows, lIntentExists),
+        ],
+        evaluations,
         rows,
       };
     });
@@ -579,7 +665,9 @@ async function shadowPerformanceDiagnostics(req, res) {
     return send(res, 500, JSON.stringify({
       error: 'Shadow performance unavailable',
       generatedAtMs: Date.now(),
+      services: [],
       summaries: [],
+      evaluations: [],
       rows: [],
     }), 'application/json; charset=utf-8');
   }
