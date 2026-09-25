@@ -99,6 +99,17 @@ function renderOpenOrders(raw,owners){
   $('openCount').textContent=open.length+' open';
   $('openRows').innerHTML=open.length?open.map(o=>`<tr><td>${esc(service(o,owners))}</td><td>${esc(o.ticker??o.market_ticker??'—')}</td><td>${esc(String(side(o)||'—').toUpperCase())}</td><td class="num">${esc(requested(o)??'—')}</td><td class="num">${esc(num(o?.fill_count_fp,o?.filled_count_fp,o?.filled_count,o?.filledContracts)??'—')}</td><td class="num">${esc(num(o?.remaining_count_fp,o?.remaining_count,o?.remainingContracts)??'—')}</td><td>${esc(status(o)||'—')}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">No open orders.</td></tr>';
 }
+function renderShadow(d){
+  const sums=Array.isArray(d?.summaries)?d.summaries:[],a2=sums.find(x=>x?.strategy==='A2')||null,l=sums.find(x=>x?.strategy==='L')||null,rows=Array.isArray(d?.rows)?d.rows:[];
+  const total=Number(a2?.simulatedPnlCents||0)+Number(l?.simulatedPnlCents||0),active=Number(a2?.active||0)+Number(l?.active||0),blocked=Number(a2?.blocked||0)+Number(l?.blocked||0),settled=Number(a2?.settled||0)+Number(l?.settled||0);
+  const metric=(id,v)=>{const e=$(id);e.textContent=money(v);e.className='metric '+(v>0?'good':v<0?'bad':'')};
+  metric('shadowCombined',total);metric('shadowA2',Number(a2?.simulatedPnlCents||0));metric('shadowL',Number(l?.simulatedPnlCents||0));
+  $('shadowA2Meta').textContent=a2?`${a2.settled||0} settled · ${a2.wins||0}W / ${a2.losses||0}L · ${a2.winRate==null?'—':(Number(a2.winRate)*100).toFixed(1)+'%'}`:'No A2 summary';
+  $('shadowLMeta').textContent=l?`${l.settled||0} settled · ${l.wins||0}W / ${l.losses||0}L · ${l.winRate==null?'—':(Number(l.winRate)*100).toFixed(1)+'%'}`:'No L summary';
+  $('shadowActive').textContent=String(active);$('shadowBlocked').textContent=`${blocked} blocked/released`;$('shadowSettled').textContent=String(settled);
+  $('shadowFresh').textContent=d?.generatedAtMs?'Updated '+new Intl.DateTimeFormat('en-US',{timeZone:ET,hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date(Number(d.generatedAtMs))):'Shadow ledger loaded';
+  $('shadowRows').innerHTML=rows.length?rows.slice(0,100).map(r=>{const p=r?.pnlCents==null?null:Number(r.pnlCents),why=r?.settlementResult??r?.terminalReason?.replaceAll('_',' ')??'Pending';return`<tr><td>${r?.createdAtMs?time(Number(r.createdAtMs)):'—'}</td><td>${esc(r?.strategy??'—')}</td><td>${esc(r?.ticker??'—')}</td><td class="num">${r?.entryPriceCents==null?'—':Number(r.entryPriceCents).toFixed(0)+'¢'}</td><td class="num">${esc(r?.contracts??'—')}</td><td class="num">${r?.principalCents==null?'—':money(r.principalCents,false)}</td><td>${esc(String(r?.state??'—').replaceAll('_',' '))}</td><td>${esc(why)}</td><td class="num ${p>0?'good':p<0?'bad':''}">${p==null?'Pending':money(p)}</td></tr>`}).join(''):'<tr><td colspan="9" class="empty">No A2 or L shadow intents have qualified yet.</td></tr>';
+}
 function renderPnl(fills,orders,owners,ledgerToday){
   const fm=fillsByOrder(fills,orders,owners),td=today(),settled=[...fm.values()].filter(x=>x.result&&x.netCents!=null&&dk(x.atMs)===td);
   const wins=settled.filter(x=>x.won).length,losses=settled.length-wins,fees=settled.reduce((s,x)=>s+x.feesCents,0);
@@ -122,13 +133,14 @@ let busy=false;
 async function refresh(){
   if(busy)return;busy=true;$('stamp').textContent='Refreshing…';
   try{
-    const [b,m,o,f,w,l]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),paged('/api/trade/orders','orders'),paged('/api/trade/fills','fills'),j('/api/diagnostics/service-ownership'),j('/api/diagnostics/service-ledger-today')]);
+    const [b,m,o,f,w,l,sh]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),paged('/api/trade/orders','orders'),paged('/api/trade/fills','fills'),j('/api/diagnostics/service-ownership'),j('/api/diagnostics/service-ledger-today'),j('/api/diagnostics/shadow-performance')]);
     if(b.status==='fulfilled')renderAccount(b.value);else $('accountState').textContent='UNAVAILABLE';
     if(m.status==='fulfilled')renderMarket(m.value);
     const orderRows=o.status==='fulfilled'?o.value:[];
     const owners=w.status==='fulfilled'?ownershipIndex(w.value):ownershipIndex(null);
     renderOpenOrders(orderRows,owners);
     if(f.status==='fulfilled')renderPnl(f.value,orderRows,owners,l.status==='fulfilled'?l.value:null);
+    if(sh.status==='fulfilled')renderShadow(sh.value);else{$('shadowFresh').textContent='Shadow ledger unavailable';$('shadowRows').innerHTML='<tr><td colspan="9" class="empty">A2/L shadow endpoint unavailable.</td></tr>'}
     $('stamp').textContent='Updated '+new Intl.DateTimeFormat('en-US',{timeZone:ET,hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date());
   }catch(e){$('stamp').textContent='Partial data · '+String(e?.message??e)}
   finally{busy=false}
