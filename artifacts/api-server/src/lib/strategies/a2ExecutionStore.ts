@@ -41,6 +41,9 @@ function toIntent(row: Record<string, unknown> | undefined): A2ExecutionIntent |
     maxNotionalCents: num("max_notional_cents"),
     priceCheckedAtMs: num("price_checked_at_ms"),
     kalshiOrderId: row["kalshi_order_id"] == null ? null : String(row["kalshi_order_id"]),
+    filledQuantity: Number(row["filled_quantity"] ?? 0),
+    fillCostCents: Number(row["fill_cost_cents"] ?? 0),
+    fillFeeCents: Number(row["fill_fee_cents"] ?? 0),
   };
 }
 
@@ -64,6 +67,10 @@ export async function ensureA2ExecutionSchema(db: DbLike): Promise<void> {
       price_checked_at_ms bigint,
       payload_json jsonb,
       kalshi_order_id text,
+      filled_quantity double precision NOT NULL DEFAULT 0,
+      fill_cost_cents double precision NOT NULL DEFAULT 0,
+      fill_fee_cents double precision NOT NULL DEFAULT 0,
+      fill_evidence_json jsonb NOT NULL DEFAULT '[]'::jsonb,
       terminal_reason text,
       realized_pnl_cents integer,
       settlement_result text,
@@ -189,7 +196,7 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
             updated_at_ms=${input.nowMs},
             updated_at=now()
         WHERE id=${input.id}
-          AND state IN ('EXPOSURE_LOCKED','PRICE_CONFIRMED','ORDER_INTENT_CREATED','DRY_RUN_READY')
+          AND state IN ('EXPOSURE_LOCKED','PRICE_CONFIRMED','ORDER_INTENT_CREATED','DRY_RUN_READY','SUBMISSION_UNKNOWN')
         RETURNING id
       `);
       return rowsOf(result).length === 1;
@@ -217,6 +224,10 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
     id: string;
     orderId: string;
     state: "OPEN" | "PARTIALLY_FILLED" | "FILLED";
+    filledQuantity: number;
+    fillCostCents: number;
+    fillFeeCents: number;
+    fills: import("./a2ExecutionAdapter.js").A2ExchangeFill[];
     nowMs: number;
   }): Promise<boolean> {
     try {
@@ -224,6 +235,10 @@ export class PostgresA2ExecutionStore implements A2ExecutionStore {
         UPDATE a2_execution_intents
         SET state=${input.state},
             kalshi_order_id=${input.orderId},
+            filled_quantity=${input.filledQuantity},
+            fill_cost_cents=${input.fillCostCents},
+            fill_fee_cents=${input.fillFeeCents},
+            fill_evidence_json=${JSON.stringify(input.fills)}::jsonb,
             updated_at_ms=${input.nowMs},
             updated_at=now()
         WHERE id=${input.id}
