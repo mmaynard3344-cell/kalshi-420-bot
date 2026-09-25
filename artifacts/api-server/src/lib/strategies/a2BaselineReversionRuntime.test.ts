@@ -70,6 +70,15 @@ test("destination requires BTC above-strike YES semantics",()=>{
   })?.yesSettlesAboveStrike,true);
 });
 
+
+
+test("floor/cap strike structure verifies YES direction when prose is neutral",()=>{
+  const base={...rawMarket,title:"Bitcoin 15 minute market",yes_sub_title:"$100,000",rules_primary:null,rules_secondary:null};
+  assert.equal(destinationFromRawMarket({...base,floor_strike:100_000,cap_strike:null})?.yesSettlesAboveStrike,true);
+  assert.equal(destinationFromRawMarket({...base,floor_strike:null,cap_strike:100_000})?.yesSettlesAboveStrike,false);
+  assert.equal(destinationFromRawMarket({...base,floor_strike:100_000,cap_strike:101_000})?.yesSettlesAboveStrike,false);
+});
+
 test("runtime opens shadow claim from immediate finalized source and current destination",async()=>{
   process.env.A2_BASELINE_REVERSION_ENABLED="true";
   const store=new MemoryStore();
