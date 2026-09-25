@@ -26,6 +26,12 @@ class MemoryA2Store implements A2ShadowStore {
     return [...this.claims.values()].filter((x) => x.state === "shadow_open").length;
   }
 
+  async listOpen(): Promise<Array<{ id: string; destinationTicker: string }>> {
+    return [...this.claims.entries()]
+      .filter(([, row]) => row.state === "shadow_open")
+      .map(([id, row]) => ({ id, destinationTicker: row.input.destinationTicker }));
+  }
+
   async claimOpen(input: A2ShadowClaimInput): Promise<A2ShadowClaimOutcome> {
     const prior = this.tail;
     let release!: () => void;
