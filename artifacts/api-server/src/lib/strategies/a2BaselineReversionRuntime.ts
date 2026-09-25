@@ -8,6 +8,12 @@ import {
 } from "./a2BaselineReversion.js";
 import { evaluateA2BaselineReversionShadow } from "./a2BaselineReversionShadow.js";
 import type { A2ShadowStore } from "./a2BaselineReversionShadowStore.js";
+import {
+  A2DryRunExecutionAdapter,
+  A2ReadOnlyDryRunClient,
+  deterministicA2ClientOrderId,
+  type A2ExecutionStore,
+} from "./a2ExecutionAdapter.js";
 
 export const A2_RUNTIME_POLL_MS = 10_000;
 
@@ -148,6 +154,7 @@ const defaultDeps: A2RuntimeDeps = {
 export async function runA2BaselineReversionRuntimeOnce(
   store: A2ShadowStore,
   deps: A2RuntimeDeps = defaultDeps,
+  executionAdapter?: A2DryRunExecutionAdapter,
 ): Promise<{ evaluated: boolean; outcome: string; ticker: string | null }> {
   const nowMs = deps.nowMs();
 
@@ -157,7 +164,18 @@ export async function runA2BaselineReversionRuntimeOnce(
     const normalized = normalizeMarket(raw);
     const result = normalized["result"];
     if (result === "yes" || result === "no") {
-      await store.settle({ id: claim.id, settlementResult: result, settledAtMs: nowMs });
+      const shadowSettled = await store.settle({ id: claim.id, settlementResult: result, settledAtMs: nowMs });
+      if (shadowSettled && executionAdapter) {
+        const clientOrderId = deterministicA2ClientOrderId({
+          marketTicker: claim.destinationTicker,
+          signalId: claim.id,
+        });
+        const executionSettlement = await executionAdapter.settle(clientOrderId, nowMs);
+        logger.info(
+          { strategy: "A2", ticker: claim.destinationTicker, clientOrderId, executionSettlement },
+          "A2 dry-run settlement reconciliation",
+        );
+      }
     }
   }
 
@@ -177,6 +195,15 @@ export async function runA2BaselineReversionRuntimeOnce(
     observedAtMs: nowMs,
     store,
   });
+  let executionReceipt: unknown = null;
+  if (result.outcome === "shadow_opened" && result.claimId && executionAdapter) {
+    executionReceipt = await executionAdapter.prepare({
+      signalId: result.claimId,
+      marketTicker: destination.ticker,
+      nowMs,
+    });
+  }
+
   logger.info(
     {
       strategy: "a2_baseline_reversion",
@@ -187,21 +214,51 @@ export async function runA2BaselineReversionRuntimeOnce(
       yesSemanticsVerified: destination.yesSettlesAboveStrike,
       outcome: result.outcome,
       signal: result.signal,
+      executionReceipt,
     },
     "A2 baseline reversion evaluation",
   );
   return { evaluated: true, outcome: result.outcome, ticker: destination.ticker };
 }
 
+function defaultA2DryRunAdapter(executionStore: A2ExecutionStore): A2DryRunExecutionAdapter {
+  const client = new A2ReadOnlyDryRunClient(
+    async (ticker) => {
+      try {
+        const response = await kalshiFetch<{ market?: RawMarket }>(`/markets/${ticker}`);
+        if (!response.market) return null;
+        const normalized = normalizeMarket(response.market);
+        const ask = normalized["yes_ask"];
+        return typeof ask === "number" && Number.isInteger(ask) ? ask : null;
+      } catch {
+        return null;
+      }
+    },
+    async (ticker) => {
+      try {
+        const response = await kalshiFetch<{ market?: RawMarket }>(`/markets/${ticker}`);
+        if (!response.market) return null;
+        const result = normalizeMarket(response.market)["result"];
+        return result === "yes" || result === "no" ? result : null;
+      } catch {
+        return null;
+      }
+    },
+  );
+  return new A2DryRunExecutionAdapter(executionStore, client);
+}
+
 export function startA2BaselineReversionRuntime(
   store: A2ShadowStore,
   deps: A2RuntimeDeps = defaultDeps,
+  executionStore?: A2ExecutionStore,
 ): () => void {
   let inFlight = false;
+  const executionAdapter = executionStore ? defaultA2DryRunAdapter(executionStore) : undefined;
   const run = () => {
     if (inFlight) return;
     inFlight = true;
-    void runA2BaselineReversionRuntimeOnce(store, deps)
+    void runA2BaselineReversionRuntimeOnce(store, deps, executionAdapter)
       .catch((err) => logger.warn({ err }, "A2 baseline reversion runtime iteration failed"))
       .finally(() => { inFlight = false; });
   };
