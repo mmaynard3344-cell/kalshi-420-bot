@@ -88,6 +88,47 @@ type LiveMarket = {
   };
 };
 
+
+type ShadowStrategySummary = {
+  strategy: 'A2' | 'L';
+  available: boolean;
+  signals: number;
+  settled: number;
+  wins: number;
+  losses: number;
+  winRate: number | null;
+  simulatedPnlCents: number;
+  active: number;
+  blocked: number;
+  averageEntryPriceCents: number | null;
+  latestAtMs: number | null;
+};
+
+type ShadowTradeRow = {
+  strategy: 'A2' | 'L';
+  id: string;
+  signalId: string;
+  ticker: string;
+  clientOrderId: string;
+  state: string;
+  entryPriceCents: number | null;
+  contracts: number | null;
+  principalCents: number | null;
+  settlementResult: string | null;
+  pnlCents: number | null;
+  terminalReason: string | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+  settledAtMs: number | null;
+};
+
+type ShadowPerformance = {
+  generatedAtMs: number;
+  note: string;
+  summaries: ShadowStrategySummary[];
+  rows: ShadowTradeRow[];
+};
+
 function moneyFromCents(value: number | null | undefined, signed = false) {
   if (value == null || !Number.isFinite(value)) return 'Unavailable';
   const abs = Math.abs(value) / 100;
@@ -135,8 +176,10 @@ export default function Operator() {
   const { balance, positions, status, isStale, refetchAll } = useMartingaleData();
   const [history, setHistory] = useState<CandidateHistory | null>(null);
   const [market, setMarket] = useState<LiveMarket | null>(null);
+  const [shadow, setShadow] = useState<ShadowPerformance | null>(null);
   const [historyFresh, setHistoryFresh] = useState(false);
   const [marketFresh, setMarketFresh] = useState(false);
+  const [shadowFresh, setShadowFresh] = useState(false);
   const [now, setNow] = useState(Date.now());
   const inFlight = useRef<AbortController | null>(null);
 
@@ -146,13 +189,15 @@ export default function Operator() {
       inFlight.current?.abort();
       const controller = new AbortController();
       inFlight.current = controller;
-      const [h, m] = await Promise.allSettled([
+      const [h, m, s] = await Promise.allSettled([
         getJson<CandidateHistory>('/api/trade/analytics/eth420-candidate-history?limit=500', controller.signal),
         getJson<LiveMarket>('/api/trade/analytics/eth420-live-market', controller.signal),
+        getJson<ShadowPerformance>('/api/diagnostics/shadow-performance', controller.signal),
       ]);
       if (!active) return;
       if (h.status === 'fulfilled') { setHistory(h.value); setHistoryFresh(true); } else { setHistoryFresh(false); }
       if (m.status === 'fulfilled') { setMarket(m.value); setMarketFresh(true); } else { setMarketFresh(false); }
+      if (s.status === 'fulfilled') { setShadow(s.value); setShadowFresh(true); } else { setShadowFresh(false); }
     };
     void load();
     const dataTimer = window.setInterval(() => void load(), 10_000);
@@ -171,6 +216,10 @@ export default function Operator() {
   const accountEthPositions = (positions?.market_positions ?? []).filter((p: MartingalePosition) => p.ticker.startsWith('KXETH15M-') && Number(p.position_fp) !== 0);
   const runState = !historyFresh ? 'DATA STALE' : history?.liveEnabled && history?.executionApproved ? 'LIVE ENABLED' : 'ENTRY GATED';
   const runTone = runState === 'LIVE ENABLED' ? 'good' : runState === 'ENTRY GATED' ? 'warn' : 'bad';
+  const a2Shadow = shadow?.summaries.find((row) => row.strategy === 'A2') ?? null;
+  const lShadow = shadow?.summaries.find((row) => row.strategy === 'L') ?? null;
+  const shadowRows = shadow?.rows ?? [];
+  const totalShadowPnl = (a2Shadow?.simulatedPnlCents ?? 0) + (lShadow?.simulatedPnlCents ?? 0);
 
   return <div className="min-h-[100dvh] bg-background text-foreground">
     <div className="mx-auto max-w-7xl border-x border-border min-h-[100dvh]">
@@ -193,6 +242,53 @@ export default function Operator() {
           <Metric label="Lifecycle" value={String(history?.operationalStatus.unresolvedLifecycleCount ?? 'Unavailable')} detail={history?.operationalStatus.unresolvedLifecycleCount === 0 ? 'No unresolved candidate orders' : 'Unresolved candidate order(s) require reconciliation'} tone={(history?.operationalStatus.unresolvedLifecycleCount ?? 0) > 0 ? 'warn' : 'good'} />
         </section>
 
+        <section className="border border-border bg-card">
+          <div className="p-4 sm:p-5 border-b border-border flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Shadow performance</div>
+              <h2 className="mt-1 font-semibold">A2 + L live dry-run trading</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Real market inputs, simulated execution only. No live Kalshi order submission.</p>
+            </div>
+            <div className="font-mono text-[10px] uppercase text-muted-foreground">{shadowFresh ? 'Fresh' : 'Unavailable / stale'}</div>
+          </div>
+          <div className="grid gap-px bg-border md:grid-cols-2 xl:grid-cols-4">
+            <div className="bg-card p-4">
+              <div className="font-mono text-[10px] uppercase text-muted-foreground">Combined simulated P&amp;L</div>
+              <div className={cn('mt-2 font-mono text-2xl font-semibold', totalShadowPnl > 0 && 'text-emerald-600', totalShadowPnl < 0 && 'text-destructive')}>{moneyFromCents(totalShadowPnl, true)}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{(a2Shadow?.settled ?? 0) + (lShadow?.settled ?? 0)} settled shadow trades</div>
+            </div>
+            {[a2Shadow, lShadow].map((summary, index) => <div key={summary?.strategy ?? index} className="bg-card p-4">
+              <div className="font-mono text-[10px] uppercase text-muted-foreground">{summary?.strategy ?? (index === 0 ? 'A2' : 'L')} shadow</div>
+              <div className="mt-2 flex items-baseline gap-2"><span className="font-mono text-2xl font-semibold">{summary?.settled ?? 0}</span><span className="text-xs text-muted-foreground">settled</span></div>
+              <div className="mt-1 text-xs text-muted-foreground">{summary ? `${summary.wins} wins / ${summary.losses} losses · ${summary.winRate == null ? '—' : `${(summary.winRate * 100).toFixed(1)}%`} win rate` : 'No shadow data yet'}</div>
+              <div className={cn('mt-2 font-mono text-sm', (summary?.simulatedPnlCents ?? 0) > 0 && 'text-emerald-600', (summary?.simulatedPnlCents ?? 0) < 0 && 'text-destructive')}>{summary ? moneyFromCents(summary.simulatedPnlCents, true) : '—'}</div>
+            </div>)}
+            <div className="bg-card p-4">
+              <div className="font-mono text-[10px] uppercase text-muted-foreground">Current shadow activity</div>
+              <div className="mt-2 font-mono text-sm">{(a2Shadow?.active ?? 0) + (lShadow?.active ?? 0)} active · {(a2Shadow?.signals ?? 0) + (lShadow?.signals ?? 0)} intents</div>
+              <div className="mt-1 text-xs text-muted-foreground">{(a2Shadow?.blocked ?? 0) + (lShadow?.blocked ?? 0)} blocked/released</div>
+            </div>
+          </div>
+          <div className="overflow-x-auto border-t border-border">
+            <table className="w-full min-w-[950px] font-mono text-xs">
+              <thead className="bg-muted/30 text-[10px] uppercase text-muted-foreground"><tr><th className="p-3 text-left">ET time</th><th className="p-3 text-left">Strategy</th><th className="p-3 text-left">Ticker</th><th className="p-3 text-right">Entry</th><th className="p-3 text-right">Contracts</th><th className="p-3 text-right">Principal</th><th className="p-3 text-left">State</th><th className="p-3 text-left">Result</th><th className="p-3 text-right">Sim P&amp;L</th></tr></thead>
+              <tbody className="divide-y divide-border">
+                {shadowRows.slice(0, 30).map((row) => <tr key={row.strategy + ':' + row.id}>
+                  <td className="p-3 whitespace-nowrap">{row.createdAtMs ? etClock(row.createdAtMs) : '—'}</td>
+                  <td className="p-3 font-semibold">{row.strategy}</td>
+                  <td className="p-3 max-w-56 truncate" title={row.ticker}>{row.ticker || '—'}</td>
+                  <td className="p-3 text-right">{row.entryPriceCents == null ? '—' : `${row.entryPriceCents}¢`}</td>
+                  <td className="p-3 text-right">{row.contracts ?? '—'}</td>
+                  <td className="p-3 text-right">{row.principalCents == null ? '—' : moneyFromCents(row.principalCents)}</td>
+                  <td className="p-3 uppercase">{row.state.replaceAll('_', ' ')}</td>
+                  <td className="p-3 uppercase">{row.settlementResult ?? row.terminalReason?.replaceAll('_', ' ') ?? 'Pending'}</td>
+                  <td className={cn('p-3 text-right', (row.pnlCents ?? 0) > 0 && 'text-emerald-600', (row.pnlCents ?? 0) < 0 && 'text-destructive')}>{row.pnlCents == null ? 'Pending' : moneyFromCents(row.pnlCents, true)}</td>
+                </tr>)}
+              </tbody>
+            </table>
+            {shadowRows.length === 0 && <div className="p-8 text-center text-sm text-muted-foreground">No A2 or L shadow intents have qualified yet.</div>}
+          </div>
+        </section>
         <section className="border border-border bg-card">
           <div className="p-4 sm:p-5 border-b border-border flex flex-wrap justify-between gap-3">
             <div><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Live market</div><h2 className="mt-1 font-semibold">ETH 15-minute operating context</h2></div>
@@ -230,6 +326,7 @@ export default function Operator() {
           <span>Market evidence: {marketFresh && market?.availability.status === 'fresh' ? 'fresh' : 'unavailable/stale'}</span>
           <span>Account reads: {isStale ? 'stale' : 'current'}</span>
           <span>Trade status: {status ? 'received' : 'unavailable'}</span>
+          <span>A2/L shadow: {shadowFresh ? 'fresh' : 'unavailable/stale'}</span>
           {stateDay && <span>ET ledger day: {etDay(stateDay)}</span>}
           <span className="font-medium text-foreground">No submit, cancel, reset, reconcile, or configuration controls are present on this page.</span>
         </section>
