@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import esbuildPluginPino from "esbuild-plugin-pino";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outdir = "/tmp/ts-a2-baseline-reversion";
@@ -18,6 +19,7 @@ await build({
   outdir,
   outExtension:{".js":".mjs"},
   logLevel:"warning",
+  plugins:[esbuildPluginPino({ transports:["pino-pretty"] })],
 });
 
 const files = [
