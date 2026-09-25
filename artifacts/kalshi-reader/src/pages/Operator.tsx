@@ -307,22 +307,30 @@ export default function Operator() {
               const healthy = svc?.health === 'healthy';
               const stale = svc?.health === 'stale';
               const evidence = svc?.latestEvidence ?? {};
+              const monitoring = healthy && svc?.latestDecision === 'no_signal';
+              const statusText = monitoring
+                ? 'Healthy — monitoring'
+                : svc?.health === 'unknown'
+                  ? 'Unknown — awaiting first evaluation'
+                  : svc?.health?.replaceAll('_', ' ') ?? 'unavailable';
               const detail = service === 'A2'
-                ? `Move ${typeof evidence.sourceDropPct === 'number' ? evidence.sourceDropPct.toFixed(3) + '%' : '—'} · trigger ≥ ${typeof evidence.dropThresholdPct === 'number' ? evidence.dropThresholdPct.toFixed(1) + '%' : '0.8%'}`
-                : `Latest reason: ${svc?.latestReason?.replaceAll('_', ' ') ?? '—'}`;
+                ? `Move ${typeof evidence.sourceMovePct === 'number' ? evidence.sourceMovePct.toFixed(3) + '%' : typeof evidence.sourceDropPct === 'number' ? evidence.sourceDropPct.toFixed(3) + '%' : '—'} · trigger ≥ ${typeof evidence.dropThresholdPct === 'number' ? evidence.dropThresholdPct.toFixed(1) + '%' : '0.8%'}`
+                : `Latest reason: ${svc?.latestReason?.replaceAll('_', ' ') ?? '—'} · sweep ${String(evidence.sweptPrevious24hLow ?? '—')} · wick ${String(evidence.wickCondition ?? '—')} · upper close ${String(evidence.upperHalfClose ?? '—')}`;
               return <div key={service} className="bg-card p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="font-mono text-[10px] uppercase text-muted-foreground">{service} shadow evaluator</div>
-                  <span className={cn('font-mono text-[10px] uppercase', healthy ? 'text-emerald-600' : stale ? 'text-amber-600' : 'text-muted-foreground')}>{svc?.health?.replaceAll('_', ' ') ?? 'unavailable'}</span>
+                  <span className={cn('font-mono text-[10px] uppercase', healthy ? 'text-emerald-600' : stale ? 'text-amber-600' : 'text-muted-foreground')}>{statusText}</span>
                 </div>
                 <div className="mt-2 font-mono text-sm">{svc?.latestTicker ?? 'No evaluation data yet'}</div>
                 <div className="mt-1 text-xs text-muted-foreground">{svc?.lastEvaluationAtMs ? `Last evaluation ${etClock(svc.lastEvaluationAtMs)} · ${svc.latestDecision?.replaceAll('_', ' ') ?? '—'}` : 'Waiting for evaluator evidence'}</div>
                 <div className="mt-2 text-xs text-muted-foreground">{detail}</div>
-                <div className="mt-3 grid grid-cols-4 gap-2 text-center">
-                  <div><div className="font-mono text-sm">{svc?.evaluationsRecent ?? 0}</div><div className="text-[10px] uppercase text-muted-foreground">evals</div></div>
-                  <div><div className="font-mono text-sm">{svc?.qualifiedRecent ?? 0}</div><div className="text-[10px] uppercase text-muted-foreground">qualified</div></div>
-                  <div><div className="font-mono text-sm">{svc?.wouldSubmitRecent ?? 0}</div><div className="text-[10px] uppercase text-muted-foreground">would submit</div></div>
-                  <div><div className="font-mono text-sm">{svc?.shadowIntentsRecent ?? 0}</div><div className="text-[10px] uppercase text-muted-foreground">intents</div></div>
+                <div className="mt-2 text-[10px] text-muted-foreground">Expected every {svc ? Math.round(svc.expectedEvaluationIntervalMs / 1000) : '—'}s · stale after {svc ? Math.round(svc.freshnessThresholdMs / 1000) : '—'}s · recent window {svc ? Math.round(svc.recentWindowMs / 60000) : '—'}m</div>
+                <div className="mt-3 grid grid-cols-5 gap-2 text-center">
+                  <div><div className="font-mono text-sm">{svc && svc.evaluationsRecent > 0 ? svc.evaluationsRecent : '—'}</div><div className="text-[10px] uppercase text-muted-foreground">evals</div></div>
+                  <div><div className="font-mono text-sm">{shadowCount(svc, svc?.noSignalRecent)}</div><div className="text-[10px] uppercase text-muted-foreground">no signal</div></div>
+                  <div><div className="font-mono text-sm">{shadowCount(svc, svc?.qualifiedRecent)}</div><div className="text-[10px] uppercase text-muted-foreground">qualified</div></div>
+                  <div><div className="font-mono text-sm">{shadowCount(svc, svc?.wouldSubmitRecent)}</div><div className="text-[10px] uppercase text-muted-foreground">would submit</div></div>
+                  <div><div className="font-mono text-sm">{shadowCount(svc, svc?.shadowIntentsRecent)}</div><div className="text-[10px] uppercase text-muted-foreground">intents</div></div>
                 </div>
               </div>;
             })}
@@ -334,10 +342,11 @@ export default function Operator() {
               <table className="w-full min-w-[760px] font-mono text-xs">
                 <thead className="bg-muted/30 text-[10px] uppercase text-muted-foreground"><tr><th className="p-3 text-left">Metric</th><th className="p-3 text-right">A2</th><th className="p-3 text-right">L</th></tr></thead>
                 <tbody className="divide-y divide-border">
-                  <tr><td className="p-3">Evaluations, recent window</td><td className="p-3 text-right">{a2Health?.evaluationsRecent ?? 0}</td><td className="p-3 text-right">{lHealth?.evaluationsRecent ?? 0}</td></tr>
-                  <tr><td className="p-3">Qualified signals</td><td className="p-3 text-right">{a2Health?.qualifiedRecent ?? 0}</td><td className="p-3 text-right">{lHealth?.qualifiedRecent ?? 0}</td></tr>
-                  <tr><td className="p-3">Would-submit decisions</td><td className="p-3 text-right">{a2Health?.wouldSubmitRecent ?? 0}</td><td className="p-3 text-right">{lHealth?.wouldSubmitRecent ?? 0}</td></tr>
-                  <tr><td className="p-3">Persisted shadow intents</td><td className="p-3 text-right">{a2Health?.shadowIntentsRecent ?? 0}</td><td className="p-3 text-right">{lHealth?.shadowIntentsRecent ?? 0}</td></tr>
+                  <tr><td className="p-3">Evaluations, recent window</td><td className="p-3 text-right">{a2Health && a2Health.evaluationsRecent > 0 ? a2Health.evaluationsRecent : '—'}</td><td className="p-3 text-right">{lHealth && lHealth.evaluationsRecent > 0 ? lHealth.evaluationsRecent : '—'}</td></tr>
+                  <tr><td className="p-3">No-signal decisions</td><td className="p-3 text-right">{shadowCount(a2Health, a2Health?.noSignalRecent)}</td><td className="p-3 text-right">{shadowCount(lHealth, lHealth?.noSignalRecent)}</td></tr>
+                  <tr><td className="p-3">Qualified signals</td><td className="p-3 text-right">{shadowCount(a2Health, a2Health?.qualifiedRecent)}</td><td className="p-3 text-right">{shadowCount(lHealth, lHealth?.qualifiedRecent)}</td></tr>
+                  <tr><td className="p-3">Would-submit decisions</td><td className="p-3 text-right">{shadowCount(a2Health, a2Health?.wouldSubmitRecent)}</td><td className="p-3 text-right">{shadowCount(lHealth, lHealth?.wouldSubmitRecent)}</td></tr>
+                  <tr><td className="p-3">Persisted shadow intents</td><td className="p-3 text-right">{shadowCount(a2Health, a2Health?.shadowIntentsRecent)}</td><td className="p-3 text-right">{shadowCount(lHealth, lHealth?.shadowIntentsRecent)}</td></tr>
                   <tr><td className="p-3">Settled shadow intents</td><td className="p-3 text-right">{a2Shadow?.settled ?? 0}</td><td className="p-3 text-right">{lShadow?.settled ?? 0}</td></tr>
                   <tr><td className="p-3">Simulated realized P&amp;L</td><td className="p-3 text-right">{a2Shadow?.simulatedPnlCents == null ? '—' : moneyFromCents(a2Shadow.simulatedPnlCents, true)}</td><td className="p-3 text-right">{lShadow?.simulatedPnlCents == null ? '—' : moneyFromCents(lShadow.simulatedPnlCents, true)}</td></tr>
                 </tbody>
