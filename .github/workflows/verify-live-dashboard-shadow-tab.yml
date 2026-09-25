@@ -1,0 +1,26 @@
+name: Verify live dashboard shadow tab
+
+on:
+  push:
+    branches:
+      - fix/live-dashboard-shadow-tab
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck:libs
+      - run: pnpm --filter @workspace/kalshi-reader typecheck
+      - run: node --check artifacts/kalshi-reader/server.mjs
+      - name: Parse inline dashboard JavaScript
+        run: node -e "const fs=require('fs');const s=fs.readFileSync('artifacts/kalshi-reader/public/eth420-dashboard.html','utf8');const m=s.match(/<script>([\\s\\S]*?)<\\/script><\\/body>/);if(!m)throw Error('inline script not found');new Function(m[1]);"
+      - run: pnpm --filter @workspace/kalshi-reader build
