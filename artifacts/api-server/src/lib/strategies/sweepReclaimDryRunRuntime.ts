@@ -16,6 +16,16 @@ export const L_DRY_RUN_POLL_MS = 10_000;
 
 type RawMarket = Record<string, unknown>;
 
+export interface LDryRunRuntimeDeps {
+  settleOpen(nowMs:number):Promise<void>;
+  currentMarket():Promise<RawMarket|null>;
+  fetchMarket(ticker:string):Promise<RawMarket|null>;
+  fetchEthHistory(sourceOpenTimeMs:number,nowMs:number):Promise<{prior96:Eth15mCandle[];source:Eth15mCandle}|null>;
+  persistDryRun(input:{
+    id:string;sourceOpenTimeMs:number;ticker:string;price:number;contracts:number;principal:number;fee:number;risk:number;payload:unknown;nowMs:number;
+  }):Promise<"created"|"duplicate"|"blocked">;
+}
+
 function rowsOf(result: unknown): Array<Record<string, unknown>> {
   return (result as { rows?: Array<Record<string, unknown>> })?.rows ?? [];
 }
@@ -177,9 +187,18 @@ async function settleOpen(nowMs:number):Promise<void>{
   }
 }
 
+const defaultRuntimeDeps:LDryRunRuntimeDeps={
+  settleOpen,
+  currentMarket,
+  fetchMarket,
+  fetchEthHistory,
+  persistDryRun,
+};
+
 export async function runLSweepReclaimDryRunOnce(
   nowMs=Date.now(),
   recordEvaluation:(input:ShadowEvaluationEventInput)=>Promise<boolean>=recordShadowEvaluation,
+  deps:LDryRunRuntimeDeps=defaultRuntimeDeps,
 ):Promise<{outcome:string;ticker:string|null}>{
   const observe=(event:Omit<ShadowEvaluationEventInput,"service"|"evaluationIntervalMs">):void=>{
     void recordEvaluation({
@@ -188,14 +207,14 @@ export async function runLSweepReclaimDryRunOnce(
       ...event,
     }).catch(err=>logger.warn({err,service:"L",decision:event.decision},"L evaluator telemetry call failed"));
   };
-  await settleOpen(nowMs);
+  await deps.settleOpen(nowMs);
   const config=loadSweepReclaimRuntimeConfig();
   if(!config.enabled||!config.activationReady) {
     observe({evaluatedAtMs:nowMs,ticker:null,marketOpenTimeMs:null,decision:"error",primaryReason:"disabled_or_unconfigured",wouldSubmit:false,evidence:null});
     return {outcome:"disabled_or_unconfigured",ticker:null};
   }
 
-  const raw=await currentMarket();
+  const raw=await deps.currentMarket();
   if(!raw) {
     observe({evaluatedAtMs:nowMs,ticker:null,marketOpenTimeMs:null,decision:"error",primaryReason:"market_unavailable",wouldSubmit:false,evidence:null});
     return {outcome:"market_unavailable",ticker:null};
@@ -206,7 +225,7 @@ export async function runLSweepReclaimDryRunOnce(
     return {outcome:"destination_invalid",ticker:null};
   }
   const sourceOpenTimeMs=dest.openTimeMs-ETH_15M_MS;
-  const history=await fetchEthHistory(sourceOpenTimeMs,nowMs);
+  const history=await deps.fetchEthHistory(sourceOpenTimeMs,nowMs);
   if(!history) {
     observe({evaluatedAtMs:nowMs,ticker:dest.ticker,marketOpenTimeMs:dest.openTimeMs,decision:"error",primaryReason:"source_unavailable",wouldSubmit:false,evidence:null});
     return {outcome:"source_unavailable",ticker:dest.ticker};
@@ -237,7 +256,7 @@ export async function runLSweepReclaimDryRunOnce(
     return {outcome:"price_cap_blocked",ticker:dest.ticker};
   }
 
-  const freshRaw=await fetchMarket(dest.ticker);
+  const freshRaw=await deps.fetchMarket(dest.ticker);
   const fresh=freshRaw?marketWindow(freshRaw):null;
   const price=fresh?.yesAskCents??null;
   if(price==null) {
@@ -270,7 +289,7 @@ export async function runLSweepReclaimDryRunOnce(
     yes_price:config.maxEntryPriceCents,
     time_in_force:"good_till_canceled",
   };
-  const persisted=await persistDryRun({
+  const persisted=await deps.persistDryRun({
     id,sourceOpenTimeMs:history.source.openTimeMs,ticker:dest.ticker,price,contracts:size.contracts,
     principal:size.maxPrincipalCents,fee:size.feeHeadroomCents,risk:size.requestedRiskCents,payload,nowMs,
   });
