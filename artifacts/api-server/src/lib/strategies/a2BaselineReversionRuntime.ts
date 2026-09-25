@@ -1,5 +1,6 @@
 import { kalshiFetch, kalshiSeriesFetch, normalizeMarket } from "../kalshi.js";
 import { logger } from "../logger.js";
+import { recordShadowEvaluation, type ShadowEvaluationEventInput } from "../shadowEvaluationTelemetry.js";
 import {
   A2_INTERVAL_MS,
   loadA2BaselineReversionConfig,
@@ -25,6 +26,7 @@ export interface A2RuntimeDeps {
   fetchCurrentMarket(): Promise<RawMarket | null>;
   fetchMarket(ticker: string): Promise<RawMarket | null>;
   fetchSourceCandle(sourceOpenTimeMs: number, nowMs: number): Promise<A2BtcCandle | null>;
+  recordEvaluation?(input: ShadowEvaluationEventInput): Promise<boolean>;
 }
 
 function text(value: unknown): string {
@@ -149,6 +151,7 @@ const defaultDeps: A2RuntimeDeps = {
     }
   },
   fetchSourceCandle: defaultFetchSourceCandle,
+  recordEvaluation: recordShadowEvaluation,
 };
 
 export async function runA2BaselineReversionRuntimeOnce(
@@ -157,6 +160,14 @@ export async function runA2BaselineReversionRuntimeOnce(
   executionAdapter?: A2DryRunExecutionAdapter,
 ): Promise<{ evaluated: boolean; outcome: string; ticker: string | null }> {
   const nowMs = deps.nowMs();
+  const recordEvaluation = deps.recordEvaluation ?? recordShadowEvaluation;
+  const observe = (event: Omit<ShadowEvaluationEventInput, "service" | "evaluationIntervalMs">): void => {
+    void recordEvaluation({
+      service: "A2",
+      evaluationIntervalMs: A2_RUNTIME_POLL_MS,
+      ...event,
+    }).catch((err) => logger.warn({ err, service: "A2", decision: event.decision }, "A2 evaluator telemetry call failed"));
+  };
 
   for (const claim of await store.listOpen()) {
     const raw = await deps.fetchMarket(claim.destinationTicker);
@@ -180,13 +191,22 @@ export async function runA2BaselineReversionRuntimeOnce(
   }
 
   const rawDestination = await deps.fetchCurrentMarket();
-  if (!rawDestination) return { evaluated: false, outcome: "market_unavailable", ticker: null };
+  if (!rawDestination) {
+    observe({ evaluatedAtMs: nowMs, ticker: null, marketOpenTimeMs: null, decision: "error", primaryReason: "market_unavailable", wouldSubmit: false, evidence: null });
+    return { evaluated: false, outcome: "market_unavailable", ticker: null };
+  }
   const destination = destinationFromRawMarket(rawDestination);
-  if (!destination) return { evaluated: false, outcome: "destination_invalid", ticker: null };
+  if (!destination) {
+    observe({ evaluatedAtMs: nowMs, ticker: null, marketOpenTimeMs: null, decision: "error", primaryReason: "destination_invalid", wouldSubmit: false, evidence: null });
+    return { evaluated: false, outcome: "destination_invalid", ticker: null };
+  }
 
   const sourceOpenTimeMs = destination.openTimeMs - A2_INTERVAL_MS;
   const source = await deps.fetchSourceCandle(sourceOpenTimeMs, nowMs);
-  if (!source) return { evaluated: false, outcome: "source_unavailable", ticker: destination.ticker };
+  if (!source) {
+    observe({ evaluatedAtMs: nowMs, ticker: destination.ticker, marketOpenTimeMs: destination.openTimeMs, decision: "error", primaryReason: "source_unavailable", wouldSubmit: false, evidence: null });
+    return { evaluated: false, outcome: "source_unavailable", ticker: destination.ticker };
+  }
 
   const result = await evaluateA2BaselineReversionShadow({
     config: loadA2BaselineReversionConfig(),
@@ -203,6 +223,28 @@ export async function runA2BaselineReversionRuntimeOnce(
       nowMs,
     });
   }
+
+  const receiptWouldSubmit = executionReceipt != null
+    && typeof executionReceipt === "object"
+    && (executionReceipt as Record<string, unknown>)["would_submit"] === true;
+  const telemetryDecision =
+    result.outcome === "store_unavailable" ? "error"
+      : result.outcome === "shadow_opened" || result.outcome === "duplicate" ? "qualified"
+      : "no_signal";
+  observe({
+    evaluatedAtMs: nowMs,
+    ticker: destination.ticker,
+    marketOpenTimeMs: destination.openTimeMs,
+    decision: telemetryDecision,
+    primaryReason: result.reason,
+    wouldSubmit: telemetryDecision === "qualified" && receiptWouldSubmit,
+    evidence: {
+      sourceMovePct: source.open > 0 ? ((source.open - source.close) / source.open) * 100 : null,
+      dropThresholdPct: 0.8,
+      observedYesAskCents: destination.yesAskCents,
+      yesSemanticsVerified: destination.yesSettlesAboveStrike,
+    },
+  });
 
   logger.info(
     {

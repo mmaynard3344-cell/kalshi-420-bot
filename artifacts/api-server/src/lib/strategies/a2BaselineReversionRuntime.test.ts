@@ -121,3 +121,59 @@ test("runtime settles prior shadow claim before evaluating later signal",async()
   assert.equal(out.outcome,"shadow_opened");
   assert.equal(await store.countOpen(),1);
 });
+
+
+async function runQualifiedA2WithRecorder(recordEvaluation:(input:any)=>Promise<boolean>) {
+  process.env.A2_BASELINE_REVERSION_ENABLED="true";
+  const store=new MemoryStore();
+  const out=await runA2BaselineReversionRuntimeOnce(store,{
+    nowMs:()=>openMs+1,
+    fetchCurrentMarket:async()=>rawMarket,
+    fetchMarket:async()=>null,
+    fetchSourceCandle:async(sourceOpen)=>({
+      openTimeMs:sourceOpen,closeTimeMs:sourceOpen+900_000,
+      open:100,high:101,low:98.5,close:99,finalized:true,
+    }),
+    recordEvaluation,
+  });
+  return {out,store};
+}
+
+test("A2 outcome and intent are unchanged when evaluator telemetry succeeds",async()=>{
+  const {out,store}=await runQualifiedA2WithRecorder(async()=>true);
+  assert.equal(out.outcome,"shadow_opened");
+  assert.equal(store.claims.size,1);
+});
+
+test("A2 outcome and intent are unchanged when evaluator telemetry rejects",async()=>{
+  const {out,store}=await runQualifiedA2WithRecorder(async()=>{throw new Error("telemetry down");});
+  assert.equal(out.outcome,"shadow_opened");
+  assert.equal(store.claims.size,1);
+});
+
+test("A2 outcome and intent are unchanged when evaluator telemetry never resolves",async()=>{
+  const {out,store}=await runQualifiedA2WithRecorder(()=>new Promise<boolean>(()=>{}));
+  assert.equal(out.outcome,"shadow_opened");
+  assert.equal(store.claims.size,1);
+});
+
+test("A2 no-signal records actual false wouldSubmit",async()=>{
+  process.env.A2_BASELINE_REVERSION_ENABLED="true";
+  const store=new MemoryStore();
+  let captured:any=null;
+  const out=await runA2BaselineReversionRuntimeOnce(store,{
+    nowMs:()=>openMs+1,
+    fetchCurrentMarket:async()=>rawMarket,
+    fetchMarket:async()=>null,
+    fetchSourceCandle:async(sourceOpen)=>({
+      openTimeMs:sourceOpen,closeTimeMs:sourceOpen+900_000,
+      open:100,high:101,low:99.8,close:99.9,finalized:true,
+    }),
+    recordEvaluation:async(input)=>{captured=input;return true;},
+  });
+  await new Promise((resolve)=>setImmediate(resolve));
+  assert.equal(out.outcome,"no_signal");
+  assert.equal(captured?.decision,"no_signal");
+  assert.equal(captured?.wouldSubmit,false);
+  assert.equal(store.claims.size,0);
+});
