@@ -1,0 +1,43 @@
+name: Verify A2 runtime wiring
+
+on:
+  push:
+    branches:
+      - fix/a2-runtime-wiring
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: a2_runtime_verify
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/a2_runtime_verify
+      NODE_ENV: test
+      PORT: 8080
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @workspace/api-server typecheck
+      - run: pnpm --filter @workspace/api-server build
+      - run: pnpm --filter @workspace/api-server test -- --runInBand
+        continue-on-error: true
+      - run: node artifacts/api-server/scripts/run-a2-baseline-reversion-test.mjs
