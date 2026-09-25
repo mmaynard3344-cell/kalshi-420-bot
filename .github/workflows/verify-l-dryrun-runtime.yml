@@ -1,0 +1,63 @@
+name: Verify L dry-run runtime
+
+on:
+  push:
+    branches:
+      - fix/l-dryrun-runtime
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: l_runtime_verify
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/l_runtime_verify
+      NODE_ENV: test
+      PORT: 8080
+      AUTO_TRADING_ENABLED: "false"
+      TRADING_ENABLED: "false"
+      WORKSPACE_TRADING_ENABLED: "false"
+      ETH_NO_MARTINGALE_ENABLED: "false"
+      ETH_420_CANDIDATE_LIVE_ENABLED: "false"
+      ETH_BREAKOUT_REVERSAL_SERVICE_LIVE_ENABLED: "false"
+      ETH_JUMP_SERVICE_LIVE_ENABLED: "false"
+      ETH_REVERSAL_SERVICE_LIVE_ENABLED: "false"
+      ETH_DOWNFADE_SERVICE_LIVE_ENABLED: "false"
+      ETH_MARTINGALE_MAX_STEP_CENTS: "1"
+      ETH_B_WAGER_CENTS: "1"
+      ETH_C_WAGER_CENTS: "1"
+      L_SWEEP_RECLAIM_ENABLED: "true"
+      L_SWEEP_RECLAIM_LIVE_EXECUTION_ENABLED: "false"
+      L_SWEEP_RECLAIM_MAX_ENTRY_PRICE_CENTS: "99"
+      L_SWEEP_RECLAIM_STAKE_CENTS: "5000"
+      ETH_LONG_REVERSAL_SHARED_CAP_CENTS: "10000"
+      L_SWEEP_RECLAIM_MIN_SECONDS_REMAINING: "120"
+      L_SWEEP_RECLAIM_ORDER_TYPE: "good_till_canceled"
+      L_SWEEP_RECLAIM_RUNTIME_ONLY: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @workspace/db push
+      - run: pnpm run typecheck:libs
+      - run: pnpm --filter @workspace/api-server typecheck
+      - run: pnpm --filter @workspace/api-server build
+      - run: pnpm --filter @workspace/api-server test
