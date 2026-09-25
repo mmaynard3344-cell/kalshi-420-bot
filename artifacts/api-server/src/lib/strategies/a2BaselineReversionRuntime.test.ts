@@ -56,6 +56,18 @@ test("destination requires BTC above-strike YES semantics",()=>{
   assert.equal(d?.yesSettlesAboveStrike,true);
   assert.equal(d?.yesAskCents,45);
   assert.equal(destinationFromRawMarket({...rawMarket,rules_primary:"Resolves Yes if Bitcoin is below the strike."})?.yesSettlesAboveStrike,false);
+  assert.equal(destinationFromRawMarket({
+    ...rawMarket,
+    title:"Bitcoin 15 minute market",
+    yes_sub_title:"$100,000 or above",
+    rules_primary:"The market resolves Yes when the reference value is at or above the strike.",
+  })?.yesSettlesAboveStrike,true);
+  assert.equal(destinationFromRawMarket({
+    ...rawMarket,
+    title:"Bitcoin 15 minute market",
+    yes_sub_title:"$100,000 or above",
+    rules_primary:null,
+  })?.yesSettlesAboveStrike,true);
 });
 
 test("runtime opens shadow claim from immediate finalized source and current destination",async()=>{
