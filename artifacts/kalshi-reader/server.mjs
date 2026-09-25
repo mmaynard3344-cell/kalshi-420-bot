@@ -446,7 +446,7 @@ async function shadowPerformanceDiagnostics(req, res) {
     const data = await withReadOnlyDb(async (client) => {
       const tableExists = async (name) => {
         const q = await client.query(
-          \`SELECT to_regclass($1) IS NOT NULL AS present\`,
+          `SELECT to_regclass($1) IS NOT NULL AS present`,
           ['public.' + name],
         );
         return q.rows?.[0]?.present === true;
@@ -461,7 +461,7 @@ async function shadowPerformanceDiagnostics(req, res) {
       let lRows = [];
 
       if (a2Exists) {
-        const q = await client.query(\`
+        const q = await client.query(`
           SELECT id, signal_id, market_ticker, client_order_id, state,
                  executable_yes_price_cents, quantity, max_notional_cents,
                  filled_quantity, fill_cost_cents, fill_fee_cents,
@@ -470,7 +470,7 @@ async function shadowPerformanceDiagnostics(req, res) {
             FROM a2_execution_intents
            ORDER BY created_at_ms DESC
            LIMIT 100
-        \`);
+        `);
         a2Rows = q.rows.map((row) => ({
           strategy: 'A2',
           id: String(row.id ?? ''),
@@ -494,7 +494,7 @@ async function shadowPerformanceDiagnostics(req, res) {
       }
 
       if (lExists) {
-        const q = await client.query(\`
+        const q = await client.query(`
           SELECT id, source_open_time_ms, destination_ticker, state,
                  executable_yes_price_cents, contracts, principal_cents,
                  fee_headroom_cents, requested_risk_cents,
@@ -503,7 +503,7 @@ async function shadowPerformanceDiagnostics(req, res) {
             FROM l_sweep_reclaim_dry_run_intents
            ORDER BY created_at_ms DESC
            LIMIT 100
-        \`);
+        `);
         lRows = q.rows.map((row) => ({
           strategy: 'L',
           id: String(row.id ?? ''),
