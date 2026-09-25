@@ -78,6 +78,10 @@ import {
   ensureA2ExecutionSchema,
   PostgresA2ExecutionStore,
 } from "./lib/strategies/a2ExecutionStore.js";
+import {
+  ensureShadowEvaluationLedgerSchema,
+  pruneShadowEvaluationEvents,
+} from "./lib/strategies/shadowEvaluationLedger.js";
 
 const FILL_RECONCILIATION_RECOVERY_INTERVAL_MS = 15 * 60_000;
 const PROTECTIVE_EXIT_RESTORE_RETRY_INTERVAL_MS = 15_000;
@@ -147,6 +151,14 @@ app.listen(port, "0.0.0.0", async () => {
   if (isProductionRuntime() && process.env["A2_BASELINE_RUNTIME_ONLY"] === "true") {
     await ensureA2BaselineReversionShadowSchema(db);
     await ensureA2ExecutionSchema(db);
+    try {
+      await ensureShadowEvaluationLedgerSchema();
+      if (!await pruneShadowEvaluationEvents()) {
+        logger.warn({ strategy: "A2" }, "A2 shadow evaluation retention prune failed");
+      }
+    } catch (err) {
+      logger.warn({ err, strategy: "A2" }, "A2 shadow evaluation ledger initialization failed");
+    }
     const a2Store = new PostgresA2ShadowStore(db);
     const a2ExecutionStore = new PostgresA2ExecutionStore(db);
     startA2BaselineReversionRuntime(a2Store, undefined, a2ExecutionStore);
