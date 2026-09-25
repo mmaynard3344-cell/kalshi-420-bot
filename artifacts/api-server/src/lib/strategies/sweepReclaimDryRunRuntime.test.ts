@@ -77,14 +77,14 @@ function makeDeps(qualifies:boolean,persisted:"created"|"duplicate"|"blocked"="c
     fetchEthHistory:async()=>history,
     persistDryRun:async()=>{persistCalls++;return persisted;},
   };
-  return {deps,getPersistCalls:()=>persistCalls};
+  return {deps,nowMs:destOpen+1,getPersistCalls:()=>persistCalls};
 }
 
 test("L no-signal telemetry is observational only",async()=>{
   enableLConfig();
-  const {deps,getPersistCalls}=makeDeps(false);
+  const {deps,nowMs,getPersistCalls}=makeDeps(false);
   let captured:any=null;
-  const out=await runLSweepReclaimDryRunOnce(Date.now(),async(input)=>{captured=input;return true;},deps);
+  const out=await runLSweepReclaimDryRunOnce(nowMs,async(input)=>{captured=input;return true;},deps);
   await new Promise((resolve)=>setImmediate(resolve));
   assert.equal(out.outcome,"no_signal");
   assert.equal(getPersistCalls(),0);
@@ -94,25 +94,25 @@ test("L no-signal telemetry is observational only",async()=>{
 
 test("L qualified decision persists the same dry-run intent when telemetry rejects",async()=>{
   enableLConfig();
-  const {deps,getPersistCalls}=makeDeps(true,"created");
-  const out=await runLSweepReclaimDryRunOnce(Date.now(),async()=>{throw new Error("telemetry down");},deps);
+  const {deps,nowMs,getPersistCalls}=makeDeps(true,"created");
+  const out=await runLSweepReclaimDryRunOnce(nowMs,async()=>{throw new Error("telemetry down");},deps);
   assert.equal(out.outcome,"created");
   assert.equal(getPersistCalls(),1);
 });
 
 test("L qualified decision persists the same dry-run intent when telemetry never resolves",async()=>{
   enableLConfig();
-  const {deps,getPersistCalls}=makeDeps(true,"created");
-  const out=await runLSweepReclaimDryRunOnce(Date.now(),()=>new Promise<boolean>(()=>{}),deps);
+  const {deps,nowMs,getPersistCalls}=makeDeps(true,"created");
+  const out=await runLSweepReclaimDryRunOnce(nowMs,()=>new Promise<boolean>(()=>{}),deps);
   assert.equal(out.outcome,"created");
   assert.equal(getPersistCalls(),1);
 });
 
 test("L qualified evaluator event records actual wouldSubmit result",async()=>{
   enableLConfig();
-  const {deps}=makeDeps(true,"blocked");
+  const {deps,nowMs}=makeDeps(true,"blocked");
   let captured:any=null;
-  const out=await runLSweepReclaimDryRunOnce(Date.now(),async(input)=>{captured=input;return true;},deps);
+  const out=await runLSweepReclaimDryRunOnce(nowMs,async(input)=>{captured=input;return true;},deps);
   await new Promise((resolve)=>setImmediate(resolve));
   assert.equal(out.outcome,"blocked");
   assert.equal(captured?.decision,"qualified");
