@@ -57,6 +57,24 @@ export async function ensureLSweepReclaimDryRunSchema(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS l_sweep_reclaim_dry_run_state_idx
       ON l_sweep_reclaim_dry_run_intents(state, updated_at_ms);
+
+    CREATE TABLE IF NOT EXISTS l_sweep_reclaim_dry_run_evaluations (
+      id text PRIMARY KEY,
+      evaluated_at_ms bigint NOT NULL,
+      destination_ticker text,
+      source_open_time_ms bigint,
+      decision text NOT NULL,
+      primary_reason text,
+      evidence_json jsonb,
+      qualifies boolean NOT NULL DEFAULT false,
+      would_submit boolean NOT NULL DEFAULT false,
+      intent_id text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS l_sweep_reclaim_dry_run_evaluations_service_time_idx
+      ON l_sweep_reclaim_dry_run_evaluations(evaluated_at_ms DESC);
+    CREATE INDEX IF NOT EXISTS l_sweep_reclaim_dry_run_evaluations_ticker_idx
+      ON l_sweep_reclaim_dry_run_evaluations(destination_ticker, evaluated_at_ms DESC);
   `);
 }
 
@@ -176,40 +194,102 @@ async function settleOpen(nowMs:number):Promise<void>{
   }
 }
 
+async function persistEvaluation(input:{
+  nowMs:number;
+  ticker:string|null;
+  sourceOpenTimeMs:number|null;
+  decision:string;
+  primaryReason:string|null;
+  evidence:unknown;
+  qualifies:boolean;
+  wouldSubmit:boolean;
+  intentId:string|null;
+}):Promise<void>{
+  try{
+    await db.execute(sql`
+      INSERT INTO l_sweep_reclaim_dry_run_evaluations
+        (id,evaluated_at_ms,destination_ticker,source_open_time_ms,decision,primary_reason,evidence_json,qualifies,would_submit,intent_id)
+      VALUES
+        (${"l-eval:"+input.nowMs+":"+(input.ticker??"none")},${input.nowMs},${input.ticker},${input.sourceOpenTimeMs},
+         ${input.decision},${input.primaryReason},${JSON.stringify(input.evidence??null)}::jsonb,${input.qualifies},${input.wouldSubmit},${input.intentId})
+      ON CONFLICT (id) DO NOTHING
+    `);
+  }catch(err){
+    logger.warn({err,ticker:input.ticker,decision:input.decision},"L shadow evaluation persistence failed");
+  }
+}
+
 export async function runLSweepReclaimDryRunOnce(nowMs=Date.now()):Promise<{outcome:string;ticker:string|null}>{
   await settleOpen(nowMs);
   const config=loadSweepReclaimRuntimeConfig();
-  if(!config.enabled||!config.activationReady) return {outcome:"disabled_or_unconfigured",ticker:null};
+  if(!config.enabled||!config.activationReady) {
+    await persistEvaluation({nowMs,ticker:null,sourceOpenTimeMs:null,decision:"disabled_or_unconfigured",primaryReason:"disabled_or_unconfigured",evidence:{unresolved:config.unresolved},qualifies:false,wouldSubmit:false,intentId:null});
+    return {outcome:"disabled_or_unconfigured",ticker:null};
+  }
 
   const raw=await currentMarket();
-  if(!raw) return {outcome:"market_unavailable",ticker:null};
+  if(!raw) {
+    await persistEvaluation({nowMs,ticker:null,sourceOpenTimeMs:null,decision:"market_unavailable",primaryReason:"market_unavailable",evidence:null,qualifies:false,wouldSubmit:false,intentId:null});
+    return {outcome:"market_unavailable",ticker:null};
+  }
   const dest=marketWindow(raw);
-  if(!dest) return {outcome:"destination_invalid",ticker:null};
+  if(!dest) {
+    await persistEvaluation({nowMs,ticker:null,sourceOpenTimeMs:null,decision:"destination_invalid",primaryReason:"destination_invalid",evidence:null,qualifies:false,wouldSubmit:false,intentId:null});
+    return {outcome:"destination_invalid",ticker:null};
+  }
   const sourceOpenTimeMs=dest.openTimeMs-ETH_15M_MS;
   const history=await fetchEthHistory(sourceOpenTimeMs,nowMs);
-  if(!history) return {outcome:"source_unavailable",ticker:dest.ticker};
+  if(!history) {
+    await persistEvaluation({nowMs,ticker:dest.ticker,sourceOpenTimeMs,decision:"source_unavailable",primaryReason:"source_unavailable",evidence:null,qualifies:false,wouldSubmit:false,intentId:null});
+    return {outcome:"source_unavailable",ticker:dest.ticker};
+  }
 
   const decision=evaluateSweepReclaimV1(history.source,history.prior96);
   if(!decision.qualifies) {
+    await persistEvaluation({nowMs,ticker:dest.ticker,sourceOpenTimeMs:history.source.openTimeMs,decision:"no_signal",primaryReason:decision.reason,evidence:decision.evidence??null,qualifies:false,wouldSubmit:false,intentId:null});
     logger.info({strategy:"L",ticker:dest.ticker,outcome:"no_signal",reason:decision.reason,evidence:decision.evidence??null},"L sweep/reclaim dry-run evaluation");
     return {outcome:"no_signal",ticker:dest.ticker};
   }
-  if(!isImmediateFollowingEth15mWindow(history.source,dest.openTimeMs,dest.closeTimeMs)) return {outcome:"not_immediate_following_window",ticker:dest.ticker};
-  if(dest.closeTimeMs-nowMs < (config.minimumSecondsRemaining??0)*1000) return {outcome:"too_late",ticker:dest.ticker};
+  if(!isImmediateFollowingEth15mWindow(history.source,dest.openTimeMs,dest.closeTimeMs)) {
+    await persistEvaluation({nowMs,ticker:dest.ticker,sourceOpenTimeMs:history.source.openTimeMs,decision:"not_immediate_following_window",primaryReason:"not_immediate_following_window",evidence:decision.evidence,qualifies:true,wouldSubmit:false,intentId:null});
+    return {outcome:"not_immediate_following_window",ticker:dest.ticker};
+  }
+  if(dest.closeTimeMs-nowMs < (config.minimumSecondsRemaining??0)*1000) {
+    await persistEvaluation({nowMs,ticker:dest.ticker,sourceOpenTimeMs:history.source.openTimeMs,decision:"too_late",primaryReason:"too_late",evidence:decision.evidence,qualifies:true,wouldSubmit:false,intentId:null});
+    return {outcome:"too_late",ticker:dest.ticker};
+  }
 
   const firstPrice=dest.yesAskCents;
-  if(firstPrice==null) return {outcome:"price_unavailable",ticker:dest.ticker};
-  if(firstPrice>(config.maxEntryPriceCents??0)) return {outcome:"price_cap_blocked",ticker:dest.ticker};
+  if(firstPrice==null) {
+    await persistEvaluation({nowMs,ticker:dest.ticker,sourceOpenTimeMs:history.source.openTimeMs,decision:"price_unavailable",primaryReason:"price_unavailable",evidence:decision.evidence,qualifies:true,wouldSubmit:false,intentId:null});
+    return {outcome:"price_unavailable",ticker:dest.ticker};
+  }
+  if(firstPrice>(config.maxEntryPriceCents??0)) {
+    await persistEvaluation({nowMs,ticker:dest.ticker,sourceOpenTimeMs:history.source.openTimeMs,decision:"price_cap_blocked",primaryReason:"price_cap_blocked",evidence:{...decision.evidence,firstPrice,maxEntryPriceCents:config.maxEntryPriceCents},qualifies:true,wouldSubmit:false,intentId:null});
+    return {outcome:"price_cap_blocked",ticker:dest.ticker};
+  }
 
   const freshRaw=await fetchMarket(dest.ticker);
   const fresh=freshRaw?marketWindow(freshRaw):null;
   const price=fresh?.yesAskCents??null;
-  if(price==null) return {outcome:"final_price_unavailable",ticker:dest.ticker};
-  if(price>(config.maxEntryPriceCents??0)) return {outcome:"final_price_cap_blocked",ticker:dest.ticker};
+  if(price==null) {
+    await persistEvaluation({nowMs,ticker:dest.ticker,sourceOpenTimeMs:history.source.openTimeMs,decision:"final_price_unavailable",primaryReason:"final_price_unavailable",evidence:decision.evidence,qualifies:true,wouldSubmit:false,intentId:null});
+    return {outcome:"final_price_unavailable",ticker:dest.ticker};
+  }
+  if(price>(config.maxEntryPriceCents??0)) {
+    await persistEvaluation({nowMs,ticker:dest.ticker,sourceOpenTimeMs:history.source.openTimeMs,decision:"final_price_cap_blocked",primaryReason:"final_price_cap_blocked",evidence:{...decision.evidence,price,maxEntryPriceCents:config.maxEntryPriceCents},qualifies:true,wouldSubmit:false,intentId:null});
+    return {outcome:"final_price_cap_blocked",ticker:dest.ticker};
+  }
 
   const size=buildLDryRunOrderSize(config.stakeCents??0,config.maxEntryPriceCents??0);
-  if(!size) return {outcome:"invalid_size",ticker:dest.ticker};
-  if(size.requestedRiskCents>(config.sharedCorrelatedExposureCapCents??0)) return {outcome:"shared_cap_blocked",ticker:dest.ticker};
+  if(!size) {
+    await persistEvaluation({nowMs,ticker:dest.ticker,sourceOpenTimeMs:history.source.openTimeMs,decision:"invalid_size",primaryReason:"invalid_size",evidence:decision.evidence,qualifies:true,wouldSubmit:false,intentId:null});
+    return {outcome:"invalid_size",ticker:dest.ticker};
+  }
+  if(size.requestedRiskCents>(config.sharedCorrelatedExposureCapCents??0)) {
+    await persistEvaluation({nowMs,ticker:dest.ticker,sourceOpenTimeMs:history.source.openTimeMs,decision:"shared_cap_blocked",primaryReason:"shared_cap_blocked",evidence:{...decision.evidence,requestedRiskCents:size.requestedRiskCents,capCents:config.sharedCorrelatedExposureCapCents},qualifies:true,wouldSubmit:false,intentId:null});
+    return {outcome:"shared_cap_blocked",ticker:dest.ticker};
+  }
 
   const id=deterministicId(history.source.openTimeMs,dest.ticker);
   const payload={
@@ -234,6 +314,11 @@ export async function runLSweepReclaimDryRunOnce(nowMs=Date.now()):Promise<{outc
     order_payload:payload,
     intent_id:id,
   };
+  await persistEvaluation({
+    nowMs,ticker:dest.ticker,sourceOpenTimeMs:history.source.openTimeMs,decision:persisted,
+    primaryReason:persisted==="blocked"?"active_exposure_limit":null,evidence:decision.evidence,
+    qualifies:true,wouldSubmit:receipt.would_submit,intentId:id,
+  });
   logger.info({strategy:"L",ticker:dest.ticker,outcome:persisted,signal:true,evidence:decision.evidence,executionReceipt:receipt},"L sweep/reclaim dry-run evaluation");
   return {outcome:persisted,ticker:dest.ticker};
 }
