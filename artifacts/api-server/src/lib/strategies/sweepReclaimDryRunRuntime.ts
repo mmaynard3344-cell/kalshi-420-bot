@@ -10,7 +10,6 @@ import {
   loadSweepReclaimRuntimeConfig,
   type Eth15mCandle,
 } from "./sweepReclaimV1.js";
-import { buildSweepReclaimOrderSize } from "./sweepReclaimExecutionAdapter.js";
 
 export const L_DRY_RUN_POLL_MS = 10_000;
 
@@ -186,11 +185,17 @@ export async function runLSweepReclaimDryRunOnce(nowMs=Date.now()):Promise<{outc
   if(!isImmediateFollowingEth15mWindow(history.source,dest.openTimeMs,dest.closeTimeMs)) return {outcome:"not_immediate_following_window",ticker:dest.ticker};
   if(dest.closeTimeMs-nowMs < (config.minimumSecondsRemaining??0)*1000) return {outcome:"too_late",ticker:dest.ticker};
 
-  const price=dest.yesAskCents;
-  if(price==null) return {outcome:"price_unavailable",ticker:dest.ticker};
-  if(price>(config.maxEntryPriceCents??0)) return {outcome:"price_cap_blocked",ticker:dest.ticker};
+  const firstPrice=dest.yesAskCents;
+  if(firstPrice==null) return {outcome:"price_unavailable",ticker:dest.ticker};
+  if(firstPrice>(config.maxEntryPriceCents??0)) return {outcome:"price_cap_blocked",ticker:dest.ticker};
 
-  const size=buildSweepReclaimOrderSize(config);
+  const freshRaw=await fetchMarket(dest.ticker);
+  const fresh=freshRaw?marketWindow(freshRaw):null;
+  const price=fresh?.yesAskCents??null;
+  if(price==null) return {outcome:"final_price_unavailable",ticker:dest.ticker};
+  if(price>(config.maxEntryPriceCents??0)) return {outcome:"final_price_cap_blocked",ticker:dest.ticker};
+
+  const size=buildLDryRunOrderSize(config.stakeCents??0,config.maxEntryPriceCents??0);
   if(!size) return {outcome:"invalid_size",ticker:dest.ticker};
   if(size.requestedRiskCents>(config.sharedCorrelatedExposureCapCents??0)) return {outcome:"shared_cap_blocked",ticker:dest.ticker};
 
