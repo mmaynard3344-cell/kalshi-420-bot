@@ -65,7 +65,7 @@ export async function evaluateA2BaselineReversionShadow(input: {
     ? (input.source.open - input.source.close) / input.source.open
     : null;
 
-  const evidenceWritten = await input.store.recordEvidence({
+  await input.store.recordEvidence({
     id: a2EvidenceId({
       sourceOpenTimeMs: input.source.openTimeMs,
       destinationTicker: input.destination.ticker,
@@ -90,9 +90,6 @@ export async function evaluateA2BaselineReversionShadow(input: {
     maxEntryPriceCents: A2_MAX_ENTRY_PRICE_CENTS,
     activeExposureCountObserved: openCount,
   });
-  if (!evidenceWritten) {
-    return { outcome: "store_unavailable", signal: false, reason: "evidence_write_failed", claimId: null };
-  }
 
   if (!decision.signal) {
     return {
