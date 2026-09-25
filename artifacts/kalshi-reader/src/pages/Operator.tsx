@@ -122,10 +122,47 @@ type ShadowTradeRow = {
   settledAtMs: number | null;
 };
 
+type ShadowServiceHealth = {
+  service: 'A2' | 'L';
+  status: 'healthy' | 'stale' | 'unknown' | 'unavailable';
+  lastEvaluationAtMs: number | null;
+  latestTicker: string | null;
+  latestMarketOpenTimeMs: number | null;
+  evaluationIntervalMs: number | null;
+  staleAfterMs: number | null;
+  latestDecision: 'no_signal' | 'qualified' | 'error' | null;
+  latestReason: string | null;
+  latestEvidence: Record<string, unknown> | null;
+  runtimeVersion: string | null;
+  evaluationsRecent: number;
+  noSignalRecent: number;
+  qualifiedRecent: number;
+  errorRecent: number;
+  wouldSubmitRecent: number;
+  shadowIntentsRecent: number;
+  settledIntentsRecent: number;
+};
+
+type ShadowEvaluationRow = {
+  service: 'A2' | 'L';
+  evaluatedAtMs: number;
+  ticker: string | null;
+  marketOpenTimeMs: number | null;
+  decision: 'no_signal' | 'qualified' | 'error';
+  primaryReason: string | null;
+  wouldSubmit: boolean;
+  evidence: Record<string, unknown>;
+  evaluationIntervalMs: number;
+  runtimeVersion: string | null;
+};
+
 type ShadowPerformance = {
   generatedAtMs: number;
+  recentWindowMs: number;
   note: string;
+  services: ShadowServiceHealth[];
   summaries: ShadowStrategySummary[];
+  evaluations: ShadowEvaluationRow[];
   rows: ShadowTradeRow[];
 };
 
@@ -218,8 +255,14 @@ export default function Operator() {
   const runTone = runState === 'LIVE ENABLED' ? 'good' : runState === 'ENTRY GATED' ? 'warn' : 'bad';
   const a2Shadow = shadow?.summaries.find((row) => row.strategy === 'A2') ?? null;
   const lShadow = shadow?.summaries.find((row) => row.strategy === 'L') ?? null;
+  const a2Health = shadow?.services.find((row) => row.service === 'A2') ?? null;
+  const lHealth = shadow?.services.find((row) => row.service === 'L') ?? null;
   const shadowRows = shadow?.rows ?? [];
-  const totalShadowPnl = (a2Shadow?.simulatedPnlCents ?? 0) + (lShadow?.simulatedPnlCents ?? 0);
+  const shadowEvaluations = shadow?.evaluations ?? [];
+  const totalSettledShadow = (a2Shadow?.settled ?? 0) + (lShadow?.settled ?? 0);
+  const totalShadowPnl = totalSettledShadow > 0
+    ? (a2Shadow?.simulatedPnlCents ?? 0) + (lShadow?.simulatedPnlCents ?? 0)
+    : null;
 
   return <div className="min-h-[100dvh] bg-background text-foreground">
     <div className="mx-auto max-w-7xl border-x border-border min-h-[100dvh]">
@@ -245,48 +288,121 @@ export default function Operator() {
         <section className="border border-border bg-card">
           <div className="p-4 sm:p-5 border-b border-border flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Shadow performance</div>
-              <h2 className="mt-1 font-semibold">A2 + L live dry-run trading</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Real market inputs, simulated execution only. No live Kalshi order submission.</p>
+              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Shadow service health</div>
+              <h2 className="mt-1 font-semibold">A2 + L evaluator activity</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Evaluator decisions are separate from qualifying shadow intents. Fresh no-signal activity means the service is alive and monitoring.</p>
             </div>
-            <div className="font-mono text-[10px] uppercase text-muted-foreground">{shadowFresh ? 'Fresh' : 'Unavailable / stale'}</div>
+            <div className="font-mono text-[10px] uppercase text-muted-foreground">{shadowFresh ? 'Fresh API response' : 'API unavailable / stale'}</div>
           </div>
-          <div className="grid gap-px bg-border md:grid-cols-2 xl:grid-cols-4">
-            <div className="bg-card p-4">
-              <div className="font-mono text-[10px] uppercase text-muted-foreground">Combined simulated P&amp;L</div>
-              <div className={cn('mt-2 font-mono text-2xl font-semibold', totalShadowPnl > 0 && 'text-emerald-600', totalShadowPnl < 0 && 'text-destructive')}>{moneyFromCents(totalShadowPnl, true)}</div>
-              <div className="mt-1 text-xs text-muted-foreground">{(a2Shadow?.settled ?? 0) + (lShadow?.settled ?? 0)} settled shadow trades</div>
-            </div>
-            {[a2Shadow, lShadow].map((summary, index) => <div key={summary?.strategy ?? index} className="bg-card p-4">
-              <div className="font-mono text-[10px] uppercase text-muted-foreground">{summary?.strategy ?? (index === 0 ? 'A2' : 'L')} shadow</div>
-              <div className="mt-2 flex items-baseline gap-2"><span className="font-mono text-2xl font-semibold">{summary?.settled ?? 0}</span><span className="text-xs text-muted-foreground">settled</span></div>
-              <div className="mt-1 text-xs text-muted-foreground">{summary ? `${summary.wins} wins / ${summary.losses} losses · ${summary.winRate == null ? '—' : `${(summary.winRate * 100).toFixed(1)}%`} win rate` : 'No shadow data yet'}</div>
-              <div className={cn('mt-2 font-mono text-sm', (summary?.simulatedPnlCents ?? 0) > 0 && 'text-emerald-600', (summary?.simulatedPnlCents ?? 0) < 0 && 'text-destructive')}>{summary ? moneyFromCents(summary.simulatedPnlCents, true) : '—'}</div>
-            </div>)}
-            <div className="bg-card p-4">
-              <div className="font-mono text-[10px] uppercase text-muted-foreground">Current shadow activity</div>
-              <div className="mt-2 font-mono text-sm">{(a2Shadow?.active ?? 0) + (lShadow?.active ?? 0)} active · {(a2Shadow?.signals ?? 0) + (lShadow?.signals ?? 0)} intents</div>
-              <div className="mt-1 text-xs text-muted-foreground">{(a2Shadow?.blocked ?? 0) + (lShadow?.blocked ?? 0)} blocked/released</div>
+
+          <div className="grid gap-px bg-border md:grid-cols-2">
+            {[a2Health, lHealth].map((svc, index) => {
+              const service = svc?.service ?? (index === 0 ? 'A2' : 'L');
+              const statusLabel = svc?.status === 'healthy'
+                ? (svc.latestDecision === 'no_signal' ? 'Healthy — monitoring' : 'Healthy')
+                : svc?.status === 'stale' ? 'Stale'
+                : svc?.status === 'unknown' ? 'Unknown — awaiting first evaluation'
+                : 'Unavailable';
+              const tone = svc?.status === 'healthy' ? 'text-emerald-600'
+                : svc?.status === 'stale' ? 'text-amber-600'
+                : 'text-muted-foreground';
+              const evidence = svc?.latestEvidence ?? {};
+              const evidenceText = service === 'A2'
+                ? `Move ${typeof evidence.sourceMovePct === 'number' ? evidence.sourceMovePct.toFixed(3) + '%' : '—'} · threshold ${typeof evidence.dropThresholdPct === 'number' ? evidence.dropThresholdPct.toFixed(1) + '%' : '—'}`
+                : `Sweep ${String(evidence.sweptPrevious24hLow ?? '—')} · wick ${String(evidence.wickCondition ?? '—')} · upper-half close ${String(evidence.upperHalfClose ?? '—')}`;
+              return <div key={service} className="bg-card p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-mono text-[10px] uppercase text-muted-foreground">{service} evaluator</div>
+                  <span className={cn('font-mono text-[10px] uppercase', tone)}>{statusLabel}</span>
+                </div>
+                <div className="mt-2 font-mono text-sm">{svc?.latestTicker ?? 'No persisted evaluation yet'}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {svc?.lastEvaluationAtMs ? `Last evaluation ${etClock(svc.lastEvaluationAtMs)} · ${svc.latestDecision?.replaceAll('_', ' ') ?? '—'}` : 'Awaiting first evaluator event'}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {svc?.evaluationIntervalMs ? `Cadence ${(svc.evaluationIntervalMs / 1000).toFixed(0)}s · stale after ${((svc.staleAfterMs ?? 0) / 1000).toFixed(0)}s` : 'Cadence unavailable'}
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground">{svc?.latestReason ? svc.latestReason.replaceAll('_', ' ') : 'No rejection reason'} · {evidenceText}</div>
+                <div className="mt-3 grid grid-cols-5 gap-2 text-center">
+                  <div><div className="font-mono text-sm">{svc?.evaluationsRecent ?? 0}</div><div className="text-[10px] uppercase text-muted-foreground">evals</div></div>
+                  <div><div className="font-mono text-sm">{svc?.noSignalRecent ?? 0}</div><div className="text-[10px] uppercase text-muted-foreground">no signal</div></div>
+                  <div><div className="font-mono text-sm">{svc?.qualifiedRecent ?? 0}</div><div className="text-[10px] uppercase text-muted-foreground">qualified</div></div>
+                  <div><div className="font-mono text-sm">{svc?.wouldSubmitRecent ?? 0}</div><div className="text-[10px] uppercase text-muted-foreground">would submit</div></div>
+                  <div><div className="font-mono text-sm">{svc?.errorRecent ?? 0}</div><div className="text-[10px] uppercase text-muted-foreground">errors</div></div>
+                </div>
+              </div>;
+            })}
+          </div>
+
+          <div className="border-t border-border">
+            <div className="p-4 font-semibold">Qualification funnel</div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] font-mono text-xs">
+                <thead className="bg-muted/30 text-[10px] uppercase text-muted-foreground"><tr><th className="p-3 text-left">Metric</th><th className="p-3 text-right">A2</th><th className="p-3 text-right">L</th></tr></thead>
+                <tbody className="divide-y divide-border">
+                  <tr><td className="p-3">Evaluations, recent window</td><td className="p-3 text-right">{a2Health?.evaluationsRecent ?? 0}</td><td className="p-3 text-right">{lHealth?.evaluationsRecent ?? 0}</td></tr>
+                  <tr><td className="p-3">No-signal decisions</td><td className="p-3 text-right">{a2Health?.noSignalRecent ?? 0}</td><td className="p-3 text-right">{lHealth?.noSignalRecent ?? 0}</td></tr>
+                  <tr><td className="p-3">Qualified signals</td><td className="p-3 text-right">{a2Health?.qualifiedRecent ?? 0}</td><td className="p-3 text-right">{lHealth?.qualifiedRecent ?? 0}</td></tr>
+                  <tr><td className="p-3">Would-submit decisions</td><td className="p-3 text-right">{a2Health?.wouldSubmitRecent ?? 0}</td><td className="p-3 text-right">{lHealth?.wouldSubmitRecent ?? 0}</td></tr>
+                  <tr><td className="p-3">Persisted shadow intents</td><td className="p-3 text-right">{a2Health?.shadowIntentsRecent ?? 0}</td><td className="p-3 text-right">{lHealth?.shadowIntentsRecent ?? 0}</td></tr>
+                  <tr><td className="p-3">Settled shadow intents</td><td className="p-3 text-right">{a2Shadow?.settled ?? 0}</td><td className="p-3 text-right">{lShadow?.settled ?? 0}</td></tr>
+                  <tr><td className="p-3">Simulated realized P&amp;L</td><td className="p-3 text-right">{(a2Shadow?.settled ?? 0) === 0 ? '—' : moneyFromCents(a2Shadow?.simulatedPnlCents, true)}</td><td className="p-3 text-right">{(lShadow?.settled ?? 0) === 0 ? '—' : moneyFromCents(lShadow?.simulatedPnlCents, true)}</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
-          <div className="overflow-x-auto border-t border-border">
-            <table className="w-full min-w-[950px] font-mono text-xs">
-              <thead className="bg-muted/30 text-[10px] uppercase text-muted-foreground"><tr><th className="p-3 text-left">ET time</th><th className="p-3 text-left">Strategy</th><th className="p-3 text-left">Ticker</th><th className="p-3 text-right">Entry</th><th className="p-3 text-right">Contracts</th><th className="p-3 text-right">Principal</th><th className="p-3 text-left">State</th><th className="p-3 text-left">Result</th><th className="p-3 text-right">Sim P&amp;L</th></tr></thead>
-              <tbody className="divide-y divide-border">
-                {shadowRows.slice(0, 30).map((row) => <tr key={row.strategy + ':' + row.id}>
-                  <td className="p-3 whitespace-nowrap">{row.createdAtMs ? etClock(row.createdAtMs) : '—'}</td>
-                  <td className="p-3 font-semibold">{row.strategy}</td>
-                  <td className="p-3 max-w-56 truncate" title={row.ticker}>{row.ticker || '—'}</td>
-                  <td className="p-3 text-right">{row.entryPriceCents == null ? '—' : `${row.entryPriceCents}¢`}</td>
-                  <td className="p-3 text-right">{row.contracts ?? '—'}</td>
-                  <td className="p-3 text-right">{row.principalCents == null ? '—' : moneyFromCents(row.principalCents)}</td>
-                  <td className="p-3 uppercase">{row.state.replaceAll('_', ' ')}</td>
-                  <td className="p-3 uppercase">{row.settlementResult ?? row.terminalReason?.replaceAll('_', ' ') ?? 'Pending'}</td>
-                  <td className={cn('p-3 text-right', (row.pnlCents ?? 0) > 0 && 'text-emerald-600', (row.pnlCents ?? 0) < 0 && 'text-destructive')}>{row.pnlCents == null ? 'Pending' : moneyFromCents(row.pnlCents, true)}</td>
-                </tr>)}
-              </tbody>
-            </table>
-            {shadowRows.length === 0 && <div className="p-8 text-center text-sm text-muted-foreground">No A2 or L shadow intents have qualified yet.</div>}
+
+          <div className="border-t border-border">
+            <div className="p-4 flex items-center justify-between gap-3"><h3 className="font-semibold">Recent evaluator decisions</h3><span className="font-mono text-[10px] uppercase text-muted-foreground">{shadowEvaluations.length} loaded</span></div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] font-mono text-xs">
+                <thead className="bg-muted/30 text-[10px] uppercase text-muted-foreground"><tr><th className="p-3 text-left">ET time</th><th className="p-3 text-left">Service</th><th className="p-3 text-left">Market</th><th className="p-3 text-left">Decision</th><th className="p-3 text-left">Reason</th><th className="p-3 text-left">Would submit</th><th className="p-3 text-left">Evidence</th></tr></thead>
+                <tbody className="divide-y divide-border">
+                  {shadowEvaluations.slice(0, 30).map((row) => {
+                    const evidence = row.evidence ?? {};
+                    const evidenceText = row.service === 'A2'
+                      ? `move ${typeof evidence.sourceMovePct === 'number' ? evidence.sourceMovePct.toFixed(3) + '%' : '—'} / threshold ${typeof evidence.dropThresholdPct === 'number' ? evidence.dropThresholdPct.toFixed(1) + '%' : '—'}`
+                      : `sweep ${String(evidence.sweptPrevious24hLow ?? '—')} · wick ${String(evidence.wickCondition ?? '—')} · upper close ${String(evidence.upperHalfClose ?? '—')}`;
+                    return <tr key={row.service + ':' + row.evaluatedAtMs + ':' + (row.ticker ?? '')}>
+                      <td className="p-3 whitespace-nowrap">{row.evaluatedAtMs ? etClock(row.evaluatedAtMs) : '—'}</td>
+                      <td className="p-3 font-semibold">{row.service}</td>
+                      <td className="p-3 max-w-56 truncate" title={row.ticker ?? undefined}>{row.ticker ?? '—'}</td>
+                      <td className="p-3 uppercase">{row.decision.replaceAll('_', ' ')}</td>
+                      <td className="p-3">{row.primaryReason?.replaceAll('_', ' ') ?? '—'}</td>
+                      <td className="p-3">{row.wouldSubmit ? 'YES' : 'NO'}</td>
+                      <td className="p-3 text-muted-foreground">{evidenceText}</td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+              {shadowEvaluations.length === 0 && <div className="p-8 text-center text-sm text-muted-foreground">No evaluator records available yet.</div>}
+            </div>
+          </div>
+
+          <div className="border-t border-border">
+            <div className="p-4 flex items-center justify-between gap-3">
+              <h3 className="font-semibold">Shadow intents and settlement P&amp;L</h3>
+              <span className="font-mono text-[10px] uppercase text-muted-foreground">Combined P&amp;L {totalShadowPnl == null ? '—' : moneyFromCents(totalShadowPnl, true)}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[950px] font-mono text-xs">
+                <thead className="bg-muted/30 text-[10px] uppercase text-muted-foreground"><tr><th className="p-3 text-left">ET time</th><th className="p-3 text-left">Strategy</th><th className="p-3 text-left">Ticker</th><th className="p-3 text-right">Entry</th><th className="p-3 text-right">Contracts</th><th className="p-3 text-right">Principal</th><th className="p-3 text-left">State</th><th className="p-3 text-left">Result</th><th className="p-3 text-right">Sim P&amp;L</th></tr></thead>
+                <tbody className="divide-y divide-border">
+                  {shadowRows.slice(0, 30).map((row) => <tr key={row.strategy + ':' + row.id}>
+                    <td className="p-3 whitespace-nowrap">{row.createdAtMs ? etClock(row.createdAtMs) : '—'}</td>
+                    <td className="p-3 font-semibold">{row.strategy}</td>
+                    <td className="p-3 max-w-56 truncate" title={row.ticker}>{row.ticker || '—'}</td>
+                    <td className="p-3 text-right">{row.entryPriceCents == null ? '—' : `${row.entryPriceCents}¢`}</td>
+                    <td className="p-3 text-right">{row.contracts ?? '—'}</td>
+                    <td className="p-3 text-right">{row.principalCents == null ? '—' : moneyFromCents(row.principalCents)}</td>
+                    <td className="p-3 uppercase">{row.state.replaceAll('_', ' ')}</td>
+                    <td className="p-3 uppercase">{row.settlementResult ?? row.terminalReason?.replaceAll('_', ' ') ?? 'Pending'}</td>
+                    <td className={cn('p-3 text-right', (row.pnlCents ?? 0) > 0 && 'text-emerald-600', (row.pnlCents ?? 0) < 0 && 'text-destructive')}>{row.pnlCents == null ? 'Pending' : moneyFromCents(row.pnlCents, true)}</td>
+                  </tr>)}
+                </tbody>
+              </table>
+              {shadowRows.length === 0 && <div className="p-8 text-center text-sm text-muted-foreground">No qualifying A2 or L shadow intents yet. Evaluator activity above can still be healthy.</div>}
+            </div>
           </div>
         </section>
         <section className="border border-border bg-card">
