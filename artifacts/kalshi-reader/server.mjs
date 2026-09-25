@@ -2,6 +2,7 @@ import http from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { shadowEvaluatorStatus } from './shadow-health.mjs';
 import { createRequire } from 'node:module';
 import { gzipSync } from 'node:zlib';
 
@@ -609,15 +610,10 @@ async function shadowPerformanceDiagnostics(req, res) {
       const serviceHealth = (service, intents) => {
         const latest = latestByService.get(service) ?? null;
         const recent = recentEvaluations.filter((row) => row.service === service);
-        const interval = latest && Number.isFinite(latest.evaluationIntervalMs) && latest.evaluationIntervalMs > 0
-          ? latest.evaluationIntervalMs
-          : null;
-        const staleAfterMs = interval == null ? null : interval * 2;
-        const ageMs = latest == null ? null : Math.max(0, nowMs - latest.evaluatedAtMs);
-        const status = !evaluationsExist ? 'unavailable'
-          : latest == null ? 'unknown'
-          : staleAfterMs != null && ageMs <= staleAfterMs ? 'healthy'
-          : 'stale';
+        const freshness = shadowEvaluatorStatus(nowMs, latest);
+        const interval = freshness.evaluationIntervalMs;
+        const staleAfterMs = freshness.staleAfterMs;
+        const status = !evaluationsExist ? 'unavailable' : freshness.status;
         return {
           service,
           status,
