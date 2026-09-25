@@ -44,7 +44,27 @@ export function boundShadowEvaluationEvidence(
   return out;
 }
 
+let shadowEvaluationSchemaCompatible = false;
+
+async function ensureShadowEvaluationSchemaCompatibility(): Promise<void> {
+  if (shadowEvaluationSchemaCompatible) return;
+  await db.execute(sql`
+    ALTER TABLE shadow_evaluation_events
+      ADD COLUMN IF NOT EXISTS evaluation_interval_ms BIGINT
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_shadow_evaluation_events_service_time
+      ON shadow_evaluation_events (service, evaluated_at_ms DESC)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_shadow_evaluation_events_service_decision_time
+      ON shadow_evaluation_events (service, decision, evaluated_at_ms DESC)
+  `);
+  shadowEvaluationSchemaCompatible = true;
+}
+
 async function defaultWrite(input: ShadowEvaluationEventInput & { evidence: Record<string, unknown> }): Promise<void> {
+  await ensureShadowEvaluationSchemaCompatibility();
   await db.execute(sql`
     INSERT INTO shadow_evaluation_events
       (service, evaluated_at_ms, ticker, market_open_time_ms, decision, primary_reason,
