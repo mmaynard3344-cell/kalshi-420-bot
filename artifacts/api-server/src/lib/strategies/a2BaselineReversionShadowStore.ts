@@ -49,6 +49,7 @@ export interface A2ShadowClaimInput {
 export interface A2ShadowStore {
   recordEvidence(input: A2ShadowEvidenceRecord): Promise<boolean>;
   countOpen(): Promise<number | null>;
+  listOpen(): Promise<Array<{ id: string; destinationTicker: string }>>;
   claimOpen(input: A2ShadowClaimInput): Promise<A2ShadowClaimOutcome>;
   settle(input: {
     id: string;
@@ -128,6 +129,25 @@ export class PostgresA2ShadowStore implements A2ShadowStore {
       return nonnegativeSafe(count) ? count : null;
     } catch {
       return null;
+    }
+  }
+
+  async listOpen(): Promise<Array<{ id: string; destinationTicker: string }>> {
+    try {
+      const result = await this.db.execute(sql`
+        SELECT id, destination_ticker
+        FROM a2_baseline_reversion_shadow_claims
+        WHERE state='shadow_open'
+        ORDER BY claimed_at_ms ASC
+      `);
+      return rowsOf(result)
+        .filter((row) => typeof row["id"] === "string" && typeof row["destination_ticker"] === "string")
+        .map((row) => ({
+          id: row["id"] as string,
+          destinationTicker: row["destination_ticker"] as string,
+        }));
+    } catch {
+      return [];
     }
   }
 
