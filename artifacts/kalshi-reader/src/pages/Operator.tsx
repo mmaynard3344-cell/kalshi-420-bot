@@ -124,15 +124,22 @@ type ShadowTradeRow = {
 
 type ShadowServiceHealth = {
   service: 'A2' | 'L';
-  health: 'healthy' | 'stale' | 'no_data' | 'unavailable';
+  health: 'healthy' | 'stale' | 'unknown' | 'unavailable';
+  expectedEvaluationIntervalMs: number;
+  freshnessThresholdMs: number;
+  recentWindowMs: number;
   lastEvaluationAtMs: number | null;
   latestTicker: string | null;
+  latestMarketOpenTimeMs: number | null;
   latestDecision: string | null;
   latestReason: string | null;
   latestEvidence: Record<string, unknown> | null;
+  latestRuntimeVersion: string | null;
   evaluationsRecent: number;
+  noSignalRecent: number;
   qualifiedRecent: number;
   wouldSubmitRecent: number;
+  errorRecent: number;
   shadowIntentsRecent: number;
   settledIntentsRecent: number;
 };
@@ -141,16 +148,21 @@ type ShadowEvaluationRow = {
   service: 'A2' | 'L';
   evaluatedAtMs: number;
   ticker: string;
+  marketOpenTimeMs: number | null;
   decision: string;
   primaryReason: string | null;
+  sourceMovePct: number | null;
+  triggerThresholdPct: number | null;
   qualifies: boolean;
   wouldSubmit: boolean;
   intentId: string | null;
   evidence: Record<string, unknown> | null;
+  runtimeVersion: string | null;
 };
 
 type ShadowPerformance = {
   generatedAtMs: number;
+  recentWindowMs: number;
   note: string;
   services: ShadowServiceHealth[];
   summaries: ShadowStrategySummary[];
@@ -199,6 +211,10 @@ function Metric({ label, value, detail, tone = 'normal' }: { label: string; valu
     <div className={cn('mt-2 font-mono text-2xl font-semibold', tone === 'good' && 'text-emerald-600', tone === 'bad' && 'text-destructive', tone === 'warn' && 'text-amber-600')}>{value}</div>
     <div className="mt-2 text-xs text-muted-foreground">{detail}</div>
   </div>;
+}
+
+function shadowCount(service: ShadowServiceHealth | null, value: number | undefined) {
+  return service && service.evaluationsRecent > 0 && value != null ? String(value) : '—';
 }
 
 export default function Operator() {
