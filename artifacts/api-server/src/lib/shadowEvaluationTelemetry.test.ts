@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   boundShadowEvaluationEvidence,
   recordShadowEvaluation,
+  shadowEvaluationRetentionCutoffMs,
   shadowEvaluationRetentionDays,
 } from "./shadowEvaluationTelemetry.js";
 
@@ -56,4 +57,17 @@ test("telemetry rejection is contained",async()=>{
 test("retention setting is explicit and validated",()=>{
   assert.equal(shadowEvaluationRetentionDays({SHADOW_EVALUATION_RETENTION_DAYS:"45"} as NodeJS.ProcessEnv),45);
   assert.equal(shadowEvaluationRetentionDays({SHADOW_EVALUATION_RETENTION_DAYS:"bad"} as NodeJS.ProcessEnv),30);
+});
+
+
+test("retention cutoff selects only events older than the configured horizon",()=>{
+  const now=100*86_400_000;
+  const cutoff=shadowEvaluationRetentionCutoffMs(now,30);
+  assert.equal(cutoff,70*86_400_000);
+  const evaluated=[69,70,71].map((day)=>({day,eligible:day*86_400_000<cutoff}));
+  assert.deepEqual(evaluated,[
+    {day:69,eligible:true},
+    {day:70,eligible:false},
+    {day:71,eligible:false},
+  ]);
 });
