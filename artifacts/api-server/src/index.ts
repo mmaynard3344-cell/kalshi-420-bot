@@ -1,5 +1,4 @@
 import app from "./app";
-import { db } from "@workspace/db";
 import { logger } from "./lib/logger";
 import { kalshiStream } from "./lib/kalshiStream";
 import { startAutoTrader, getAutoTraderStatus } from "./lib/autoTrader";
