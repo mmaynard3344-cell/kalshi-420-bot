@@ -13,10 +13,12 @@ import type {
 
 class MemoryA2Store implements A2ShadowStore {
   evidence = new Map<string, A2ShadowEvidenceRecord>();
+  failEvidence = false;
   claims = new Map<string, { input: A2ShadowClaimInput; state: "shadow_open" | "shadow_settled" }>();
   private tail: Promise<void> = Promise.resolve();
 
   async recordEvidence(input: A2ShadowEvidenceRecord): Promise<boolean> {
+    if (this.failEvidence) return false;
     if (this.evidence.has(input.id)) return false;
     this.evidence.set(input.id, { ...input });
     return true;
@@ -183,4 +185,20 @@ test("settlement releases the one-exposure shadow slot for a later signal", asyn
     config: { enabled: true }, source: s2, destination: d2, observedAtMs: 4_000_000, store,
   });
   assert.equal(second.outcome, "shadow_opened");
+});
+
+
+test("legacy evidence persistence failure does not change a qualified A2 decision", async () => {
+  const store = new MemoryA2Store();
+  store.failEvidence = true;
+  const result = await evaluateA2BaselineReversionShadow({
+    config: { enabled: true },
+    source: source(),
+    destination: destination(),
+    observedAtMs: 2_000_000,
+    store,
+  });
+  assert.equal(result.outcome, "shadow_opened");
+  assert.equal(result.signal, true);
+  assert.equal(store.claims.size, 1);
 });
