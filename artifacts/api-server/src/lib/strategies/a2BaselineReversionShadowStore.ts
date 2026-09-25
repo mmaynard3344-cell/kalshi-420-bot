@@ -2,6 +2,63 @@ import { sql } from "drizzle-orm";
 
 export const A2_SHADOW_ADVISORY_LOCK = 42017002;
 
+export async function ensureA2BaselineReversionShadowSchema(db: DbLike): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS a2_baseline_reversion_evidence (
+      id text PRIMARY KEY,
+      observed_at_ms bigint NOT NULL,
+      source_open_time_ms bigint NOT NULL,
+      source_close_time_ms bigint NOT NULL,
+      source_open double precision NOT NULL,
+      source_high double precision NOT NULL,
+      source_low double precision NOT NULL,
+      source_close double precision NOT NULL,
+      source_drop_fraction double precision,
+      destination_ticker text NOT NULL,
+      destination_open_time_ms bigint NOT NULL,
+      destination_close_time_ms bigint NOT NULL,
+      yes_semantics_verified boolean NOT NULL,
+      observed_yes_ask_cents integer,
+      signal boolean NOT NULL,
+      reason text,
+      stake_cents integer NOT NULL,
+      max_entry_price_cents integer NOT NULL,
+      active_exposure_count_observed integer NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS a2_baseline_reversion_evidence_observed_idx
+      ON a2_baseline_reversion_evidence (observed_at_ms DESC);
+    CREATE INDEX IF NOT EXISTS a2_baseline_reversion_evidence_ticker_idx
+      ON a2_baseline_reversion_evidence (destination_ticker);
+
+    CREATE TABLE IF NOT EXISTS a2_baseline_reversion_shadow_claims (
+      id text PRIMARY KEY,
+      strategy_id text NOT NULL,
+      source_open_time_ms bigint NOT NULL,
+      source_close_time_ms bigint NOT NULL,
+      destination_ticker text NOT NULL,
+      destination_open_time_ms bigint NOT NULL,
+      side text NOT NULL,
+      stake_cents integer NOT NULL,
+      max_entry_price_cents integer NOT NULL,
+      observed_yes_ask_cents integer NOT NULL,
+      source_drop_fraction double precision NOT NULL,
+      state text NOT NULL,
+      claimed_at_ms bigint NOT NULL,
+      settlement_result text,
+      settled_at_ms bigint,
+      updated_at_ms bigint NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (source_open_time_ms, destination_ticker)
+    );
+    CREATE INDEX IF NOT EXISTS a2_baseline_reversion_shadow_claims_state_idx
+      ON a2_baseline_reversion_shadow_claims (state, claimed_at_ms);
+    CREATE INDEX IF NOT EXISTS a2_baseline_reversion_shadow_claims_ticker_idx
+      ON a2_baseline_reversion_shadow_claims (destination_ticker);
+  `);
+}
+
 export type A2ShadowClaimState = "shadow_open" | "shadow_settled";
 export type A2ShadowClaimOutcome =
   | "opened"
