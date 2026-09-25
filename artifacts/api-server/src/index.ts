@@ -1,4 +1,5 @@
 import app from "./app";
+import { db } from "@workspace/db";
 import { logger } from "./lib/logger";
 import { kalshiStream } from "./lib/kalshiStream";
 import { startAutoTrader, getAutoTraderStatus } from "./lib/autoTrader";
@@ -68,6 +69,10 @@ import { runEthBigBetAccountingSweepSingleFlight } from "./lib/strategies/ethBig
 import {
   WEEK_2_PRODUCTION_NEW_ENTRY_SERIES,
 } from "./lib/week2EntryPolicy.js";
+import {
+  ensureLSweepReclaimDryRunSchema,
+  startLSweepReclaimDryRunRuntime,
+} from "./lib/strategies/sweepReclaimDryRunRuntime.js";
 
 const FILL_RECONCILIATION_RECOVERY_INTERVAL_MS = 15 * 60_000;
 const PROTECTIVE_EXIT_RESTORE_RETRY_INTERVAL_MS = 15_000;
@@ -130,6 +135,23 @@ app.listen(port, "0.0.0.0", async () => {
   // before any order attempt. If SQL is unavailable, claimOrderSlot() returns
   // false and trading is halted until storage recovers.
   await initTradeStore();
+
+  if (isProductionRuntime() && process.env["L_SWEEP_RECLAIM_RUNTIME_ONLY"] === "true") {
+    await ensureLSweepReclaimDryRunSchema();
+    startLSweepReclaimDryRunRuntime();
+    logger.info(
+      {
+        strategy: "L_SWEEP_RECLAIM_V1",
+        enabled: process.env["L_SWEEP_RECLAIM_ENABLED"] === "true",
+        runtimeOnly: true,
+        executionAdapter: "dry_run_only",
+        orderSubmissionPermitted: false,
+      },
+      "L sweep/reclaim runtime-only service started",
+    );
+    return;
+  }
+
   // Read-only evidence bootstrap. It is intentionally non-blocking so an
   // unavailable public catalog cannot delay the authoritative runner; until a
   // complete history arrives, ETH 420 remains on its existing live-only input.
