@@ -2,6 +2,7 @@ import http from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { shadowEvaluatorStatus } from './shadow-health.mjs';
 import { createRequire } from 'node:module';
 import { gzipSync } from 'node:zlib';
 
@@ -443,9 +444,8 @@ async function serviceLedgerTodayDiagnostics(req, res) {
 async function shadowPerformanceDiagnostics(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
   const recentWindowMs = 15 * 60_000;
-  const cutoffMs = Date.now() - recentWindowMs;
-  const expectedIntervals = { A2: 10_000, L: 10_000 };
-  const freshnessGraceMs = 5_000;
+  const nowMs = Date.now();
+  const cutoffMs = nowMs - recentWindowMs;
 
   try {
     const data = await withReadOnlyDb(async (client) => {
@@ -466,6 +466,7 @@ async function shadowPerformanceDiagnostics(req, res) {
       let a2Rows = [];
       let lRows = [];
       let evaluations = [];
+      let latestByService = new Map();
 
       if (a2IntentExists) {
         const q = await client.query(`
@@ -533,30 +534,53 @@ async function shadowPerformanceDiagnostics(req, res) {
       }
 
       if (evalExists) {
-        const q = await client.query(`
-          SELECT service, evaluated_at_ms, ticker, market_open_time_ms,
-                 decision, primary_reason, source_move_pct, trigger_threshold_pct,
-                 qualified, would_submit, intent_id, evidence_json, runtime_version
-            FROM shadow_evaluation_events
-           WHERE evaluated_at_ms >= $1
-           ORDER BY evaluated_at_ms DESC
-           LIMIT 500
-        `, [cutoffMs]);
-        evaluations = q.rows.map((row) => ({
-          service: String(row.service ?? ''),
-          evaluatedAtMs: Number(row.evaluated_at_ms ?? 0),
-          ticker: row.ticker == null ? '' : String(row.ticker),
-          marketOpenTimeMs: row.market_open_time_ms == null ? null : Number(row.market_open_time_ms),
-          decision: String(row.decision ?? ''),
-          primaryReason: row.primary_reason == null ? null : String(row.primary_reason),
-          sourceMovePct: row.source_move_pct == null ? null : Number(row.source_move_pct),
-          triggerThresholdPct: row.trigger_threshold_pct == null ? null : Number(row.trigger_threshold_pct),
-          qualifies: row.qualified === true,
-          wouldSubmit: row.would_submit === true,
-          intentId: row.intent_id == null ? null : String(row.intent_id),
-          evidence: row.evidence_json ?? {},
-          runtimeVersion: row.runtime_version == null ? null : String(row.runtime_version),
+        const normalizeEvaluation = (row) => {
+          const evidence = row.evidence_json && typeof row.evidence_json === 'object' ? row.evidence_json : {};
+          const decision = String(row.decision ?? '');
+          return {
+            service: String(row.service ?? ''),
+            evaluatedAtMs: Number(row.evaluated_at_ms ?? 0),
+            ticker: row.ticker == null ? '' : String(row.ticker),
+            marketOpenTimeMs: row.market_open_time_ms == null ? null : Number(row.market_open_time_ms),
+            decision,
+            primaryReason: row.primary_reason == null ? null : String(row.primary_reason),
+            sourceMovePct: typeof evidence.sourceMovePct === 'number' ? evidence.sourceMovePct : null,
+            triggerThresholdPct: typeof evidence.dropThresholdPct === 'number' ? evidence.dropThresholdPct : null,
+            qualifies: decision === 'qualified',
+            wouldSubmit: row.would_submit === true,
+            intentId: null,
+            evidence,
+            evaluationIntervalMs: Number(row.evaluation_interval_ms ?? 0),
+            runtimeVersion: row.runtime_version == null ? null : String(row.runtime_version),
+          };
+        };
+
+        const [latest, recent] = await Promise.all([
+          client.query(`
+            SELECT DISTINCT ON (service)
+                   service, evaluated_at_ms, ticker, market_open_time_ms, decision,
+                   primary_reason, would_submit, evidence_json, evaluation_interval_ms,
+                   runtime_version
+              FROM shadow_evaluation_events
+             WHERE service IN ('A2','L')
+             ORDER BY service, evaluated_at_ms DESC, id DESC
+          `),
+          client.query(`
+            SELECT service, evaluated_at_ms, ticker, market_open_time_ms, decision,
+                   primary_reason, would_submit, evidence_json, evaluation_interval_ms,
+                   runtime_version
+              FROM shadow_evaluation_events
+             WHERE service IN ('A2','L')
+               AND evaluated_at_ms >= $1
+             ORDER BY evaluated_at_ms DESC, id DESC
+             LIMIT 500
+          `, [cutoffMs]),
+        ]);
+        latestByService = new Map(latest.rows.map((row) => {
+          const normalized = normalizeEvaluation(row);
+          return [normalized.service, normalized];
         }));
+        evaluations = recent.rows.map(normalizeEvaluation);
       }
 
       const summarizeTrades = (strategy, rows, available) => {
@@ -591,25 +615,16 @@ async function shadowPerformanceDiagnostics(req, res) {
         };
       };
 
-      const serviceHealth = (service, allEvaluations, intents) => {
-        const serviceEvaluations = allEvaluations.filter((row) => row.service === service);
-        const latest = serviceEvaluations[0] ?? null;
-        const expectedIntervalMs = expectedIntervals[service];
-        const freshnessThresholdMs = expectedIntervalMs * 2 + freshnessGraceMs;
-        const ageMs = latest ? Date.now() - latest.evaluatedAtMs : null;
-        const health = !evalExists
-          ? 'unavailable'
-          : latest == null
-            ? 'unknown'
-            : ageMs >= 0 && ageMs <= freshnessThresholdMs
-              ? 'healthy'
-              : 'stale';
+      const serviceHealth = (service, intents) => {
+        const serviceEvaluations = evaluations.filter((row) => row.service === service);
+        const latest = latestByService.get(service) ?? null;
+        const freshness = shadowEvaluatorStatus(nowMs, latest);
         const recentIntents = intents.filter((row) => row.createdAtMs >= cutoffMs);
         return {
           service,
-          health,
-          expectedEvaluationIntervalMs: expectedIntervalMs,
-          freshnessThresholdMs,
+          health: !evalExists ? 'unavailable' : freshness.status,
+          expectedEvaluationIntervalMs: freshness.evaluationIntervalMs ?? 0,
+          freshnessThresholdMs: freshness.staleAfterMs ?? 0,
           recentWindowMs,
           lastEvaluationAtMs: latest?.evaluatedAtMs ?? null,
           latestTicker: latest?.ticker || null,
@@ -620,7 +635,7 @@ async function shadowPerformanceDiagnostics(req, res) {
           latestRuntimeVersion: latest?.runtimeVersion ?? null,
           evaluationsRecent: serviceEvaluations.length,
           noSignalRecent: serviceEvaluations.filter((row) => row.decision === 'no_signal').length,
-          qualifiedRecent: serviceEvaluations.filter((row) => row.qualifies).length,
+          qualifiedRecent: serviceEvaluations.filter((row) => row.decision === 'qualified').length,
           wouldSubmitRecent: serviceEvaluations.filter((row) => row.wouldSubmit).length,
           errorRecent: serviceEvaluations.filter((row) => row.decision === 'error').length,
           shadowIntentsRecent: recentIntents.length,
@@ -633,12 +648,12 @@ async function shadowPerformanceDiagnostics(req, res) {
         .slice(0, 100);
 
       return {
-        generatedAtMs: Date.now(),
+        generatedAtMs: nowMs,
         recentWindowMs,
-        note: 'A2 and L are shadow-only evaluators. Health comes from evaluator freshness; simulated P&L comes only from persisted qualified shadow intents.',
+        note: 'A2 and L are shadow-only evaluators. Health comes from persisted evaluator cadence; simulated P&L comes only from persisted qualified shadow intents.',
         services: [
-          serviceHealth('A2', evaluations, a2Rows),
-          serviceHealth('L', evaluations, lRows),
+          serviceHealth('A2', a2Rows),
+          serviceHealth('L', lRows),
         ],
         summaries: [
           summarizeTrades('A2', a2Rows, a2IntentExists),
@@ -656,7 +671,6 @@ async function shadowPerformanceDiagnostics(req, res) {
     return send(res, 500, JSON.stringify({
       error: 'Shadow performance unavailable',
       generatedAtMs: Date.now(),
-      recentWindowMs,
       services: [],
       summaries: [],
       evaluations: [],
