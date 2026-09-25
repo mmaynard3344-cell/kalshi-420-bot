@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { kalshiFetch, kalshiSeriesFetch, normalizeMarket } from "../kalshi.js";
 import { logger } from "../logger.js";
+import { recordShadowEvaluationEvent } from "./shadowEvaluationLedger.js";
 import {
   ETH_15M_MS,
   PRIOR_24H_CANDLES,
@@ -58,23 +59,6 @@ export async function ensureLSweepReclaimDryRunSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS l_sweep_reclaim_dry_run_state_idx
       ON l_sweep_reclaim_dry_run_intents(state, updated_at_ms);
 
-    CREATE TABLE IF NOT EXISTS l_sweep_reclaim_dry_run_evaluations (
-      id text PRIMARY KEY,
-      evaluated_at_ms bigint NOT NULL,
-      destination_ticker text,
-      source_open_time_ms bigint,
-      decision text NOT NULL,
-      primary_reason text,
-      evidence_json jsonb,
-      qualifies boolean NOT NULL DEFAULT false,
-      would_submit boolean NOT NULL DEFAULT false,
-      intent_id text,
-      created_at timestamptz NOT NULL DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS l_sweep_reclaim_dry_run_evaluations_service_time_idx
-      ON l_sweep_reclaim_dry_run_evaluations(evaluated_at_ms DESC);
-    CREATE INDEX IF NOT EXISTS l_sweep_reclaim_dry_run_evaluations_ticker_idx
-      ON l_sweep_reclaim_dry_run_evaluations(destination_ticker, evaluated_at_ms DESC);
   `);
 }
 
@@ -205,17 +189,42 @@ async function persistEvaluation(input:{
   wouldSubmit:boolean;
   intentId:string|null;
 }):Promise<void>{
-  try{
-    await db.execute(sql`
-      INSERT INTO l_sweep_reclaim_dry_run_evaluations
-        (id,evaluated_at_ms,destination_ticker,source_open_time_ms,decision,primary_reason,evidence_json,qualifies,would_submit,intent_id)
-      VALUES
-        (${"l-eval:"+input.nowMs+":"+(input.ticker??"none")},${input.nowMs},${input.ticker},${input.sourceOpenTimeMs},
-         ${input.decision},${input.primaryReason},${JSON.stringify(input.evidence??null)}::jsonb,${input.qualifies},${input.wouldSubmit},${input.intentId})
-      ON CONFLICT (id) DO NOTHING
-    `);
-  }catch(err){
-    logger.warn({err,ticker:input.ticker,decision:input.decision},"L shadow evaluation persistence failed");
+  const operationalErrors = new Set([
+    "market_unavailable",
+    "destination_invalid",
+    "source_unavailable",
+    "price_unavailable",
+    "final_price_unavailable",
+  ]);
+  const normalizedDecision = input.decision === "no_signal"
+    ? "no_signal"
+    : input.decision === "disabled_or_unconfigured"
+      ? "disabled"
+      : operationalErrors.has(input.decision)
+        ? "error"
+        : input.qualifies
+          ? (input.wouldSubmit ? "qualified" : "blocked")
+          : input.decision;
+
+  const persisted = await recordShadowEvaluationEvent({
+    service:"L",
+    evaluatedAtMs:input.nowMs,
+    ticker:input.ticker,
+    marketOpenTimeMs:input.sourceOpenTimeMs == null ? null : input.sourceOpenTimeMs + ETH_15M_MS,
+    decision:normalizedDecision,
+    primaryReason:input.primaryReason,
+    sourceMovePct:null,
+    triggerThresholdPct:null,
+    qualified:input.qualifies,
+    wouldSubmit:input.wouldSubmit,
+    intentId:input.intentId,
+    evidence:input.evidence,
+  });
+  if(!persisted){
+    logger.warn(
+      {strategy:"L",ticker:input.ticker,decision:normalizedDecision},
+      "L shadow evaluation persistence failed",
+    );
   }
 }
 
