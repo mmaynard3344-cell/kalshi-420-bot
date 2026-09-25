@@ -23,6 +23,18 @@ function deterministicId(sourceOpenTimeMs: number, ticker: string): string {
   return `l:${sourceOpenTimeMs}:${ticker}:v1`;
 }
 
+export function buildLDryRunOrderSize(stakeCents:number,maxEntryPriceCents:number):{
+  contracts:number;maxPrincipalCents:number;feeHeadroomCents:number;requestedRiskCents:number;
+}|null{
+  if(!Number.isSafeInteger(stakeCents)||stakeCents<=0||!Number.isInteger(maxEntryPriceCents)||maxEntryPriceCents<1||maxEntryPriceCents>99) return null;
+  const contracts=Math.floor(stakeCents/maxEntryPriceCents);
+  if(contracts<1) return null;
+  const maxPrincipalCents=contracts*maxEntryPriceCents;
+  const feeHeadroomCents=Math.ceil(0.07*contracts*maxEntryPriceCents*(100-maxEntryPriceCents)/100);
+  const requestedRiskCents=maxPrincipalCents+feeHeadroomCents;
+  return Number.isSafeInteger(requestedRiskCents)?{contracts,maxPrincipalCents,feeHeadroomCents,requestedRiskCents}:null;
+}
+
 export async function ensureLSweepReclaimDryRunSchema(): Promise<void> {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS l_sweep_reclaim_dry_run_intents (
