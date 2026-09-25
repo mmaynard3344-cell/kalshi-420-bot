@@ -21,6 +21,14 @@ await build({
   outdir,
   outExtension:{".js":".mjs"},
   logLevel:"warning",
+  banner: {
+    js: `import { createRequire as __bannerCrReq } from 'node:module';
+import __bannerPath from 'node:path';
+import { fileURLToPath as __bannerFtu } from 'node:url';
+const require = __bannerCrReq(__bannerFtu(import.meta.url));
+const __filename = __bannerFtu(import.meta.url);
+const __dirname = __bannerPath.dirname(__filename);`,
+  },
   plugins:[esbuildPluginPino({ transports:["pino-pretty"] })],
 });
 
