@@ -1,0 +1,31 @@
+name: Verify final live dashboard shadow
+
+on:
+  push:
+    branches:
+      - fix/live-dashboard-shadow-clean
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck:libs
+      - run: pnpm --filter @workspace/kalshi-reader typecheck
+      - run: node --check artifacts/kalshi-reader/server.mjs
+      - run: node --check artifacts/kalshi-reader/public/pnl-runtime.clean.js
+      - run: pnpm --filter @workspace/kalshi-reader build
+      - name: Verify final generated dashboard
+        run: |
+          grep -q "A2 / L Shadow Performance" artifacts/kalshi-reader/dist/public/eth420-dashboard.html
+          grep -q "shadowCombined" artifacts/kalshi-reader/dist/public/eth420-dashboard.html
+          grep -q "shadow-performance" artifacts/kalshi-reader/dist/public/pnl-runtime.js
+          node --check artifacts/kalshi-reader/dist/public/pnl-runtime.js
