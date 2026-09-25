@@ -20,4 +20,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck:libs
       - run: pnpm --filter @workspace/kalshi-reader typecheck
+      - run: node --check artifacts/kalshi-reader/server.mjs
       - run: pnpm --filter @workspace/kalshi-reader build
