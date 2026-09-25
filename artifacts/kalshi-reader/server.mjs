@@ -452,13 +452,19 @@ async function shadowPerformanceDiagnostics(req, res) {
         return q.rows?.[0]?.present === true;
       };
 
-      const [a2Exists, lExists] = await Promise.all([
+      const recentWindowMs = 24 * 60 * 60 * 1000;
+      const nowMs = Date.now();
+      const recentCutoffMs = nowMs - recentWindowMs;
+      const [a2Exists, lExists, evaluationsExist] = await Promise.all([
         tableExists('a2_execution_intents'),
         tableExists('l_sweep_reclaim_dry_run_intents'),
+        tableExists('shadow_evaluation_events'),
       ]);
 
       let a2Rows = [];
       let lRows = [];
+      let recentEvaluations = [];
+      let latestByService = new Map();
 
       if (a2Exists) {
         const q = await client.query(`
@@ -525,6 +531,49 @@ async function shadowPerformanceDiagnostics(req, res) {
         }));
       }
 
+      if (evaluationsExist) {
+        const [latest, recent] = await Promise.all([
+          client.query(`
+            SELECT DISTINCT ON (service)
+                   service, evaluated_at_ms, ticker, market_open_time_ms, decision,
+                   primary_reason, would_submit, evidence_json, evaluation_interval_ms,
+                   runtime_version
+              FROM shadow_evaluation_events
+             WHERE service IN ('A2','L')
+             ORDER BY service, evaluated_at_ms DESC, id DESC
+          `),
+          client.query(`
+            SELECT service, evaluated_at_ms, ticker, market_open_time_ms, decision,
+                   primary_reason, would_submit, evidence_json, evaluation_interval_ms,
+                   runtime_version
+              FROM shadow_evaluation_events
+             WHERE service IN ('A2','L')
+               AND evaluated_at_ms >= $1
+             ORDER BY evaluated_at_ms DESC, id DESC
+             LIMIT 1000
+          `, [recentCutoffMs]),
+        ]);
+
+        const normalizeEvaluation = (row) => ({
+          service: String(row.service),
+          evaluatedAtMs: Number(row.evaluated_at_ms ?? 0),
+          ticker: row.ticker == null ? null : String(row.ticker),
+          marketOpenTimeMs: row.market_open_time_ms == null ? null : Number(row.market_open_time_ms),
+          decision: String(row.decision ?? ''),
+          primaryReason: row.primary_reason == null ? null : String(row.primary_reason),
+          wouldSubmit: row.would_submit === true,
+          evidence: row.evidence_json && typeof row.evidence_json === 'object' ? row.evidence_json : {},
+          evaluationIntervalMs: Number(row.evaluation_interval_ms ?? 0),
+          runtimeVersion: row.runtime_version == null ? null : String(row.runtime_version),
+        });
+
+        latestByService = new Map(latest.rows.map((row) => {
+          const normalized = normalizeEvaluation(row);
+          return [normalized.service, normalized];
+        }));
+        recentEvaluations = recent.rows.map(normalizeEvaluation);
+      }
+
       const summarize = (strategy, rows, available) => {
         const settled = rows.filter((row) => row.settlementResult === 'yes' || row.settlementResult === 'no');
         const wins = settled.filter((row) => row.settlementResult === 'yes').length;
@@ -557,17 +606,57 @@ async function shadowPerformanceDiagnostics(req, res) {
         };
       };
 
+      const serviceHealth = (service, intents) => {
+        const latest = latestByService.get(service) ?? null;
+        const recent = recentEvaluations.filter((row) => row.service === service);
+        const interval = latest && Number.isFinite(latest.evaluationIntervalMs) && latest.evaluationIntervalMs > 0
+          ? latest.evaluationIntervalMs
+          : null;
+        const staleAfterMs = interval == null ? null : interval * 2;
+        const ageMs = latest == null ? null : Math.max(0, nowMs - latest.evaluatedAtMs);
+        const status = !evaluationsExist ? 'unavailable'
+          : latest == null ? 'unknown'
+          : staleAfterMs != null && ageMs <= staleAfterMs ? 'healthy'
+          : 'stale';
+        return {
+          service,
+          status,
+          lastEvaluationAtMs: latest?.evaluatedAtMs ?? null,
+          latestTicker: latest?.ticker ?? null,
+          latestMarketOpenTimeMs: latest?.marketOpenTimeMs ?? null,
+          evaluationIntervalMs: interval,
+          staleAfterMs,
+          latestDecision: latest?.decision ?? null,
+          latestReason: latest?.primaryReason ?? null,
+          latestEvidence: latest?.evidence ?? null,
+          runtimeVersion: latest?.runtimeVersion ?? null,
+          evaluationsRecent: recent.length,
+          noSignalRecent: recent.filter((row) => row.decision === 'no_signal').length,
+          qualifiedRecent: recent.filter((row) => row.decision === 'qualified').length,
+          errorRecent: recent.filter((row) => row.decision === 'error').length,
+          wouldSubmitRecent: recent.filter((row) => row.wouldSubmit === true).length,
+          shadowIntentsRecent: intents.length,
+          settledIntentsRecent: intents.filter((row) => row.settlementResult === 'yes' || row.settlementResult === 'no').length,
+        };
+      };
+
       const rows = [...a2Rows, ...lRows]
         .sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0))
         .slice(0, 100);
 
       return {
-        generatedAtMs: Date.now(),
-        note: 'Live shadow-trading results only. No live Kalshi orders are submitted by A2 or L.',
+        generatedAtMs: nowMs,
+        recentWindowMs,
+        note: 'Evaluator activity comes from the append-only shadow evaluation ledger. Intents, settlements, and simulated P&L remain sourced from their existing ledgers.',
+        services: [
+          serviceHealth('A2', a2Rows),
+          serviceHealth('L', lRows),
+        ],
         summaries: [
           summarize('A2', a2Rows, a2Exists),
           summarize('L', lRows, lExists),
         ],
+        evaluations: recentEvaluations.slice(0, 100),
         rows,
       };
     });
@@ -579,7 +668,9 @@ async function shadowPerformanceDiagnostics(req, res) {
     return send(res, 500, JSON.stringify({
       error: 'Shadow performance unavailable',
       generatedAtMs: Date.now(),
+      services: [],
       summaries: [],
+      evaluations: [],
       rows: [],
     }), 'application/json; charset=utf-8');
   }
