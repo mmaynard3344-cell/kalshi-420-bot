@@ -35,6 +35,9 @@ export interface A2ExecutionIntent {
   maxNotionalCents: number | null;
   priceCheckedAtMs: number | null;
   kalshiOrderId: string | null;
+  filledQuantity: number;
+  fillCostCents: number;
+  fillFeeCents: number;
 }
 
 export interface A2DryRunPayload {
@@ -118,6 +121,10 @@ export interface A2ExecutionStore {
     id: string;
     orderId: string;
     state: "OPEN" | "PARTIALLY_FILLED" | "FILLED";
+    filledQuantity: number;
+    fillCostCents: number;
+    fillFeeCents: number;
+    fills: A2ExchangeFill[];
     nowMs: number;
   }): Promise<boolean>;
   settleAndRelease(input: {
@@ -244,16 +251,44 @@ export class A2DryRunExecutionAdapter {
     };
   }
 
-  async reconcileUnknown(clientOrderId: string, nowMs: number): Promise<"adopted" | "not_found" | "store_unavailable"> {
+  async reconcileUnknown(
+    clientOrderId: string,
+    nowMs: number,
+    definitiveNoMatch = false,
+  ): Promise<"adopted" | "released_unsubmitted" | "not_found" | "store_unavailable"> {
     const intent = await this.store.getIntentByClientOrderId(clientOrderId);
     if (!intent) return "not_found";
     const order = await this.exchange.findOrder(clientOrderId);
-    if (!order) return "not_found";
-    const mapped = order.status === "filled" ? "FILLED"
-      : order.status === "partially_filled" ? "PARTIALLY_FILLED"
-      : "OPEN";
-    return await this.store.adoptExchangeOrder({ id: intent.id, orderId: order.orderId, state: mapped, nowMs })
-      ? "adopted" : "store_unavailable";
+    if (!order) {
+      if (!definitiveNoMatch) return "not_found";
+      return await this.store.releaseUnsubmitted({
+        id: intent.id,
+        terminalState: "EXPIRED_UNSUBMITTED",
+        reason: "reconciliation_window_exhausted_no_exchange_order",
+        nowMs,
+      }) ? "released_unsubmitted" : "store_unavailable";
+    }
+
+    const fills = await this.exchange.listFills(order.orderId);
+    const filledQuantity = fills.reduce((sum, fill) => sum + fill.count, 0);
+    const fillCostCents = fills.reduce((sum, fill) => sum + fill.count * fill.yesPriceCents, 0);
+    const fillFeeCents = fills.reduce((sum, fill) => sum + fill.feeCents, 0);
+    const intendedQuantity = intent.quantity ?? 0;
+    const mapped = filledQuantity > 0 && intendedQuantity > 0 && filledQuantity >= intendedQuantity
+      ? "FILLED"
+      : filledQuantity > 0
+        ? "PARTIALLY_FILLED"
+        : "OPEN";
+    return await this.store.adoptExchangeOrder({
+      id: intent.id,
+      orderId: order.orderId,
+      state: mapped,
+      filledQuantity,
+      fillCostCents,
+      fillFeeCents,
+      fills,
+      nowMs,
+    }) ? "adopted" : "store_unavailable";
   }
 
   async settle(clientOrderId: string, nowMs: number): Promise<"settled" | "pending" | "not_found" | "store_unavailable"> {
@@ -261,9 +296,14 @@ export class A2DryRunExecutionAdapter {
     if (!intent) return "not_found";
     const result = await this.exchange.getMarketResult(intent.marketTicker);
     if (!result) return "pending";
+    const hasFillEvidence = intent.filledQuantity > 0;
+    const quantity = hasFillEvidence ? intent.filledQuantity : (intent.quantity ?? 0);
+    const costCents = hasFillEvidence
+      ? intent.fillCostCents + intent.fillFeeCents
+      : (intent.maxNotionalCents ?? 0);
     const pnl = result === "yes"
-      ? (intent.quantity ?? 0) * 100 - (intent.maxNotionalCents ?? 0)
-      : -(intent.maxNotionalCents ?? 0);
+      ? quantity * 100 - costCents
+      : -costCents;
     return await this.store.settleAndRelease({ id: intent.id, result, realizedPnlCents: pnl, nowMs })
       ? "settled" : "store_unavailable";
   }
