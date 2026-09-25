@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { kalshiFetch, kalshiSeriesFetch, normalizeMarket } from "../kalshi.js";
 import { logger } from "../logger.js";
+import { recordShadowEvaluation, type ShadowEvaluationEventInput } from "../shadowEvaluationTelemetry.js";
 import {
   ETH_15M_MS,
   PRIOR_24H_CANDLES,
@@ -176,40 +177,87 @@ async function settleOpen(nowMs:number):Promise<void>{
   }
 }
 
-export async function runLSweepReclaimDryRunOnce(nowMs=Date.now()):Promise<{outcome:string;ticker:string|null}>{
+export async function runLSweepReclaimDryRunOnce(
+  nowMs=Date.now(),
+  recordEvaluation:(input:ShadowEvaluationEventInput)=>Promise<boolean>=recordShadowEvaluation,
+):Promise<{outcome:string;ticker:string|null}>{
+  const observe=(event:Omit<ShadowEvaluationEventInput,"service"|"evaluationIntervalMs">):void=>{
+    void recordEvaluation({
+      service:"L",
+      evaluationIntervalMs:L_DRY_RUN_POLL_MS,
+      ...event,
+    }).catch(err=>logger.warn({err,service:"L",decision:event.decision},"L evaluator telemetry call failed"));
+  };
   await settleOpen(nowMs);
   const config=loadSweepReclaimRuntimeConfig();
-  if(!config.enabled||!config.activationReady) return {outcome:"disabled_or_unconfigured",ticker:null};
+  if(!config.enabled||!config.activationReady) {
+    observe({evaluatedAtMs:nowMs,ticker:null,marketOpenTimeMs:null,decision:"error",primaryReason:"disabled_or_unconfigured",wouldSubmit:false,evidence:null});
+    return {outcome:"disabled_or_unconfigured",ticker:null};
+  }
 
   const raw=await currentMarket();
-  if(!raw) return {outcome:"market_unavailable",ticker:null};
+  if(!raw) {
+    observe({evaluatedAtMs:nowMs,ticker:null,marketOpenTimeMs:null,decision:"error",primaryReason:"market_unavailable",wouldSubmit:false,evidence:null});
+    return {outcome:"market_unavailable",ticker:null};
+  }
   const dest=marketWindow(raw);
-  if(!dest) return {outcome:"destination_invalid",ticker:null};
+  if(!dest) {
+    observe({evaluatedAtMs:nowMs,ticker:null,marketOpenTimeMs:null,decision:"error",primaryReason:"destination_invalid",wouldSubmit:false,evidence:null});
+    return {outcome:"destination_invalid",ticker:null};
+  }
   const sourceOpenTimeMs=dest.openTimeMs-ETH_15M_MS;
   const history=await fetchEthHistory(sourceOpenTimeMs,nowMs);
-  if(!history) return {outcome:"source_unavailable",ticker:dest.ticker};
+  if(!history) {
+    observe({evaluatedAtMs:nowMs,ticker:dest.ticker,marketOpenTimeMs:dest.openTimeMs,decision:"error",primaryReason:"source_unavailable",wouldSubmit:false,evidence:null});
+    return {outcome:"source_unavailable",ticker:dest.ticker};
+  }
 
   const decision=evaluateSweepReclaimV1(history.source,history.prior96);
   if(!decision.qualifies) {
+    observe({evaluatedAtMs:nowMs,ticker:dest.ticker,marketOpenTimeMs:dest.openTimeMs,decision:"no_signal",primaryReason:decision.reason,wouldSubmit:false,evidence:decision.evidence??null});
     logger.info({strategy:"L",ticker:dest.ticker,outcome:"no_signal",reason:decision.reason,evidence:decision.evidence??null},"L sweep/reclaim dry-run evaluation");
     return {outcome:"no_signal",ticker:dest.ticker};
   }
-  if(!isImmediateFollowingEth15mWindow(history.source,dest.openTimeMs,dest.closeTimeMs)) return {outcome:"not_immediate_following_window",ticker:dest.ticker};
-  if(dest.closeTimeMs-nowMs < (config.minimumSecondsRemaining??0)*1000) return {outcome:"too_late",ticker:dest.ticker};
+  if(!isImmediateFollowingEth15mWindow(history.source,dest.openTimeMs,dest.closeTimeMs)) {
+    observe({evaluatedAtMs:nowMs,ticker:dest.ticker,marketOpenTimeMs:dest.openTimeMs,decision:"qualified",primaryReason:"not_immediate_following_window",wouldSubmit:false,evidence:decision.evidence});
+    return {outcome:"not_immediate_following_window",ticker:dest.ticker};
+  }
+  if(dest.closeTimeMs-nowMs < (config.minimumSecondsRemaining??0)*1000) {
+    observe({evaluatedAtMs:nowMs,ticker:dest.ticker,marketOpenTimeMs:dest.openTimeMs,decision:"qualified",primaryReason:"too_late",wouldSubmit:false,evidence:decision.evidence});
+    return {outcome:"too_late",ticker:dest.ticker};
+  }
 
   const firstPrice=dest.yesAskCents;
-  if(firstPrice==null) return {outcome:"price_unavailable",ticker:dest.ticker};
-  if(firstPrice>(config.maxEntryPriceCents??0)) return {outcome:"price_cap_blocked",ticker:dest.ticker};
+  if(firstPrice==null) {
+    observe({evaluatedAtMs:nowMs,ticker:dest.ticker,marketOpenTimeMs:dest.openTimeMs,decision:"qualified",primaryReason:"price_unavailable",wouldSubmit:false,evidence:decision.evidence});
+    return {outcome:"price_unavailable",ticker:dest.ticker};
+  }
+  if(firstPrice>(config.maxEntryPriceCents??0)) {
+    observe({evaluatedAtMs:nowMs,ticker:dest.ticker,marketOpenTimeMs:dest.openTimeMs,decision:"qualified",primaryReason:"price_cap_blocked",wouldSubmit:false,evidence:{...decision.evidence,firstPrice,maxEntryPriceCents:config.maxEntryPriceCents}});
+    return {outcome:"price_cap_blocked",ticker:dest.ticker};
+  }
 
   const freshRaw=await fetchMarket(dest.ticker);
   const fresh=freshRaw?marketWindow(freshRaw):null;
   const price=fresh?.yesAskCents??null;
-  if(price==null) return {outcome:"final_price_unavailable",ticker:dest.ticker};
-  if(price>(config.maxEntryPriceCents??0)) return {outcome:"final_price_cap_blocked",ticker:dest.ticker};
+  if(price==null) {
+    observe({evaluatedAtMs:nowMs,ticker:dest.ticker,marketOpenTimeMs:dest.openTimeMs,decision:"qualified",primaryReason:"final_price_unavailable",wouldSubmit:false,evidence:decision.evidence});
+    return {outcome:"final_price_unavailable",ticker:dest.ticker};
+  }
+  if(price>(config.maxEntryPriceCents??0)) {
+    observe({evaluatedAtMs:nowMs,ticker:dest.ticker,marketOpenTimeMs:dest.openTimeMs,decision:"qualified",primaryReason:"final_price_cap_blocked",wouldSubmit:false,evidence:{...decision.evidence,price,maxEntryPriceCents:config.maxEntryPriceCents}});
+    return {outcome:"final_price_cap_blocked",ticker:dest.ticker};
+  }
 
   const size=buildLDryRunOrderSize(config.stakeCents??0,config.maxEntryPriceCents??0);
-  if(!size) return {outcome:"invalid_size",ticker:dest.ticker};
-  if(size.requestedRiskCents>(config.sharedCorrelatedExposureCapCents??0)) return {outcome:"shared_cap_blocked",ticker:dest.ticker};
+  if(!size) {
+    observe({evaluatedAtMs:nowMs,ticker:dest.ticker,marketOpenTimeMs:dest.openTimeMs,decision:"qualified",primaryReason:"invalid_size",wouldSubmit:false,evidence:decision.evidence});
+    return {outcome:"invalid_size",ticker:dest.ticker};
+  }
+  if(size.requestedRiskCents>(config.sharedCorrelatedExposureCapCents??0)) {
+    observe({evaluatedAtMs:nowMs,ticker:dest.ticker,marketOpenTimeMs:dest.openTimeMs,decision:"qualified",primaryReason:"shared_cap_blocked",wouldSubmit:false,evidence:{...decision.evidence,requestedRiskCents:size.requestedRiskCents,capCents:config.sharedCorrelatedExposureCapCents}});
+    return {outcome:"shared_cap_blocked",ticker:dest.ticker};
+  }
 
   const id=deterministicId(history.source.openTimeMs,dest.ticker);
   const payload={
@@ -234,6 +282,15 @@ export async function runLSweepReclaimDryRunOnce(nowMs=Date.now()):Promise<{outc
     order_payload:payload,
     intent_id:id,
   };
+  observe({
+    evaluatedAtMs:nowMs,
+    ticker:dest.ticker,
+    marketOpenTimeMs:dest.openTimeMs,
+    decision:"qualified",
+    primaryReason:persisted==="blocked"?"active_exposure_limit":null,
+    wouldSubmit:receipt.would_submit,
+    evidence:decision.evidence,
+  });
   logger.info({strategy:"L",ticker:dest.ticker,outcome:persisted,signal:true,evidence:decision.evidence,executionReceipt:receipt},"L sweep/reclaim dry-run evaluation");
   return {outcome:persisted,ticker:dest.ticker};
 }
