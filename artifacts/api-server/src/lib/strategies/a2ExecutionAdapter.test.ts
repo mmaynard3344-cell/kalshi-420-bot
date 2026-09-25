@@ -27,6 +27,7 @@ class MemoryExecutionStore implements A2ExecutionStore {
       id:input.id,signalId:input.signalId,marketTicker:input.marketTicker,side:"yes",action:"buy",
       stakeCents:500,maxEntryPriceCents:45,clientOrderId:input.clientOrderId,state:"EXPOSURE_LOCKED",
       executableYesPriceCents:null,quantity:null,maxNotionalCents:null,priceCheckedAtMs:null,kalshiOrderId:null,
+      filledQuantity:0,fillCostCents:0,fillFeeCents:0,
     };
     this.intents.set(intent.id,intent); this.byClient.set(intent.clientOrderId,intent.id);
     return {outcome:"acquired",intent};
@@ -44,9 +45,9 @@ class MemoryExecutionStore implements A2ExecutionStore {
     const row=this.intents.get(input.id); if(!row) return false;
     this.intents.set(input.id,{...row,state:"SUBMISSION_UNKNOWN"}); return true;
   }
-  async adoptExchangeOrder(input:{id:string;orderId:string;state:"OPEN"|"PARTIALLY_FILLED"|"FILLED";nowMs:number}):Promise<boolean>{
+  async adoptExchangeOrder(input:{id:string;orderId:string;state:"OPEN"|"PARTIALLY_FILLED"|"FILLED";filledQuantity:number;fillCostCents:number;fillFeeCents:number;fills:any[];nowMs:number}):Promise<boolean>{
     const row=this.intents.get(input.id); if(!row) return false;
-    this.intents.set(input.id,{...row,state:input.state,kalshiOrderId:input.orderId}); return true;
+    this.intents.set(input.id,{...row,state:input.state,kalshiOrderId:input.orderId,filledQuantity:input.filledQuantity,fillCostCents:input.fillCostCents,fillFeeCents:input.fillFeeCents}); return true;
   }
   async settleAndRelease(input:{id:string;result:"yes"|"no";realizedPnlCents:number;nowMs:number}):Promise<boolean>{
     const row=this.intents.get(input.id); if(!row) return false;
@@ -121,6 +122,7 @@ test("submission unknown holds slot and reconciliation adopts existing order",as
   const exchange=new A2ReadOnlyDryRunClient(
     async()=>40,async()=>null,
     async(clientOrderId)=>clientOrderId===coid?{orderId:"ord-1",clientOrderId,status:"partially_filled",filledCount:3}:null,
+    async()=>[{fillId:"f1",orderId:"ord-1",count:3,yesPriceCents:40,feeCents:2}],
   );
   const adapter=new A2DryRunExecutionAdapter(store,exchange);
   assert.equal(await adapter.reconcileUnknown(coid,1200),"adopted");
@@ -136,4 +138,23 @@ test("repeated settlement is idempotent at adapter/store boundary",async()=>{
   assert.equal(await adapter.settle(coid,2000),"settled");
   assert.equal(await adapter.settle(coid,3000),"settled");
   assert.equal((await store.getIntentByClientOrderId(coid))?.state,"EXPOSURE_RELEASED");
+});
+
+
+test("definitive no-match reconciliation releases ambiguous exposure only after explicit terminal window",async()=>{
+  const store=new MemoryExecutionStore();
+  const adapter=new A2DryRunExecutionAdapter(store,client(40));
+  const ready=await adapter.prepare({signalId:"sig-n",marketTicker:"KXBTC15M-N",nowMs:1000});
+  const id=ready.intent_id!;
+  const coid=ready.order_payload!.client_order_id;
+  assert.equal(await store.markSubmissionUnknown({id,nowMs:1100}),true);
+  assert.equal(await adapter.reconcileUnknown(coid,1200,false),"not_found");
+  assert.equal((await store.getIntentByClientOrderId(coid))?.state,"SUBMISSION_UNKNOWN");
+  assert.equal(await adapter.reconcileUnknown(coid,1300,true),"released_unsubmitted");
+  assert.equal((await store.getIntentByClientOrderId(coid))?.state,"EXPOSURE_RELEASED");
+});
+
+test("read-only client exposes no submitOrder method",()=>{
+  const c=client(40) as unknown as Record<string,unknown>;
+  assert.equal("submitOrder" in c,false);
 });
