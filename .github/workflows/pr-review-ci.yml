@@ -28,6 +28,9 @@ jobs:
     env:
       CI: "true"
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/shadow_observability_ci
+      ETH_MARTINGALE_MAX_STEP_CENTS: "42000"
+      ETH_B_WAGER_CENTS: "42000"
+      ETH_C_WAGER_CENTS: "50000"
 
     steps:
       - name: Check out pull request
