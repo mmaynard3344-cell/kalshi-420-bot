@@ -74,6 +74,10 @@ import {
   ensureA2BaselineReversionShadowSchema,
 } from "./lib/strategies/a2BaselineReversionShadowStore.js";
 import { startA2BaselineReversionRuntime } from "./lib/strategies/a2BaselineReversionRuntime.js";
+import {
+  ensureA2ExecutionSchema,
+  PostgresA2ExecutionStore,
+} from "./lib/strategies/a2ExecutionStore.js";
 
 const FILL_RECONCILIATION_RECOVERY_INTERVAL_MS = 15 * 60_000;
 const PROTECTIVE_EXIT_RESTORE_RETRY_INTERVAL_MS = 15_000;
@@ -142,13 +146,16 @@ app.listen(port, "0.0.0.0", async () => {
   // startup path is armed. A2 remains shadow-only and cannot submit orders.
   if (isProductionRuntime() && process.env["A2_BASELINE_RUNTIME_ONLY"] === "true") {
     await ensureA2BaselineReversionShadowSchema(db);
+    await ensureA2ExecutionSchema(db);
     const a2Store = new PostgresA2ShadowStore(db);
-    startA2BaselineReversionRuntime(a2Store);
+    const a2ExecutionStore = new PostgresA2ExecutionStore(db);
+    startA2BaselineReversionRuntime(a2Store, undefined, a2ExecutionStore);
     logger.info(
       {
         strategy: "a2_baseline_reversion",
         enabled: process.env["A2_BASELINE_REVERSION_ENABLED"] === "true",
         runtimeOnly: true,
+        executionAdapter: "dry_run_only",
         orderSubmissionPermitted: false,
       },
       "A2 baseline reversion runtime-only service started",
