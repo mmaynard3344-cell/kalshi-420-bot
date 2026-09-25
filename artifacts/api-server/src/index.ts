@@ -72,6 +72,10 @@ import {
   ensureLSweepReclaimDryRunSchema,
   startLSweepReclaimDryRunRuntime,
 } from "./lib/strategies/sweepReclaimDryRunRuntime.js";
+import {
+  ensureShadowEvaluationLedgerSchema,
+  pruneShadowEvaluationEvents,
+} from "./lib/strategies/shadowEvaluationLedger.js";
 
 const FILL_RECONCILIATION_RECOVERY_INTERVAL_MS = 15 * 60_000;
 const PROTECTIVE_EXIT_RESTORE_RETRY_INTERVAL_MS = 15_000;
@@ -137,6 +141,14 @@ app.listen(port, "0.0.0.0", async () => {
 
   if (isProductionRuntime() && process.env["L_SWEEP_RECLAIM_RUNTIME_ONLY"] === "true") {
     await ensureLSweepReclaimDryRunSchema();
+    try {
+      await ensureShadowEvaluationLedgerSchema();
+      if (!await pruneShadowEvaluationEvents()) {
+        logger.warn({ strategy: "L" }, "L shadow evaluation retention prune failed");
+      }
+    } catch (err) {
+      logger.warn({ err, strategy: "L" }, "L shadow evaluation ledger initialization failed");
+    }
     startLSweepReclaimDryRunRuntime();
     logger.info(
       {
