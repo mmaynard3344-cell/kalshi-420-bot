@@ -36,8 +36,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @workspace/db push
+      - run: pnpm run typecheck:libs
       - run: pnpm --filter @workspace/api-server typecheck
       - run: pnpm --filter @workspace/api-server build
-      - run: pnpm --filter @workspace/api-server test -- --runInBand
-        continue-on-error: true
+      - run: pnpm --filter @workspace/api-server test
       - run: node artifacts/api-server/scripts/run-a2-baseline-reversion-test.mjs
