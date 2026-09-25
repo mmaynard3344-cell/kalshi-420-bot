@@ -33,8 +33,9 @@ function numeric(value: unknown): number | null {
 
 export function verifyBtcYesSettlesAboveStrike(raw: RawMarket): boolean {
   const ticker = text(raw["ticker"]).toUpperCase();
-  const strike = numeric(raw["floor_strike"] ?? raw["cap_strike"]);
-  if (!/^KXBTC15M-/.test(ticker) || strike == null || strike <= 0) return false;
+  const floorStrike = numeric(raw["floor_strike"]);
+  const capStrike = numeric(raw["cap_strike"]);
+  if (!/^KXBTC15M-/.test(ticker)) return false;
 
   const authoritativeRules = [
     text(raw["rules_primary"]),
@@ -58,6 +59,15 @@ export function verifyBtcYesSettlesAboveStrike(raw: RawMarket): boolean {
 
   const rulesOperator = parseOperator(authoritativeRules);
   if (rulesOperator != null) return rulesOperator === "above";
+
+  // Kalshi's one-sided strike metadata is authoritative when rule prose does
+  // not carry the comparison wording. A floor strike means YES is at/above the
+  // floor; a cap strike means YES is at/below the cap. If both or neither are
+  // present, the structure is ambiguous and we fall back to displayed YES text.
+  const hasFloor = floorStrike != null && floorStrike > 0;
+  const hasCap = capStrike != null && capStrike > 0;
+  if (hasFloor !== hasCap) return hasFloor;
+
   return parseOperator(yesText) === "above";
 }
 
