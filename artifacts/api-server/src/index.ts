@@ -69,7 +69,10 @@ import { runEthBigBetAccountingSweepSingleFlight } from "./lib/strategies/ethBig
 import {
   WEEK_2_PRODUCTION_NEW_ENTRY_SERIES,
 } from "./lib/week2EntryPolicy.js";
-import { PostgresA2ShadowStore } from "./lib/strategies/a2BaselineReversionShadowStore.js";
+import {
+  PostgresA2ShadowStore,
+  ensureA2BaselineReversionShadowSchema,
+} from "./lib/strategies/a2BaselineReversionShadowStore.js";
 import { startA2BaselineReversionRuntime } from "./lib/strategies/a2BaselineReversionRuntime.js";
 
 const FILL_RECONCILIATION_RECOVERY_INTERVAL_MS = 15 * 60_000;
@@ -138,6 +141,7 @@ app.listen(port, "0.0.0.0", async () => {
   // any ETH WebSocket, auto-trader, settlement, or authenticated trade API
   // startup path is armed. A2 remains shadow-only and cannot submit orders.
   if (isProductionRuntime() && process.env["A2_BASELINE_RUNTIME_ONLY"] === "true") {
+    await ensureA2BaselineReversionShadowSchema(db);
     const a2Store = new PostgresA2ShadowStore(db);
     startA2BaselineReversionRuntime(a2Store);
     logger.info(
