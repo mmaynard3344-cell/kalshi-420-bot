@@ -1,10 +1,12 @@
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+globalThis.require = createRequire(import.meta.url);
 const outdir = "/tmp/ts-a2-baseline-reversion";
 
 await build({
