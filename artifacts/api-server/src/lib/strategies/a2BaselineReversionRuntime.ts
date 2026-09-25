@@ -32,20 +32,33 @@ function numeric(value: unknown): number | null {
 }
 
 export function verifyBtcYesSettlesAboveStrike(raw: RawMarket): boolean {
+  const ticker = text(raw["ticker"]).toUpperCase();
   const strike = numeric(raw["floor_strike"] ?? raw["cap_strike"]);
-  if (strike == null || strike <= 0) return false;
-  const semanticText = [
-    text(raw["yes_sub_title"]),
-    text(raw["subtitle"]),
+  if (!/^KXBTC15M-/.test(ticker) || strike == null || strike <= 0) return false;
+
+  const authoritativeRules = [
     text(raw["rules_primary"]),
     text(raw["rules_secondary"]),
+  ].filter(Boolean).join(" ");
+  const yesText = [
+    text(raw["yes_sub_title"]),
+    text(raw["subtitle"]),
     text(raw["title"]),
   ].filter(Boolean).join(" ");
-  if (!semanticText) return false;
-  const mentionsBitcoin = /bitcoin|btc/.test(semanticText);
-  const aboveLanguage = /\babove\b|\bgreater than\b|\bhigher than\b|\bat or above\b|\bexceed(?:s|ed)?\b/.test(semanticText);
-  const belowLanguage = /\bbelow\b|\bless than\b|\blower than\b|\bat or below\b/.test(semanticText);
-  return mentionsBitcoin && aboveLanguage && !belowLanguage;
+
+  const parseOperator = (value: string): "above" | "below" | null => {
+    if (/\bat or above\b|\bgreater than or equal\b|>=|\babove\b|\bgreater than\b|\bhigher than\b|\bexceed(?:s|ed)?\b/.test(value)) {
+      return "above";
+    }
+    if (/\bat or below\b|\bless than or equal\b|<=|\bbelow\b|\bless than\b|\blower than\b/.test(value)) {
+      return "below";
+    }
+    return null;
+  };
+
+  const rulesOperator = parseOperator(authoritativeRules);
+  if (rulesOperator != null) return rulesOperator === "above";
+  return parseOperator(yesText) === "above";
 }
 
 export function destinationFromRawMarket(raw: RawMarket): A2DestinationMarket | null {
