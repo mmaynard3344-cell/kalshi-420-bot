@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { logger } from "../logger.js";
+import { logger } from "./logger.js";
 
 export type ShadowEvaluationService = "A2" | "L";
 export type ShadowEvaluationDecision = "no_signal" | "qualified" | "error";
@@ -13,7 +13,7 @@ export interface ShadowEvaluationEventInput {
   decision: ShadowEvaluationDecision;
   primaryReason: string | null;
   wouldSubmit: boolean;
-  evidence: Record<string, unknown> | null;
+  evidence: unknown;
   evaluationIntervalMs: number;
   runtimeVersion?: string | null;
 }
@@ -33,11 +33,11 @@ function boundedScalar(value: unknown): string | number | boolean | null | undef
 }
 
 export function boundShadowEvaluationEvidence(
-  evidence: Record<string, unknown> | null | undefined,
+  evidence: unknown,
 ): Record<string, unknown> {
-  if (!evidence) return {};
+  if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) return {};
   const out: Record<string, unknown> = {};
-  for (const [key, raw] of Object.entries(evidence).slice(0, MAX_EVIDENCE_KEYS)) {
+  for (const [key, raw] of Object.entries(evidence as Record<string, unknown>).slice(0, MAX_EVIDENCE_KEYS)) {
     const value = boundedScalar(raw);
     if (value !== undefined) out[key.slice(0, 96)] = value;
   }
