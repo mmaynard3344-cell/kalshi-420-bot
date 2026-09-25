@@ -1,4 +1,5 @@
 import app from "./app";
+import { db } from "@workspace/db";
 import { logger } from "./lib/logger";
 import { kalshiStream } from "./lib/kalshiStream";
 import { startAutoTrader, getAutoTraderStatus } from "./lib/autoTrader";
@@ -68,6 +69,8 @@ import { runEthBigBetAccountingSweepSingleFlight } from "./lib/strategies/ethBig
 import {
   WEEK_2_PRODUCTION_NEW_ENTRY_SERIES,
 } from "./lib/week2EntryPolicy.js";
+import { PostgresA2ShadowStore } from "./lib/strategies/a2BaselineReversionShadowStore.js";
+import { startA2BaselineReversionRuntime } from "./lib/strategies/a2BaselineReversionRuntime.js";
 
 const FILL_RECONCILIATION_RECOVERY_INTERVAL_MS = 15 * 60_000;
 const PROTECTIVE_EXIT_RESTORE_RETRY_INTERVAL_MS = 15_000;
@@ -130,6 +133,25 @@ app.listen(port, "0.0.0.0", async () => {
   // before any order attempt. If SQL is unavailable, claimOrderSlot() returns
   // false and trading is halted until storage recovers.
   await initTradeStore();
+
+  // A2 has its own isolated BTC runtime. This mode deliberately returns before
+  // any ETH WebSocket, auto-trader, settlement, or authenticated trade API
+  // startup path is armed. A2 remains shadow-only and cannot submit orders.
+  if (isProductionRuntime() && process.env["A2_BASELINE_RUNTIME_ONLY"] === "true") {
+    const a2Store = new PostgresA2ShadowStore(db);
+    startA2BaselineReversionRuntime(a2Store);
+    logger.info(
+      {
+        strategy: "a2_baseline_reversion",
+        enabled: process.env["A2_BASELINE_REVERSION_ENABLED"] === "true",
+        runtimeOnly: true,
+        orderSubmissionPermitted: false,
+      },
+      "A2 baseline reversion runtime-only service started",
+    );
+    return;
+  }
+
   // Read-only evidence bootstrap. It is intentionally non-blocking so an
   // unavailable public catalog cannot delay the authoritative runner; until a
   // complete history arrives, ETH 420 remains on its existing live-only input.
