@@ -14,6 +14,7 @@ await build({
     path.join(root,"src/lib/strategies/a2BaselineReversion.test.ts"),
     path.join(root,"src/lib/strategies/a2BaselineReversionShadow.test.ts"),
     path.join(root,"src/lib/strategies/a2BaselineReversionRuntime.test.ts"),
+    path.join(root,"src/lib/strategies/a2ExecutionAdapter.test.ts"),
   ],
   platform:"node",
   bundle:true,
@@ -36,6 +37,7 @@ const files = [
   path.join(outdir,"a2BaselineReversion.test.mjs"),
   path.join(outdir,"a2BaselineReversionShadow.test.mjs"),
   path.join(outdir,"a2BaselineReversionRuntime.test.mjs"),
+  path.join(outdir,"a2ExecutionAdapter.test.mjs"),
 ];
 const run=spawnSync(process.execPath,["--test",...files],{stdio:"inherit",cwd:root});
 process.exit(run.status??1);
