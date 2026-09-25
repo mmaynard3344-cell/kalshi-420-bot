@@ -7,6 +7,7 @@ import {
   type A2DestinationMarket,
 } from "./a2BaselineReversion.js";
 import { evaluateA2BaselineReversionShadow } from "./a2BaselineReversionShadow.js";
+import { recordShadowEvaluationEvent } from "./shadowEvaluationLedger.js";
 import type { A2ShadowStore } from "./a2BaselineReversionShadowStore.js";
 import {
   A2DryRunExecutionAdapter,
@@ -158,6 +159,39 @@ export async function runA2BaselineReversionRuntimeOnce(
 ): Promise<{ evaluated: boolean; outcome: string; ticker: string | null }> {
   const nowMs = deps.nowMs();
 
+  const persistObservation = async (input: {
+    ticker: string | null;
+    marketOpenTimeMs: number | null;
+    decision: string;
+    primaryReason: string | null;
+    sourceMovePct?: number | null;
+    qualified: boolean;
+    wouldSubmit: boolean;
+    intentId: string | null;
+    evidence: unknown;
+  }): Promise<void> => {
+    const persisted = await recordShadowEvaluationEvent({
+      service: "A2",
+      evaluatedAtMs: nowMs,
+      ticker: input.ticker,
+      marketOpenTimeMs: input.marketOpenTimeMs,
+      decision: input.decision,
+      primaryReason: input.primaryReason,
+      sourceMovePct: input.sourceMovePct ?? null,
+      triggerThresholdPct: 0.8,
+      qualified: input.qualified,
+      wouldSubmit: input.wouldSubmit,
+      intentId: input.intentId,
+      evidence: input.evidence,
+    });
+    if (!persisted) {
+      logger.warn(
+        { strategy: "A2", ticker: input.ticker, decision: input.decision },
+        "A2 shadow evaluation persistence failed",
+      );
+    }
+  };
+
   for (const claim of await store.listOpen()) {
     const raw = await deps.fetchMarket(claim.destinationTicker);
     if (!raw) continue;
@@ -180,13 +214,37 @@ export async function runA2BaselineReversionRuntimeOnce(
   }
 
   const rawDestination = await deps.fetchCurrentMarket();
-  if (!rawDestination) return { evaluated: false, outcome: "market_unavailable", ticker: null };
+  if (!rawDestination) {
+    await persistObservation({
+      ticker: null, marketOpenTimeMs: null, decision: "error", primaryReason: "market_data_unavailable",
+      qualified: false, wouldSubmit: false, intentId: null, evidence: {},
+    });
+    return { evaluated: false, outcome: "market_unavailable", ticker: null };
+  }
   const destination = destinationFromRawMarket(rawDestination);
-  if (!destination) return { evaluated: false, outcome: "destination_invalid", ticker: null };
+  if (!destination) {
+    await persistObservation({
+      ticker: null, marketOpenTimeMs: null, decision: "error", primaryReason: "destination_invalid",
+      qualified: false, wouldSubmit: false, intentId: null, evidence: {},
+    });
+    return { evaluated: false, outcome: "destination_invalid", ticker: null };
+  }
 
   const sourceOpenTimeMs = destination.openTimeMs - A2_INTERVAL_MS;
   const source = await deps.fetchSourceCandle(sourceOpenTimeMs, nowMs);
-  if (!source) return { evaluated: false, outcome: "source_unavailable", ticker: destination.ticker };
+  if (!source) {
+    await persistObservation({
+      ticker: destination.ticker,
+      marketOpenTimeMs: destination.openTimeMs,
+      decision: "error",
+      primaryReason: "source_candle_unavailable",
+      qualified: false,
+      wouldSubmit: false,
+      intentId: null,
+      evidence: { sourceOpenTimeMs, observedYesAskCents: destination.yesAskCents },
+    });
+    return { evaluated: false, outcome: "source_unavailable", ticker: destination.ticker };
+  }
 
   const result = await evaluateA2BaselineReversionShadow({
     config: loadA2BaselineReversionConfig(),
@@ -204,12 +262,60 @@ export async function runA2BaselineReversionRuntimeOnce(
     });
   }
 
+  const sourceDropFraction = source.open > 0 ? (source.open - source.close) / source.open : null;
+  const sourceMovePct = sourceDropFraction == null ? null : sourceDropFraction * 100;
+  const receipt = executionReceipt as {
+    would_submit?: boolean;
+    intent_id?: string | null;
+    blockers?: string[];
+  } | null;
+  const operationalError = result.outcome === "store_unavailable";
+  const qualified = result.outcome === "shadow_opened" || result.outcome === "duplicate";
+  const decision = operationalError
+    ? "error"
+    : qualified
+      ? "qualified"
+      : result.outcome === "disabled"
+        ? "disabled"
+        : "no_signal";
+  const primaryReason = operationalError
+    ? (result.reason ?? "store_unavailable")
+    : qualified
+      ? (receipt?.would_submit === false && receipt.blockers?.length ? receipt.blockers[0]! : "qualified")
+      : (result.reason ?? result.outcome);
+
+  await persistObservation({
+    ticker: destination.ticker,
+    marketOpenTimeMs: destination.openTimeMs,
+    decision,
+    primaryReason,
+    sourceMovePct,
+    qualified,
+    wouldSubmit: receipt?.would_submit === true,
+    intentId: receipt?.intent_id ?? null,
+    evidence: {
+      sourceOpenTimeMs,
+      sourceCloseTimeMs: source.closeTimeMs,
+      sourceOpen: source.open,
+      sourceHigh: source.high,
+      sourceLow: source.low,
+      sourceClose: source.close,
+      sourceMovePct,
+      dropThresholdPct: 0.8,
+      observedYesAskCents: destination.yesAskCents,
+      yesSemanticsVerified: destination.yesSettlesAboveStrike,
+      evaluatorOutcome: result.outcome,
+      evaluatorReason: result.reason,
+      executionBlockers: receipt?.blockers ?? [],
+    },
+  });
+
   logger.info(
     {
       strategy: "a2_baseline_reversion",
       ticker: destination.ticker,
       sourceOpenTimeMs,
-      sourceDropFraction: source.open > 0 ? (source.open - source.close) / source.open : null,
+      sourceDropFraction,
       observedYesAskCents: destination.yesAskCents,
       yesSemanticsVerified: destination.yesSettlesAboveStrike,
       outcome: result.outcome,
