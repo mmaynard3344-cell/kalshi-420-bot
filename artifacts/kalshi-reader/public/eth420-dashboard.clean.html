@@ -16,7 +16,7 @@
     <div class="subtle" id="stamp">Loading…</div>
   </div>
 
-  <div class="note"><strong>Scope:</strong> live account data plus actual Kalshi ETH orders/fills from September 22, 2026 forward. No legacy history, shadow candidate statistics, or trading controls.</div>
+  <div class="note"><strong>Scope:</strong> live account data plus actual Kalshi ETH orders/fills from September 22, 2026 forward, with separate A2/L dry-run performance. No legacy history or trading controls.</div>
 
   <section class="section">
     <h2>Account</h2>
@@ -59,6 +59,19 @@
   <section class="section">
     <h2>Today by service</h2>
     <div class="table"><table style="min-width:520px"><thead><tr><th>Service</th><th class="num">Settled trades</th><th class="num">Realized P&L</th></tr></thead><tbody id="serviceRows"><tr><td colspan="3" class="empty">Loading…</td></tr></tbody></table></div>
+  </section>
+
+  <section class="section">
+    <h2>A2 / L Shadow Performance</h2>
+    <div class="note"><strong>Simulated only:</strong> A2 and L use live market inputs and durable dry-run records. Shadow P&amp;L is separate from actual Kalshi account P&amp;L.</div>
+    <div class="grid g5" style="margin-top:12px">
+      <div class="card"><div class="label">Combined sim P&amp;L</div><div class="metric" id="shadowCombined">—</div></div>
+      <div class="card"><div class="label">A2 sim P&amp;L</div><div class="metric" id="shadowA2">—</div><div class="subtle" id="shadowA2Meta" style="margin-top:7px">—</div></div>
+      <div class="card"><div class="label">L sim P&amp;L</div><div class="metric" id="shadowL">—</div><div class="subtle" id="shadowLMeta" style="margin-top:7px">—</div></div>
+      <div class="card"><div class="label">Active</div><div class="metric" id="shadowActive">—</div><div class="subtle" id="shadowBlocked" style="margin-top:7px">—</div></div>
+      <div class="card"><div class="label">Shadow settled</div><div class="metric" id="shadowSettled">—</div><div class="subtle" id="shadowFresh" style="margin-top:7px">Waiting…</div></div>
+    </div>
+    <div class="table" style="margin-top:12px"><table><thead><tr><th>Time ET</th><th>Strategy</th><th>Ticker</th><th class="num">Entry</th><th class="num">Contracts</th><th class="num">Principal</th><th>State</th><th>Result / reason</th><th class="num">Sim P&amp;L</th></tr></thead><tbody id="shadowRows"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody></table></div>
   </section>
 
   <section class="section">
