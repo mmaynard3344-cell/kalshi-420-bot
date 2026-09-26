@@ -116,8 +116,9 @@ function renderShadow(d){
   $('shadowFresh').textContent=d?.generatedAtMs?'Updated '+new Intl.DateTimeFormat('en-US',{timeZone:ET,hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date(Number(d.generatedAtMs))):'Shadow ledger loaded';
   $('shadowRows').innerHTML=rows.length?rows.slice(0,100).map(r=>{const p=r?.pnlCents==null?null:Number(r.pnlCents),why=r?.settlementResult??r?.terminalReason?.replaceAll('_',' ')??'Pending';return`<tr><td>${r?.createdAtMs?time(Number(r.createdAtMs)):'—'}</td><td>${esc(r?.strategy??'—')}</td><td>${esc(r?.ticker??'—')}</td><td class="num">${r?.entryPriceCents==null?'—':Number(r.entryPriceCents).toFixed(0)+'¢'}</td><td class="num">${esc(r?.contracts??'—')}</td><td class="num">${r?.principalCents==null?'—':money(r.principalCents,false)}</td><td>${esc(String(r?.state??'—').replaceAll('_',' '))}</td><td>${esc(why)}</td><td class="num ${p>0?'good':p<0?'bad':''}">${p==null?'Pending':money(p)}</td></tr>`}).join(''):'<tr><td colspan="9" class="empty">No A2 or L shadow intents have qualified yet.</td></tr>';
 }
-function renderPnl(fills,orders,owners,ledgerToday,marketResults){
+function renderPnl(fills,orders,owners,ledgerToday,marketResults,bigBetRows){
   const canonicalResults=new Map((Array.isArray(marketResults?.rows)?marketResults.rows:[]).map(r=>[String(r?.ticker??''),String(r?.result??'').toLowerCase()]));
+  const canonicalBigBets=new Map((Array.isArray(bigBetRows?.rows)?bigBetRows.rows:[]).map(r=>[(String(r?.strategy??'').toLowerCase()+'|'+String(r?.ticker??'')),r]));
   const fm=fillsByOrder(fills,orders,owners,canonicalResults),td=today(),settled=[...fm.values()].filter(x=>x.result&&x.netCents!=null&&dk(x.atMs)===td);
   const wins=settled.filter(x=>x.won).length,losses=settled.length-wins,fees=settled.reduce((s,x)=>s+x.feesCents,0);
   const total=num(ledgerToday?.totalPnlCents);
@@ -134,19 +135,27 @@ function renderPnl(fills,orders,owners,ledgerToday,marketResults){
   $('serviceRows').innerHTML=svc.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${x.n}</td><td class="num ${x.pnl>0?'good':x.pnl<0?'bad':''}">${money(x.pnl)}</td></tr>`).join('');
   const rows=orders.filter(eth).sort((a,b)=>(ms(b)||0)-(ms(a)||0)).slice(0,100);
   $('tradeCount').textContent=rows.length+' recent';
-  $('tradeRows').innerHTML=rows.length?rows.map(o=>{const f=fm.get(oid(o)),t=ms(o),filled=f?.contracts??num(o?.fill_count_fp,o?.filled_count_fp,o?.filled_count,o?.filledContracts),avg=f?.avgFillPriceCents,pnl=f?.netCents;return`<tr><td>${t==null?'—':time(t)}</td><td>${esc(service(o,owners))}</td><td>${esc(o.ticker??'—')}</td><td>${esc(String(side(o)||'—').toUpperCase())}</td><td class="num">${esc(requested(o)??'—')}</td><td class="num">${esc(filled??'—')}</td><td class="num">${avg==null?'—':avg.toFixed(1)+'¢'}</td><td>${esc(status(o)||'—')}</td><td class="num">${f?money(f.feesCents,false):'—'}</td><td class="num ${pnl>0?'good':pnl<0?'bad':''}">${pnl==null?'Pending':money(pnl)}</td></tr>`}).join(''):'<tr><td colspan="10" class="empty">No Sep. 22-forward ETH orders.</td></tr>';
+  $('tradeRows').innerHTML=rows.length?rows.map(o=>{
+    const f=fm.get(oid(o)),t=ms(o),svc=service(o,owners),strategyKey=svc==='B · Jump'?'jump':svc==='C · Reversal'?'reversal':'';
+    const canonical=strategyKey?canonicalBigBets.get(strategyKey+'|'+String(o.ticker??'')):null;
+    const filled=canonical?num(canonical?.filled_contracts):f?.contracts??num(o?.fill_count_fp,o?.filled_count_fp,o?.filled_count,o?.filledContracts);
+    const avg=canonical?num(canonical?.fill_price_cents):f?.avgFillPriceCents;
+    const pnl=canonical?num(canonical?.canonical_pnl_cents):f?.netCents;
+    const fee=canonical?num(canonical?.actual_fee_cents):f?.feesCents;
+    return`<tr><td>${t==null?'—':time(t)}</td><td>${esc(svc)}</td><td>${esc(o.ticker??'—')}</td><td>${esc(String(side(o)||'—').toUpperCase())}</td><td class="num">${esc(requested(o)??'—')}</td><td class="num">${esc(filled??'—')}</td><td class="num">${avg==null?'—':Number(avg).toFixed(1)+'¢'}</td><td>${esc(status(o)||'—')}</td><td class="num">${fee==null?'—':money(fee,false)}</td><td class="num ${pnl>0?'good':pnl<0?'bad':''}">${pnl==null?'Pending':money(pnl)}</td></tr>`
+  }).join(''):'<tr><td colspan="10" class="empty">No Sep. 22-forward ETH orders.</td></tr>';
 }
 let busy=false;
 async function refresh(){
   if(busy)return;busy=true;$('stamp').textContent='Refreshing…';
   try{
-    const [b,m,o,f,w,l,sh,mr]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),paged('/api/trade/orders','orders'),paged('/api/trade/fills','fills'),j('/api/diagnostics/service-ownership'),j('/api/diagnostics/service-ledger-today'),j('/api/diagnostics/shadow-performance'),j('/api/diagnostics/market-results-recent')]);
+    const [b,m,o,f,w,l,sh,mr,bb]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),paged('/api/trade/orders','orders'),paged('/api/trade/fills','fills'),j('/api/diagnostics/service-ownership'),j('/api/diagnostics/service-ledger-today'),j('/api/diagnostics/shadow-performance'),j('/api/diagnostics/market-results-recent'),j('/api/diagnostics/big-bet-rows-recent')]);
     if(b.status==='fulfilled')renderAccount(b.value);else $('accountState').textContent='UNAVAILABLE';
     if(m.status==='fulfilled')renderMarket(m.value);
     const orderRows=o.status==='fulfilled'?o.value:[];
     const owners=w.status==='fulfilled'?ownershipIndex(w.value):ownershipIndex(null);
     renderOpenOrders(orderRows,owners);
-    if(f.status==='fulfilled')renderPnl(f.value,orderRows,owners,l.status==='fulfilled'?l.value:null,mr.status==='fulfilled'?mr.value:null);
+    if(f.status==='fulfilled')renderPnl(f.value,orderRows,owners,l.status==='fulfilled'?l.value:null,mr.status==='fulfilled'?mr.value:null,bb.status==='fulfilled'?bb.value:null);
     if(sh.status==='fulfilled')renderShadow(sh.value);else{$('shadowFresh').textContent='Shadow ledger unavailable';$('shadowRows').innerHTML='<tr><td colspan="9" class="empty">A2/L shadow endpoint unavailable.</td></tr>'}
     $('stamp').textContent='Updated '+new Intl.DateTimeFormat('en-US',{timeZone:ET,hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date());
   }catch(e){$('stamp').textContent='Partial data · '+String(e?.message??e)}
