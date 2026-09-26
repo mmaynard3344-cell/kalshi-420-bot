@@ -637,6 +637,17 @@ async function restartDailyPnlDiagnostics(req, res) {
     }
     const days = [...byDay.values()].sort((a,b) => a.easternDate.localeCompare(b.easternDate));
     const byService = [...byServiceDay.values()].sort((a,b)=>a.easternDate.localeCompare(b.easternDate)||a.service.localeCompare(b.service));
+    const fillActionsToday = {};
+    for (const item of byFillId.values()) {
+      if (pnlDiagDay(item.atMs) !== easternDateKey()) continue;
+      const raw = item.fill ?? {};
+      const action = String(raw?.action ?? raw?.order_action ?? 'unknown').toLowerCase();
+      const rawSide = String(raw?.side ?? raw?.order_side ?? raw?.outcome_side ?? 'unknown').toLowerCase();
+      const svc = ownership.get(item.orderId) ?? 'Unattributed';
+      const k = svc + '|' + action + '|' + rawSide;
+      fillActionsToday[k] = (fillActionsToday[k] ?? 0) + 1;
+    }
+    console.log('FILL_ACTION_DIAGNOSTIC', JSON.stringify(fillActionsToday));
     const payload = {
       restartAt:'2026-09-22T20:09:04-04:00',
       dashboardRebuiltAt:'2026-09-22T23:45:03-04:00',
@@ -1192,6 +1203,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Read-only ETH 420 operator UI listening on ${port}`);
+  setTimeout(async()=>{try{await fetch('http://127.0.0.1:'+port+'/api/diagnostics/restart-daily-pnl')}catch{}},1200);
   void Promise.all([
     graceJson('/api/trade/status').then((s) => console.log('TRADE_STATUS_PNL_DIAGNOSTIC', JSON.stringify({
       date: s?.date ?? null,
