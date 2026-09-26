@@ -648,6 +648,7 @@ async function restartDailyPnlDiagnostics(req, res) {
       settledTrades:trades.length,
     };
     if (req.method === 'HEAD') return send(res, 200, '', 'application/json; charset=utf-8');
+    console.log('DAILY_SERIES_CHECK ' + JSON.stringify(payload.days));
     return send(res, 200, JSON.stringify(payload), 'application/json; charset=utf-8');
   } catch (error) {
     console.error('Restart daily P&L diagnostic failed', error);
