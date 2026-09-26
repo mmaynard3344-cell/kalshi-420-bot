@@ -1,8 +1,8 @@
 /**
  * Execution-only ETH strategy — KXETH15M series only.
  *
- * Six-step martingale. Principals: $15, $30, $60, $120, $240, $320
- * (cents: 1500, 3000, 6000, 12000, 24000, 32000).
+ * Six-step martingale. Principals: $0.50, $1, $2, $4, $8, $16
+ * (cents: 50, 100, 200, 400, 800, 1600).
  * Side starts "no" each ET day. After a win: side flips yes↔no, step=0.
  * After a loss: side unchanged, step increments; after step 5 it resets to 0.
  * Daily state resets when the ET day changes (no timer).
@@ -52,7 +52,7 @@ export interface EthMarketState {
   status: string | null;
 }
 
-export const ETH_PRINCIPALS_CENTS = [50, 50, 50, 100, 250, 300] as const;
+export const ETH_PRINCIPALS_CENTS = [50, 100, 200, 400, 800, 1600] as const;
 /** Loss stop: fail closed if realized daily P&L (even-money cents) is at or below this. */
 export const ETH_DAILY_LOSS_STOP_CENTS = -120_000;
 /** A pending row has not entered POST yet, so it can be released after this bound. */
