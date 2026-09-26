@@ -380,12 +380,25 @@ async function serviceLedgerTodayDiagnostics(req, res) {
       `, [easternDate]);
 
       const big = await client.query(`
-        SELECT strategy, COUNT(*)::int AS n,
-               COALESCE(SUM(realized_pnl_cents),0)::int AS pnl_cents
-        FROM eth_big_bet_orders
-        WHERE to_char(to_timestamp(created_at_ms/1000.0) AT TIME ZONE 'America/New_York','YYYY-MM-DD')=$1
-          AND realized_pnl_cents IS NOT NULL
-        GROUP BY strategy
+        SELECT b.strategy, COUNT(*)::int AS n,
+               COALESCE(SUM(
+                 CASE WHEN lower(mr.result)=lower(b.side)
+                   THEN ROUND(COALESCE(b.filled_contracts,0)::numeric * 100)::int
+                        - COALESCE(b.actual_notional_cents,0)
+                        - COALESCE(b.actual_fee_cents,0)
+                   ELSE -COALESCE(b.actual_notional_cents,0)
+                        - COALESCE(b.actual_fee_cents,0)
+                 END
+               ),0)::int AS pnl_cents
+        FROM eth_big_bet_orders b
+        JOIN market_results mr ON mr.ticker=b.ticker
+        WHERE to_char(to_timestamp(b.created_at_ms/1000.0) AT TIME ZONE 'America/New_York','YYYY-MM-DD')=$1
+          AND b.status='settled'
+          AND lower(mr.result) IN ('yes','no')
+          AND b.filled_contracts IS NOT NULL
+          AND b.actual_notional_cents IS NOT NULL
+          AND b.actual_fee_cents IS NOT NULL
+        GROUP BY b.strategy
       `, [easternDate]);
 
       const rows = [];
@@ -440,6 +453,29 @@ async function serviceLedgerTodayDiagnostics(req, res) {
   }
 }
 
+
+async function recentMarketResultsDiagnostics(req, res) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
+  try {
+    const rows = await withReadOnlyDb(async (client) => {
+      const result = await client.query(`
+        SELECT ticker, lower(result) AS result, resolved_at_ms
+        FROM market_results
+        WHERE ticker LIKE 'KXETH15M-%'
+          AND lower(result) IN ('yes','no')
+          AND COALESCE(resolved_at_ms,0) >= $1
+        ORDER BY resolved_at_ms DESC NULLS LAST
+        LIMIT 2000
+      `, [Date.now() - 7 * 86_400_000]);
+      return result.rows;
+    });
+    if (req.method === 'HEAD') return send(res, 200, '', 'application/json; charset=utf-8');
+    return send(res, 200, JSON.stringify({ rows }), 'application/json; charset=utf-8');
+  } catch (error) {
+    console.error('Recent market-results read failed', error);
+    return send(res, 500, JSON.stringify({ error:'Recent market results unavailable', rows:[] }), 'application/json; charset=utf-8');
+  }
+}
 
 async function shadowPerformanceDiagnostics(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
@@ -892,6 +928,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   if (url.pathname === '/api/diagnostics/service-ownership') return void serviceOwnershipDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/service-ledger-today') return void serviceLedgerTodayDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/market-results-recent') return void recentMarketResultsDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/shadow-performance') return void shadowPerformanceDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/exchange-ticker') return void exchangeTickerDiagnostics(req, res, url);
   if (url.pathname === '/api/diagnostics/candidate-lifecycle') return void candidateLifecycleDiagnostics(req, res, url);
