@@ -454,6 +454,158 @@ async function serviceLedgerTodayDiagnostics(req, res) {
 }
 
 
+function pnlDiagNum(...values) {
+  for (const value of values) {
+    if (value == null || value === '') continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+function pnlDiagMs(row) {
+  for (const value of [row?.created_time, row?.created_at, row?.createdAt]) {
+    const n = value ? Date.parse(value) : NaN;
+    if (Number.isFinite(n)) return n;
+  }
+  for (const value of [row?.created_at_ms, row?.createdAtMs]) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  const ts = Number(row?.ts);
+  return Number.isFinite(ts) ? ts * 1000 : null;
+}
+function pnlDiagDay(ms) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone:'America/New_York', year:'numeric', month:'2-digit', day:'2-digit'
+  }).formatToParts(new Date(ms));
+  const g = (type) => parts.find((p) => p.type === type)?.value ?? '';
+  return g('year') + '-' + g('month') + '-' + g('day');
+}
+function pnlDiagSide(row) {
+  const client = String(row?.client_order_id ?? row?.clientOrderId ?? '').toLowerCase();
+  if (client.startsWith('eth-yes-')) return 'yes';
+  if (client.startsWith('eth-no-')) return 'no';
+  const side = String(row?.side ?? row?.order_side ?? row?.outcome_side ?? '').toLowerCase();
+  const action = String(row?.action ?? row?.order_action ?? '').toLowerCase();
+  if (side === 'bid') return 'yes';
+  if (side === 'ask') return 'no';
+  if (side === 'yes' && action === 'buy') return 'yes';
+  if (side === 'yes' && action === 'sell') return 'no';
+  if (side === 'no' && action === 'buy') return 'no';
+  if (side === 'no' && action === 'sell') return 'yes';
+  return side === 'yes' || side === 'no' ? side : '';
+}
+function pnlDiagCount(row) {
+  return pnlDiagNum(row?.count_fp, row?.count, 0) ?? 0;
+}
+function pnlDiagPriceDollars(row, side) {
+  const dollars = pnlDiagNum(side === 'no' ? row?.no_price_dollars : row?.yes_price_dollars);
+  if (dollars != null) return dollars;
+  const cents = pnlDiagNum(side === 'no' ? row?.no_price : row?.yes_price);
+  return cents == null ? null : cents / 100;
+}
+function pnlDiagFeeCents(row) {
+  return Math.round((pnlDiagNum(row?.fee_cost_dollars, row?.fee_cost, row?.fee_dollars, 0) ?? 0) * 100);
+}
+async function loadGracePages(path, key, cutoffMs) {
+  const rows = [];
+  let cursor = '';
+  const seen = new Set();
+  for (let page = 0; page < 30; page++) {
+    const q = new URLSearchParams({ limit:'1000' });
+    if (cursor) q.set('cursor', cursor);
+    const payload = await graceJson(path + '?' + q);
+    const batch = Array.isArray(payload?.[key]) ? payload[key] : [];
+    rows.push(...batch);
+    const oldest = batch.reduce((min, row) => {
+      const ms = pnlDiagMs(row);
+      return ms == null ? min : Math.min(min, ms);
+    }, Infinity);
+    if (oldest !== Infinity && oldest < cutoffMs) break;
+    const next = String(payload?.cursor ?? payload?.next_cursor ?? payload?.nextCursor ?? '');
+    if (!next || seen.has(next) || batch.length === 0) break;
+    seen.add(next);
+    cursor = next;
+  }
+  return rows;
+}
+async function restartDailyPnlDiagnostics(req, res) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
+  const restartMs = Date.parse('2026-09-23T00:09:04Z'); // 8:09:04 PM ET Sep 22
+  try {
+    const [fills, marketRows] = await Promise.all([
+      loadGracePages('/api/trade/fills', 'fills', restartMs),
+      withReadOnlyDb(async (client) => {
+        const result = await client.query(`
+          SELECT ticker, lower(result) AS result
+          FROM market_results
+          WHERE ticker LIKE 'KXETH15M-%' AND lower(result) IN ('yes','no')
+        `);
+        return result.rows;
+      }),
+    ]);
+    const resultByTicker = new Map((marketRows ?? []).map((row) => [String(row.ticker), String(row.result).toLowerCase()]));
+    const byFillId = new Map();
+    for (const fill of fills) {
+      const ticker = String(fill?.ticker ?? fill?.market_ticker ?? '');
+      if (!ticker.startsWith('KXETH15M-')) continue;
+      const atMs = pnlDiagMs(fill);
+      if (atMs == null || atMs < restartMs) continue;
+      const side = pnlDiagSide(fill);
+      const contracts = pnlDiagCount(fill);
+      const priceDollars = pnlDiagPriceDollars(fill, side);
+      if ((side !== 'yes' && side !== 'no') || !(contracts > 0) || priceDollars == null) continue;
+      const orderId = String(fill?.order_id ?? fill?.orderId ?? '');
+      const fillId = String(fill?.fill_id ?? fill?.fillId ?? (orderId + ':' + atMs + ':' + side + ':' + contracts + ':' + priceDollars));
+      if (!byFillId.has(fillId)) byFillId.set(fillId, { fill, ticker, atMs, side, contracts, priceDollars, orderId });
+    }
+    const orderAgg = new Map();
+    for (const item of byFillId.values()) {
+      const key = item.orderId || (item.ticker + ':' + item.side + ':' + item.atMs);
+      const row = orderAgg.get(key) ?? {
+        ticker:item.ticker, side:item.side, atMs:item.atMs, contracts:0, principalCents:0, feesCents:0
+      };
+      row.atMs = Math.min(row.atMs, item.atMs);
+      row.contracts += item.contracts;
+      row.principalCents += Math.round(item.contracts * item.priceDollars * 100);
+      row.feesCents += pnlDiagFeeCents(item.fill);
+      orderAgg.set(key, row);
+    }
+    const trades = [];
+    for (const row of orderAgg.values()) {
+      const result = resultByTicker.get(row.ticker);
+      if (result !== 'yes' && result !== 'no') continue;
+      const won = row.side === result;
+      const pnlCents = (won ? Math.round(row.contracts * 100) : 0) - row.principalCents - row.feesCents;
+      trades.push({ ...row, result, won, pnlCents, easternDate:pnlDiagDay(row.atMs) });
+    }
+    const byDay = new Map();
+    for (const trade of trades) {
+      const day = byDay.get(trade.easternDate) ?? { easternDate:trade.easternDate, settled:0, wins:0, losses:0, feesCents:0, pnlCents:0 };
+      day.settled += 1;
+      day.wins += trade.won ? 1 : 0;
+      day.losses += trade.won ? 0 : 1;
+      day.feesCents += trade.feesCents;
+      day.pnlCents += trade.pnlCents;
+      byDay.set(trade.easternDate, day);
+    }
+    const days = [...byDay.values()].sort((a,b) => a.easternDate.localeCompare(b.easternDate));
+    const payload = {
+      restartAt:'2026-09-22T20:09:04-04:00',
+      dashboardRebuiltAt:'2026-09-22T23:45:03-04:00',
+      method:'actual_exchange_fills_plus_canonical_market_results',
+      days,
+      totalPnlCents:days.reduce((s,d)=>s+d.pnlCents,0),
+      settledTrades:trades.length,
+    };
+    if (req.method === 'HEAD') return send(res, 200, '', 'application/json; charset=utf-8');
+    return send(res, 200, JSON.stringify(payload), 'application/json; charset=utf-8');
+  } catch (error) {
+    console.error('Restart daily P&L diagnostic failed', error);
+    return send(res, 500, JSON.stringify({ error:String(error?.message ?? error) }), 'application/json; charset=utf-8');
+  }
+}
+
 async function recentBigBetRowsDiagnostics(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
   try {
@@ -979,6 +1131,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/diagnostics/service-ledger-today') return void serviceLedgerTodayDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/market-results-recent') return void recentMarketResultsDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/big-bet-rows-recent') return void recentBigBetRowsDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/restart-daily-pnl') return void restartDailyPnlDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/shadow-performance') return void shadowPerformanceDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/exchange-ticker') return void exchangeTickerDiagnostics(req, res, url);
   if (url.pathname === '/api/diagnostics/candidate-lifecycle') return void candidateLifecycleDiagnostics(req, res, url);
