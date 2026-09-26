@@ -666,6 +666,19 @@ async function restartDailyPnlDiagnostics(req, res) {
         };
       });
     console.log('RAW_FILL_SAMPLE_DIAGNOSTIC', JSON.stringify(rawFillSample));
+    const rawOrderSample = rawFillSample.slice(0,24).map(s => {
+      const o = orderIndex.get(String(s.orderId)) ?? {};
+      return {
+        service:s.service,ticker:s.ticker,orderId:s.orderId,
+        order_action:o?.action??o?.order_action??null,
+        order_side:o?.side??o?.order_side??o?.outcome_side??null,
+        yes_price:o?.yes_price_dollars??o?.yes_price??null,
+        no_price:o?.no_price_dollars??o?.no_price??null,
+        initial_count:o?.initial_count_fp??o?.initial_count??o?.count_fp??o?.count??null,
+        status:o?.status??o?.order_status??null
+      };
+    });
+    console.log('RAW_ORDER_SAMPLE_DIAGNOSTIC', JSON.stringify(rawOrderSample));
     const payload = {
       restartAt:'2026-09-22T20:09:04-04:00',
       dashboardRebuiltAt:'2026-09-22T23:45:03-04:00',
