@@ -2,6 +2,8 @@ import pg from "../../../lib/db/node_modules/pg/lib/index.js";
 
 const { Client } = pg;
 const STRATEGY = "ETH_NO_MARTINGALE_V2";
+const ALWAYS_YES_13_STEP_CUTOVER_MS = 1790450145000;
+const ALWAYS_YES_13_STEP_INITIAL_STEP = 1;
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -25,24 +27,24 @@ try {
     AS $$
     DECLARE
       r record;
-      c_side text := 'no';
-      c_step integer := 0;
+      c_side text := 'yes';
+      c_step integer := 1;
     BEGIN
       FOR r IN
         SELECT side, settlement_result
         FROM eth_martingale_orders
         WHERE generation = 'ETH_NO_MARTINGALE_V2'
           AND eastern_date = p_eastern_date
+          AND created_at_ms >= 1790450145000
           AND settlement_result IN ('yes', 'no')
           AND COALESCE(filled_contracts, 0) > 0
         ORDER BY created_at_ms ASC, id ASC
       LOOP
-        IF r.settlement_result = r.side THEN
-          c_side := CASE WHEN r.side = 'yes' THEN 'no' ELSE 'yes' END;
+        c_side := 'yes';
+        IF r.settlement_result = 'yes' THEN
           c_step := 0;
         ELSE
-          c_side := r.side;
-          c_step := CASE WHEN c_step >= 5 THEN 0 ELSE c_step + 1 END;
+          c_step := CASE WHEN c_step >= 12 THEN 0 ELSE c_step + 1 END;
         END IF;
       END LOOP;
 
@@ -74,7 +76,7 @@ try {
       INTO c_side, c_step
       FROM eth_v2_canonical_sequence(NEW.eastern_date);
 
-      IF c_side IS NULL OR c_step IS NULL OR c_step < 0 OR c_step > 5 THEN
+      IF c_side IS NULL OR c_step IS NULL OR c_step < 0 OR c_step > 12 THEN
         RAISE EXCEPTION 'ETH V2 canonical sequence unavailable for %', NEW.eastern_date;
       END IF;
 
@@ -120,7 +122,7 @@ try {
 
   const expectedSide = canonical.rows[0].expected_side;
   const expectedStep = Number(canonical.rows[0].expected_step);
-  if (!['yes', 'no'].includes(expectedSide) || !Number.isInteger(expectedStep) || expectedStep < 0 || expectedStep > 5) {
+  if (expectedSide !== 'yes' || !Number.isInteger(expectedStep) || expectedStep < 0 || expectedStep > 12) {
     throw new Error(`Invalid canonical state ${expectedSide}/${expectedStep} for ${easternDate}`);
   }
 
@@ -155,13 +157,14 @@ try {
     FROM eth_martingale_orders
     WHERE generation = $1
       AND eastern_date = $2
+      AND created_at_ms >= $3
       AND settlement_result IN ('yes', 'no')
       AND COALESCE(filled_contracts, 0) > 0
     ORDER BY created_at_ms ASC, id ASC
-  `, [STRATEGY, state.eastern_date]);
+  `, [STRATEGY, state.eastern_date, ALWAYS_YES_13_STEP_CUTOVER_MS]);
 
-  let replaySide = "no";
-  let replayStep = 0;
+  let replaySide = "yes";
+  let replayStep = ALWAYS_YES_13_STEP_INITIAL_STEP;
   const mismatches = [];
   for (const row of orders.rows) {
     const recordedStep = Number(row.martingale_step);
@@ -175,13 +178,11 @@ try {
         result: row.settlement_result,
       });
     }
-    const won = row.settlement_result === row.side;
-    if (won) {
-      replaySide = row.side === "yes" ? "no" : "yes";
+    replaySide = "yes";
+    if (row.settlement_result === "yes") {
       replayStep = 0;
     } else {
-      replaySide = row.side;
-      replayStep = replayStep >= 5 ? 0 : replayStep + 1;
+      replayStep = replayStep >= 12 ? 0 : replayStep + 1;
     }
   }
 
@@ -195,6 +196,7 @@ try {
     easternDate: state.eastern_date,
     canonicalSide: state.side,
     canonicalStep: Number(state.martingale_step),
+    alwaysYes13StepCutoverMs: ALWAYS_YES_13_STEP_CUTOVER_MS,
     settledFilledOrdersReplayed: orders.rowCount,
     historicalSequenceMismatches: mismatches.length,
     recentMismatches: mismatches.slice(-8),
