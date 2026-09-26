@@ -114,6 +114,12 @@ function renderShadow(d){
   $('shadowLMeta').textContent=l?`${l.settled||0} settled · ${l.wins||0}W / ${l.losses||0}L · ${l.winRate==null?'—':(Number(l.winRate)*100).toFixed(1)+'%'}`:'No L summary';
   $('shadowActive').textContent=String(active);$('shadowBlocked').textContent=`${blocked} blocked/released`;$('shadowSettled').textContent=String(settled);
   $('shadowFresh').textContent=d?.generatedAtMs?'Updated '+new Intl.DateTimeFormat('en-US',{timeZone:ET,hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date(Number(d.generatedAtMs))):'Shadow ledger loaded';
+  const healthRows=Array.isArray(d?.services)?d.services:[];
+  $('shadowEvalRows').innerHTML=healthRows.length?healthRows.map(s=>{
+    const h=String(s?.health??'unknown'),decision=String(s?.latestDecision??'—').replaceAll('_',' '),reason=String(s?.latestReason??'—').replaceAll('_',' ');
+    const cls=h==='healthy'?'good':h==='stale'||h==='unavailable'?'bad':'';
+    return`<tr><td>${esc(s?.service??'—')}</td><td class="${cls}">${esc(h.toUpperCase())}</td><td>${s?.lastEvaluationAtMs?time(Number(s.lastEvaluationAtMs)):'—'}</td><td>${esc(s?.latestTicker??'—')}</td><td>${esc(decision)}</td><td>${esc(reason)}</td><td class="num">${esc(s?.evaluationsRecent??0)}</td><td class="num">${esc(s?.noSignalRecent??0)}</td><td class="num">${esc(s?.wouldSubmitRecent??0)}</td></tr>`;
+  }).join(''):'<tr><td colspan="9" class="empty">No evaluator health data yet.</td></tr>';
   $('shadowRows').innerHTML=rows.length?rows.slice(0,100).map(r=>{const p=r?.pnlCents==null?null:Number(r.pnlCents),why=r?.settlementResult??r?.terminalReason?.replaceAll('_',' ')??'Pending';return`<tr><td>${r?.createdAtMs?time(Number(r.createdAtMs)):'—'}</td><td>${esc(r?.strategy??'—')}</td><td>${esc(r?.ticker??'—')}</td><td class="num">${r?.entryPriceCents==null?'—':Number(r.entryPriceCents).toFixed(0)+'¢'}</td><td class="num">${esc(r?.contracts??'—')}</td><td class="num">${r?.principalCents==null?'—':money(r.principalCents,false)}</td><td>${esc(String(r?.state??'—').replaceAll('_',' '))}</td><td>${esc(why)}</td><td class="num ${p>0?'good':p<0?'bad':''}">${p==null?'Pending':money(p)}</td></tr>`}).join(''):'<tr><td colspan="9" class="empty">No A2 or L shadow intents have qualified yet.</td></tr>';
 }
 function renderPnl(fills,orders,owners,ledgerToday,marketResults,bigBetRows){
