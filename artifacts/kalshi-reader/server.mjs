@@ -576,23 +576,24 @@ async function restartDailyPnlDiagnostics(req, res) {
       }),
     ]);
     const resultByTicker = new Map((marketRows ?? []).map((row) => [String(row.ticker), String(row.result).toLowerCase()]));
+    const orderIndex = new Map((orders ?? []).map((row) => [String(row?.order_id ?? row?.orderId ?? ''), row]));
     const byFillId = new Map();
     for (const fill of fills) {
       const ticker = String(fill?.ticker ?? fill?.market_ticker ?? '');
       if (!ticker.startsWith('KXETH15M-')) continue;
       const atMs = pnlDiagMs(fill);
       if (atMs == null || atMs < restartMs) continue;
-      const side = pnlDiagSide(fill);
+      const orderId = String(fill?.order_id ?? fill?.orderId ?? '');
+      const authoritativeOrder = orderIndex.get(orderId);
+      const side = pnlDiagSide(authoritativeOrder ?? fill);
       const contracts = pnlDiagCount(fill);
       const priceDollars = pnlDiagPriceDollars(fill, side);
       if ((side !== 'yes' && side !== 'no') || !(contracts > 0) || priceDollars == null) continue;
-      const orderId = String(fill?.order_id ?? fill?.orderId ?? '');
       const fillId = String(fill?.fill_id ?? fill?.fillId ?? (orderId + ':' + atMs + ':' + side + ':' + contracts + ':' + priceDollars));
       if (!byFillId.has(fillId)) byFillId.set(fillId, { fill, ticker, atMs, side, contracts, priceDollars, orderId });
     }
     const ownership = new Map();
     for (const row of ownershipRows ?? []) ownership.set(String(row.orderId), String(row.service));
-    const orderIndex = new Map((orders ?? []).map((row) => [String(row?.order_id ?? row?.orderId ?? ''), row]));
     const orderAgg = new Map();
     for (const item of byFillId.values()) {
       const key = item.orderId || (item.ticker + ':' + item.side + ':' + item.atMs);
@@ -637,48 +638,6 @@ async function restartDailyPnlDiagnostics(req, res) {
     }
     const days = [...byDay.values()].sort((a,b) => a.easternDate.localeCompare(b.easternDate));
     const byService = [...byServiceDay.values()].sort((a,b)=>a.easternDate.localeCompare(b.easternDate)||a.service.localeCompare(b.service));
-    const fillActionsToday = {};
-    for (const item of byFillId.values()) {
-      if (pnlDiagDay(item.atMs) !== easternDateKey()) continue;
-      const raw = item.fill ?? {};
-      const action = String(raw?.action ?? raw?.order_action ?? 'unknown').toLowerCase();
-      const rawSide = String(raw?.side ?? raw?.order_side ?? raw?.outcome_side ?? 'unknown').toLowerCase();
-      const svc = ownership.get(item.orderId) ?? 'Unattributed';
-      const k = svc + '|' + action + '|' + rawSide;
-      fillActionsToday[k] = (fillActionsToday[k] ?? 0) + 1;
-    }
-    console.log('FILL_ACTION_DIAGNOSTIC', JSON.stringify(fillActionsToday));
-    const rawFillSample = [...byFillId.values()]
-      .filter(item => pnlDiagDay(item.atMs) === easternDateKey())
-      .slice(0, 24)
-      .map(item => {
-        const raw=item.fill??{};
-        return {
-          service:ownership.get(item.orderId)??'Unattributed',
-          ticker:item.ticker,
-          orderId:item.orderId,
-          action:raw?.action??raw?.order_action??null,
-          side:raw?.side??raw?.order_side??raw?.outcome_side??null,
-          yes_price:raw?.yes_price_dollars??raw?.yes_price??null,
-          no_price:raw?.no_price_dollars??raw?.no_price??null,
-          count:raw?.count_fp??raw?.count??null,
-          fee:raw?.fee_cost_dollars??raw?.fee_cost??null
-        };
-      });
-    console.log('RAW_FILL_SAMPLE_DIAGNOSTIC', JSON.stringify(rawFillSample));
-    const rawOrderSample = rawFillSample.slice(0,24).map(s => {
-      const o = orderIndex.get(String(s.orderId)) ?? {};
-      return {
-        service:s.service,ticker:s.ticker,orderId:s.orderId,
-        order_action:o?.action??o?.order_action??null,
-        order_side:o?.side??o?.order_side??o?.outcome_side??null,
-        yes_price:o?.yes_price_dollars??o?.yes_price??null,
-        no_price:o?.no_price_dollars??o?.no_price??null,
-        initial_count:o?.initial_count_fp??o?.initial_count??o?.count_fp??o?.count??null,
-        status:o?.status??o?.order_status??null
-      };
-    });
-    console.log('RAW_ORDER_SAMPLE_DIAGNOSTIC', JSON.stringify(rawOrderSample));
     const payload = {
       restartAt:'2026-09-22T20:09:04-04:00',
       dashboardRebuiltAt:'2026-09-22T23:45:03-04:00',
@@ -1234,7 +1193,12 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Read-only ETH 420 operator UI listening on ${port}`);
-  setTimeout(async()=>{try{await fetch('http://127.0.0.1:'+port+'/api/diagnostics/restart-daily-pnl')}catch{}},1200);
+  setTimeout(async()=>{try{
+    const r=await fetch('http://127.0.0.1:'+port+'/api/diagnostics/restart-daily-pnl');
+    const x=await r.json();
+    const d=(x?.days??[]).find(v=>v?.easternDate===easternDateKey());
+    console.log('CORRECTED_TODAY_PNL_VERIFY',JSON.stringify(d??null));
+  }catch(error){console.error('CORRECTED_TODAY_PNL_VERIFY_FAILED',String(error?.message??error))}},1200);
   void Promise.all([
     graceJson('/api/trade/status').then((s) => console.log('TRADE_STATUS_PNL_DIAGNOSTIC', JSON.stringify({
       date: s?.date ?? null,
