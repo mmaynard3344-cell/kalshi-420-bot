@@ -11189,8 +11189,8 @@ export async function reserveEthMartingaleEntry(params: {
         SET eastern_date = ${params.easternDate},
             spent_cents = CASE WHEN eastern_date = ${params.easternDate} THEN spent_cents + ${cost} ELSE ${cost} END,
             realized_pnl_cents = CASE WHEN eastern_date = ${params.easternDate} THEN realized_pnl_cents ELSE 0 END,
-            side = CASE WHEN eastern_date = ${params.easternDate} THEN side ELSE 'no' END,
-            martingale_step = CASE WHEN eastern_date = ${params.easternDate} THEN martingale_step ELSE 0 END,
+            side = 'yes',
+            martingale_step = CASE WHEN eastern_date = ${params.easternDate} THEN LEAST(martingale_step, 12) ELSE 0 END,
             updated_at_ms = ${now}
         WHERE strategy_key = ${ETH_MARTINGALE_ACTIVE_GENERATION_KEY}
         RETURNING spent_cents`);
@@ -11703,8 +11703,8 @@ export async function advanceEthMartingaleLadderForZeroFill(
       const orderSide: "yes" | "no" = row.side === "yes" ? "yes" : "no";
       const won = result === orderSide;
       const orderStep = Number(row.martingale_step);
-      const nextStep = won ? 0 : orderStep >= 2 ? 0 : orderStep + 1;
-      const nextSide: "yes" | "no" = won ? (orderSide === "yes" ? "no" : "yes") : orderSide;
+      const nextStep = won ? 0 : orderStep >= 12 ? 0 : orderStep + 1;
+      const nextSide: "yes" | "no" = "yes";
 
       await tx.execute(sql`
         UPDATE eth_martingale_state
@@ -11834,7 +11834,7 @@ export async function loadEthMartingaleDashboard(easternDate = easternDay(new Da
     });
     const currentState = state && state.easternDate === easternDate
       ? state
-      : { easternDate, side: "no" as const, martingaleStep: 0, spentCents: 0, realizedPnlCents: 0 };
+      : { easternDate, side: "yes" as const, martingaleStep: 0, spentCents: 0, realizedPnlCents: 0 };
     const orders = (rows as unknown as { rows: Array<Record<string, unknown>> }).rows.map((r) => ({
       id: String(r["id"]), ticker: String(r["ticker"]), easternDate: String(r["eastern_date"]),
       martingaleStep: Number(r["martingale_step"]),
@@ -11929,8 +11929,8 @@ export async function loadEthMartingaleLedgerExport(
  * prevents a TOCTOU race where a late settlement for an old order could
  * read the wrong side after earlier settlements have already flipped it.
  *
- *   win  (result === order.side) → side flips yes↔no, step = 0
- *   loss (result !== order.side) → side unchanged, step+1; after step 2 → step 0
+ *   win  (result === order.side) → side remains YES, step = 0
+ *   loss (result !== order.side) → side remains YES, step+1; after step 12 → step 0
  *
  * Full and partial fills use the same official-result ladder transition. Their
  * financial accounting remains based only on the exact contracts and fees
@@ -11978,10 +11978,10 @@ export async function settleEthMartingaleOrder(id: string, result: "yes" | "no")
       // Even-money P&L: win = filled contracts * $1 - cost; loss = -cost
       const pnlDelta = won ? filled * 100 - costCents : -costCents;
 
-      // Step transition: win → step=0, side flips; loss → step+1, after step 2 → 0
+      // Service A transition: win → step 0; loss → next rung; side is always YES.
       const orderStep = Number(row.martingale_step);
-      const nextStep = won ? 0 : orderStep >= 2 ? 0 : orderStep + 1;
-      const nextSide: "yes" | "no" = won ? (orderSide === "yes" ? "no" : "yes") : orderSide;
+      const nextStep = won ? 0 : orderStep >= 12 ? 0 : orderStep + 1;
+      const nextSide: "yes" | "no" = "yes";
 
       // Old-date guard: only advance the sequence when the state table is still
       // on the same ET day as the order. If the day has rolled over, the fresh
