@@ -15,7 +15,7 @@ export const ETH_ASH_V2_UP_MIN_RATIO = 0.0050;
 export const ETH_ASH_V2_UP_MAX_RATIO = 0.0080;
 export const ETH_ASH_V2_WAGER_CENTS = positiveIntegerEnv("ETH_I_WAGER_CENTS", 46_200);
 export const ETH_ASH_V2_LIMIT_PRICE_CENTS = 50;
-export const ETH_ASH_V2_ENTRY_WINDOW_MS = 120_000;
+export const ETH_ASH_V2_ENTRY_WINDOW_MS = 15 * 60_000;
 export const ETH_ASH_V2_ORDER_TAG = "eth-ash-v2-i-v1";
 
 export interface EthAshV2Evidence {
