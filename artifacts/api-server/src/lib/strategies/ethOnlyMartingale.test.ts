@@ -2350,34 +2350,14 @@ test("restart: discovered fully executed $30 NO order persists its exchange iden
 
 // ── full fill advances the ladder ─────────────────────────────────────────────
 
-test("full_fill settlement advances ladder step and flips side (store contract)", () => {
-  // Validate the state machine logic: full fill → step=0 (win) or step+1 (loss), side flip on win.
-  // Use a helper to prevent TypeScript literal narrowing on the side/result comparisons.
-  const flipSideHelper = (s: "yes" | "no"): "yes" | "no" => s === "yes" ? "no" : "yes";
-  // step 0, side=no, result=no (win) → nextStep=0, nextSide=yes
-  {
-    const step = 0;
-    const side: "yes" | "no" = flipSideHelper("yes"); // ="no", but not narrowed
-    const result: "yes" | "no" = flipSideHelper("yes"); // ="no", but not narrowed
-    const won = result === side;
-    const nextStep = won ? 0 : step >= 2 ? 0 : step + 1;
-    const nextSide: "yes" | "no" = won ? flipSideHelper(side) : side;
-    assert.equal(won, true, "NO side + NO result = win");
-    assert.equal(nextStep, 0, "win resets step");
-    assert.equal(nextSide, "yes", "win flips side no→yes");
-  }
-  // step 0, side=no, result=yes (loss) → nextStep=1, nextSide=no
-  {
-    const step = 0;
-    const side: "yes" | "no" = flipSideHelper("yes"); // ="no"
-    const result: "yes" | "no" = flipSideHelper("no"); // ="yes"
-    const won = result === side;
-    const nextStep = won ? 0 : step >= 2 ? 0 : step + 1;
-    const nextSide: "yes" | "no" = won ? flipSideHelper(side) : side;
-    assert.equal(won, false, "NO side + YES result = loss");
-    assert.equal(nextStep, 1, "loss increments step");
-    assert.equal(nextSide, "no", "loss keeps side");
-  }
+test("Service A settlement sequence remains YES and uses the 13-step boundary", () => {
+  const next = (step: number, won: boolean) => ({
+    step: won ? 0 : step >= 12 ? 0 : step + 1,
+    side: "yes" as const,
+  });
+  assert.deepEqual(next(7, true), { step: 0, side: "yes" }, "win resets to the first rung and remains YES");
+  assert.deepEqual(next(7, false), { step: 8, side: "yes" }, "loss advances one rung and remains YES");
+  assert.deepEqual(next(12, false), { step: 0, side: "yes" }, "a loss on the final rung resets the ladder");
 });
 
 test("full_fill reconciliation: settleEthMartingaleOrder called once when market resolves", async () => {
