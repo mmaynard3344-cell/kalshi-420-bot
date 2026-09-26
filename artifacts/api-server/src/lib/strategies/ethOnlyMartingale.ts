@@ -52,7 +52,8 @@ export interface EthMarketState {
   status: string | null;
 }
 
-export const ETH_PRINCIPALS_CENTS = [50, 100, 200, 400, 800, 1600] as const;
+export const ETH_PRINCIPALS_CENTS = [50, 50, 100, 200, 200, 200, 400, 400, 800, 800, 800, 800, 800] as const;
+export const ETH_MAX_MARTINGALE_STEP = ETH_PRINCIPALS_CENTS.length - 1;
 /** Loss stop: fail closed if realized daily P&L (even-money cents) is at or below this. */
 export const ETH_DAILY_LOSS_STOP_CENTS = -120_000;
 /** A pending row has not entered POST yet, so it can be released after this bound. */
@@ -106,7 +107,7 @@ export function isEthMarketEligible(
 }
 
 export function ethPrincipalForStep(step: number): number {
-  return ETH_PRINCIPALS_CENTS[Math.max(0, Math.min(5, step))]!;
+  return ETH_PRINCIPALS_CENTS[Math.max(0, Math.min(ETH_MAX_MARTINGALE_STEP, step))]!;
 }
 
 /** Kalshi taker fee, rounded up to whole cents as charged by the exchange. */
@@ -1067,9 +1068,11 @@ const effectivePnl = requestedRealizedPnlCents == null
   ? (isNewDay ? 0 : sequence.realizedPnlCents)
   : Math.trunc(requestedRealizedPnlCents);
 const effectiveStep = requestedStep == null
-  ? sequence.martingaleStep
+  ? Math.max(0, Math.min(ETH_MAX_MARTINGALE_STEP, sequence.martingaleStep))
   : Math.max(0, Math.trunc(requestedStep));
-const effectiveSide: "yes" | "no" = requestedSide ?? sequence.side;
+// Service A defaults permanently to YES. Explicit overrides remain available
+// for isolated callers that intentionally reuse this protected gateway.
+const effectiveSide: "yes" | "no" = requestedSide ?? "yes";
 
     // Fail closed: loss stop
     if (effectivePnl <= dailyLossStopCents) {
@@ -1196,10 +1199,10 @@ export async function getEthMartingalePriorOrderSideHints(): Promise<Array<{
       ticker: row.ticker,
       persistedSide: row.side,
       persistedStep: row.martingaleStep,
-      winNextSide: row.side === "yes" ? "no" : "yes",
+      winNextSide: "yes",
       winNextStep: 0,
-      lossNextSide: row.side,
-      lossNextStep: row.martingaleStep >= 5 ? 0 : row.martingaleStep + 1,
+      lossNextSide: "yes",
+      lossNextStep: row.martingaleStep >= ETH_MAX_MARTINGALE_STEP ? 0 : row.martingaleStep + 1,
       createdAtMs: row.createdAtMs,
     }));
 }
