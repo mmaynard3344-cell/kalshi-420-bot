@@ -122,7 +122,7 @@ function renderShadow(d){
   }).join(''):'<tr><td colspan="9" class="empty">No evaluator health data yet.</td></tr>';
   $('shadowRows').innerHTML=rows.length?rows.slice(0,100).map(r=>{const p=r?.pnlCents==null?null:Number(r.pnlCents),why=r?.settlementResult??r?.terminalReason?.replaceAll('_',' ')??'Pending';return`<tr><td>${r?.createdAtMs?time(Number(r.createdAtMs)):'—'}</td><td>${esc(r?.strategy??'—')}</td><td>${esc(r?.ticker??'—')}</td><td class="num">${r?.entryPriceCents==null?'—':Number(r.entryPriceCents).toFixed(0)+'¢'}</td><td class="num">${esc(r?.contracts??'—')}</td><td class="num">${r?.principalCents==null?'—':money(r.principalCents,false)}</td><td>${esc(String(r?.state??'—').replaceAll('_',' '))}</td><td>${esc(why)}</td><td class="num ${p>0?'good':p<0?'bad':''}">${p==null?'Pending':money(p)}</td></tr>`}).join(''):'<tr><td colspan="9" class="empty">No A2 or L shadow intents have qualified yet.</td></tr>';
 }
-function renderPnl(fills,orders,owners,ledgerToday,marketResults,bigBetRows){
+function renderPnl(fills,orders,owners,ledgerToday,marketResults,bigBetRows,restartPnl){
   const canonicalResults=new Map((Array.isArray(marketResults?.rows)?marketResults.rows:[]).map(r=>[String(r?.ticker??''),String(r?.result??'').toLowerCase()]));
   const canonicalBigBets=new Map((Array.isArray(bigBetRows?.rows)?bigBetRows.rows:[]).map(r=>[(String(r?.strategy??'').toLowerCase()+'|'+String(r?.ticker??'')),r]));
   const fm=fillsByOrder(fills,orders,owners,canonicalResults);
@@ -140,18 +140,25 @@ function renderPnl(fills,orders,owners,ledgerToday,marketResults,bigBetRows){
     row.netCents=pnl;
   }
   const td=today(),settled=[...fm.values()].filter(x=>x.result&&x.netCents!=null&&dk(x.atMs)===td);
-  const wins=settled.filter(x=>x.won).length,losses=settled.length-wins,fees=settled.reduce((s,x)=>s+Number(x.feesCents||0),0);
-  const total=settled.reduce((s,x)=>s+Number(x.netCents||0),0);
+  const canonicalDay=(Array.isArray(restartPnl?.days)?restartPnl.days:[]).find(x=>x?.easternDate===td)||null;
+  const canonicalSvcRows=(Array.isArray(restartPnl?.byService)?restartPnl.byService:[]).filter(x=>x?.easternDate===td);
+  const wins=canonicalDay?Number(canonicalDay.wins||0):settled.filter(x=>x.won).length;
+  const losses=canonicalDay?Number(canonicalDay.losses||0):settled.length-wins;
+  const fees=canonicalDay?Number(canonicalDay.feesCents||0):settled.reduce((s,x)=>s+Number(x.feesCents||0),0);
+  const total=canonicalDay?Number(canonicalDay.pnlCents||0):settled.reduce((s,x)=>s+Number(x.netCents||0),0);
+  const settledCount=canonicalDay?Number(canonicalDay.settled||0):settled.length;
   $('pnl').textContent=money(total);
   $('pnl').className='metric '+(total>0?'good':total<0?'bad':'');
-  $('settled').textContent=String(settled.length);
+  $('settled').textContent=String(settledCount);
   $('wins').textContent=String(wins);$('losses').textContent=String(losses);$('fees').textContent=money(fees,false);
-  const byService=new Map();
+  const canonicalByService=new Map(canonicalSvcRows.map(r=>[String(r?.service??'Unattributed'),{name:String(r?.service??'Unattributed'),n:Number(r?.settled||0),pnl:Number(r?.pnlCents||0)}]));
+  const fallbackByService=new Map();
   for(const row of settled){
-    const name=row.service||'Unattributed',prior=byService.get(name)||{name,n:0,pnl:0};
-    prior.n+=1;prior.pnl+=Number(row.netCents||0);byService.set(name,prior);
+    const name=row.service||'Unattributed',prior=fallbackByService.get(name)||{name,n:0,pnl:0};
+    prior.n+=1;prior.pnl+=Number(row.netCents||0);fallbackByService.set(name,prior);
   }
-  const svc=SERVICES.map(name=>byService.get(name)||{name,n:0,pnl:0}).filter(x=>x.n>0||x.name!=='Unattributed');
+  const sourceByService=canonicalDay?canonicalByService:fallbackByService;
+  const svc=SERVICES.map(name=>sourceByService.get(name)||{name,n:0,pnl:0}).filter(x=>x.n>0||x.name!=='Unattributed');
   $('serviceRows').innerHTML=svc.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${x.n}</td><td class="num ${x.pnl>0?'good':x.pnl<0?'bad':''}">${money(x.pnl)}</td></tr>`).join('');
   const rows=orders.filter(eth).sort((a,b)=>(ms(b)||0)-(ms(a)||0)).slice(0,100);
   $('tradeCount').textContent=rows.length+' recent';
@@ -164,13 +171,13 @@ let busy=false;
 async function refresh(){
   if(busy)return;busy=true;$('stamp').textContent='Refreshing…';
   try{
-    const [b,m,o,f,w,l,sh,mr,bb]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),paged('/api/trade/orders','orders'),paged('/api/trade/fills','fills'),j('/api/diagnostics/service-ownership'),j('/api/diagnostics/service-ledger-today'),j('/api/diagnostics/shadow-performance'),j('/api/diagnostics/market-results-recent'),j('/api/diagnostics/big-bet-rows-recent')]);
+    const [b,m,o,f,w,l,sh,mr,bb,rp]=await Promise.allSettled([j('/api/trade/balance'),j('/api/trade/analytics/eth420-live-market'),paged('/api/trade/orders','orders'),paged('/api/trade/fills','fills'),j('/api/diagnostics/service-ownership'),j('/api/diagnostics/service-ledger-today'),j('/api/diagnostics/shadow-performance'),j('/api/diagnostics/market-results-recent'),j('/api/diagnostics/big-bet-rows-recent'),j('/api/diagnostics/restart-daily-pnl')]);
     if(b.status==='fulfilled')renderAccount(b.value);else $('accountState').textContent='UNAVAILABLE';
     if(m.status==='fulfilled')renderMarket(m.value);
     const orderRows=o.status==='fulfilled'?o.value:[];
     const owners=w.status==='fulfilled'?ownershipIndex(w.value):ownershipIndex(null);
     renderOpenOrders(orderRows,owners);
-    if(f.status==='fulfilled')renderPnl(f.value,orderRows,owners,l.status==='fulfilled'?l.value:null,mr.status==='fulfilled'?mr.value:null,bb.status==='fulfilled'?bb.value:null);
+    if(f.status==='fulfilled')renderPnl(f.value,orderRows,owners,l.status==='fulfilled'?l.value:null,mr.status==='fulfilled'?mr.value:null,bb.status==='fulfilled'?bb.value:null,rp.status==='fulfilled'?rp.value:null);
     if(sh.status==='fulfilled')renderShadow(sh.value);else{$('shadowFresh').textContent='Shadow ledger unavailable';$('shadowRows').innerHTML='<tr><td colspan="9" class="empty">A2/L shadow endpoint unavailable.</td></tr>'}
     $('stamp').textContent='Updated '+new Intl.DateTimeFormat('en-US',{timeZone:ET,hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date());
   }catch(e){$('stamp').textContent='Partial data · '+String(e?.message??e)}
