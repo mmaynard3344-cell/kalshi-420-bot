@@ -1194,51 +1194,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Read-only ETH 420 operator UI listening on ${port}`);
-  setTimeout(async()=>{try{
-    const all=[]; let cursor=''; const seen=new Set();
-    for(let page=0; page<100; page++){
-      const u=new URL('https://api.elections.kalshi.com/trade-api/v2/markets');
-      u.searchParams.set('series_ticker','KXETH15M');u.searchParams.set('status','settled');u.searchParams.set('limit','1000');
-      if(cursor)u.searchParams.set('cursor',cursor);
-      const r=await fetch(u,{headers:{Accept:'application/json'}}); if(!r.ok)throw new Error('archive HTTP '+r.status);
-      const j=await r.json(),rows=Array.isArray(j.markets)?j.markets:[];
-      for(const m of rows){const ticker=String(m?.ticker??''),result=String(m?.result??'').toLowerCase(),openMs=Date.parse(String(m?.open_time??''));
-        if(/^KXETH15M-/.test(ticker)&&(result==='yes'||result==='no')&&Number.isFinite(openMs))all.push({ticker,result,openMs});}
-      const next=typeof j.cursor==='string'?j.cursor:'';if(!next||seen.has(next)||!rows.length)break;seen.add(next);cursor=next;
-    }
-    const seq=[...new Map(all.map(x=>[x.ticker,x])).values()].sort((a,b)=>a.openMs-b.openMs);
-    const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'});
-    const dayOf=ms=>fmt.format(new Date(ms));
-    const ladders=[
-      [50,50,50,100,250,300],
-      [50,50,75,150,300,500],
-      [50,50,100,150,300,500],
-      [50,50,100,200,400,600],
-      [50,50,100,200,400,800],
-      [50,50,100,200,500,800],
-      [50,50,100,200,500,1000],
-      [50,50,100,250,500,1000],
-      [50,75,100,200,500,1000],
-      [50,100,100,200,500,1000],
-      [50,100,150,250,500,1000],
-      [50,100,150,300,600,1200],
-      [50,100,200,300,600,1200],
-      [50,100,200,400,800,1200],
-      [50,100,200,400,800,1600],
-      [50,100,200,400,1000,1600],
-      [50,100,200,500,1000,2000],
-      [100,100,200,400,800,1600],
-      [100,200,400,800,1600,3200]
-    ];
-    const replay=ladder=>{let day='',side='no',step=0,cum=0,peak=0,dd=0;const daily=new Map();
-      for(const m of seq){const d=dayOf(m.openMs);if(d!==day){day=d;side='no';step=0;}const s=ladder[step],won=side===m.result,p=won?s:-s;
-        cum+=p;peak=Math.max(peak,cum);dd=Math.max(dd,peak-cum);daily.set(d,(daily.get(d)||0)+p);
-        if(won){side=side==='yes'?'no':'yes';step=0;}else step=step>=5?0:step+1;}
-      const pd=[...daily.values()].filter(x=>x>0).length;return{ladder,pnl:cum,dd,max:ladder[5],profitableDays:pd,dayRate:pd/daily.size,pnlToDd:dd?cum/dd:null};};
-    const results=ladders.map(replay).sort((a,b)=>a.dd-b.dd||b.pnl-a.pnl);
-    const frontier=[];let best=-Infinity;for(const x of results){if(x.pnl>best){frontier.push(x);best=x.pnl;}}
-    console.log('CURATED_LADDER_FRONTIER '+JSON.stringify({count:seq.length,results,frontier}));
-  }catch(e){console.error('CURATED_LADDER_FRONTIER_FAILED',String(e?.message??e))}},1200);
   void Promise.all([
     graceJson('/api/trade/status').then((s) => console.log('TRADE_STATUS_PNL_DIAGNOSTIC', JSON.stringify({
       date: s?.date ?? null,
