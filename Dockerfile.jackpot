@@ -9,10 +9,7 @@ RUN node artifacts/api-server/scripts/apply-jackpot-reobserve-runaway.mjs
 RUN node artifacts/api-server/scripts/apply-jackpot-v2-repair.mjs
 RUN node artifacts/api-server/scripts/apply-jackpot-next-strike-hydration.mjs
 RUN node artifacts/api-server/scripts/apply-jackpot-morning-sizing.mjs
-# Final J-only trading gate validated against historical A zero-fill outcomes:
-# at +5s A must still be zero/resting, ask >=73c, ask must have risen >=2c
-# since +2s, and the complete J order must be executable at <=75c. A is read-only.
-RUN node artifacts/api-server/scripts/apply-jackpot-v7-gate.mjs
+# J now uses the core A zero-fill rescue path directly; no V7 signal gate is applied.
 RUN pnpm install --frozen-lockfile
 RUN cd artifacts/api-server && node scripts/run-jackpot-test.mjs && node build-jackpot.mjs
 
