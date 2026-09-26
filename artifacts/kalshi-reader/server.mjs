@@ -1194,6 +1194,61 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Read-only ETH 420 operator UI listening on ${port}`);
+  setTimeout(async()=>{try{
+    const all=[]; let cursor=''; const seen=new Set();
+    for(let page=0; page<100; page++){
+      const u=new URL('https://api.elections.kalshi.com/trade-api/v2/markets');
+      u.searchParams.set('series_ticker','KXETH15M'); u.searchParams.set('status','settled'); u.searchParams.set('limit','1000');
+      if(cursor) u.searchParams.set('cursor',cursor);
+      const r=await fetch(u,{headers:{Accept:'application/json'}});
+      if(!r.ok) throw new Error('archive HTTP '+r.status);
+      const j=await r.json(); const rows=Array.isArray(j.markets)?j.markets:[];
+      for(const m of rows){
+        const ticker=String(m?.ticker??''); const result=String(m?.result??'').toLowerCase();
+        const openMs=Date.parse(String(m?.open_time??''));
+        if(/^KXETH15M-/.test(ticker)&&(result==='yes'||result==='no')&&Number.isFinite(openMs)) all.push({ticker,result,openMs});
+      }
+      const next=typeof j.cursor==='string'?j.cursor:'';
+      if(!next||seen.has(next)||rows.length===0) break; seen.add(next); cursor=next;
+    }
+    const uniq=[...new Map(all.map(x=>[x.ticker,x])).values()].sort((a,b)=>a.openMs-b.openMs);
+    const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'});
+    const dayOf=(ms)=>fmt.format(new Date(ms));
+    const replay=(ladder)=>{
+      let day='',side='no',step=0,cum=0,peak=0,maxDD=0,wins=0,losses=0,step6=0;
+      const daily=new Map();
+      for(const m of uniq){
+        const d=dayOf(m.openMs); if(d!==day){day=d;side='no';step=0;}
+        const stake=ladder[step], won=side===m.result, pnl=won?stake:-stake;
+        cum+=pnl; peak=Math.max(peak,cum); maxDD=Math.max(maxDD,peak-cum);
+        if(step===5)step6++;
+        if(won){wins++;side=side==='yes'?'no':'yes';step=0;} else {losses++;step=step>=5?0:step+1;}
+        const rec=daily.get(d)??0;daily.set(d,rec+pnl);
+      }
+      const prof=[...daily.values()].filter(x=>x>0).length;
+      return {ladder,totalPnlCents:cum,maxDrawdownCents:maxDD,maxStakeCents:ladder[5],profitableDays:prof,days:daily.size,profitableDayRate:prof/daily.size,step6Uses:step6};
+    };
+    const vals1=[50,100,150];
+    const vals2=[50,100,150,200];
+    const vals3=[50,100,150,200,250,300,400];
+    const vals4=[100,150,200,250,300,400,500,600];
+    const vals5=[200,250,300,400,500,600,800,1000];
+    const vals6=[300,400,500,600,800,1000,1200,1500,2000];
+    const candidates=[];
+    for(const a of vals1)for(const b of vals2)for(const cc of vals3)for(const d of vals4)for(const e of vals5)for(const g of vals6){
+      if(!(a<=b&&b<=cc&&cc<=d&&d<=e&&e<=g)) continue;
+      if(g>2000) continue;
+      const rr=replay([a,b,cc,d,e,g]);
+      if(rr.maxDrawdownCents<=25000) candidates.push(rr);
+    }
+    candidates.sort((x,y)=>y.totalPnlCents-x.totalPnlCents||x.maxDrawdownCents-y.maxDrawdownCents);
+    const top=candidates.slice(0,40);
+    const frontier=[];
+    const sorted=[...candidates].sort((x,y)=>x.maxDrawdownCents-y.maxDrawdownCents||y.totalPnlCents-x.totalPnlCents);
+    let best=-Infinity;
+    for(const r of sorted){ if(r.totalPnlCents>best){frontier.push(r);best=r.totalPnlCents;} }
+    console.log('LADDER_GRID_SEARCH '+JSON.stringify({count:uniq.length,candidates:candidates.length,top,frontier:frontier.slice(-40)}));
+  }catch(e){console.error('LADDER_GRID_SEARCH_FAILED',String(e?.message??e))}},1200);
   void Promise.all([
     graceJson('/api/trade/status').then((s) => console.log('TRADE_STATUS_PNL_DIAGNOSTIC', JSON.stringify({
       date: s?.date ?? null,
