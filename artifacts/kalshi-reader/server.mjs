@@ -1196,6 +1196,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Read-only ETH 420 operator UI listening on ${port}`);
+  setTimeout(async()=>{try{await fetch('http://127.0.0.1:'+port+'/api/diagnostics/restart-daily-pnl')}catch{}},1200);
   void Promise.all([
     graceJson('/api/trade/status').then((s) => console.log('TRADE_STATUS_PNL_DIAGNOSTIC', JSON.stringify({
       date: s?.date ?? null,
