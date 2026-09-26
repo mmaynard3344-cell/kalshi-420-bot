@@ -71,8 +71,8 @@ function fillsByOrder(fills,orders,owners,canonicalResults){
   const idx=new Map(orders.map(o=>[oid(o),o])),m=new Map;
   for(const f of fills){
     if(!eth(f))continue;const t=ms(f),id=oid(f);if(t==null||!id)continue;
-    const s=side(f),n=count(f),p=priceDollars(f,s);if(!(n>0)||p==null)continue;
-    const o=m.get(id)||{id,ticker:String(f.ticker??f.market_ticker??''),side:s,atMs:t,contracts:0,principalCents:0,feesCents:0,weighted:0,result:'',service:service(f,owners)!=='Unattributed'?service(f,owners):service(idx.get(id),owners)};
+    const ord=idx.get(id),s=ord?side(ord):side(f),n=count(f),p=priceDollars(f,s);if(!(n>0)||p==null)continue;
+    const o=m.get(id)||{id,ticker:String(f.ticker??f.market_ticker??''),side:s,atMs:t,contracts:0,principalCents:0,feesCents:0,weighted:0,result:'',service:service(f,owners)!=='Unattributed'?service(f,owners):service(ord,owners)};
     o.contracts+=n;o.principalCents+=Math.round(n*p*100);o.feesCents+=feeCents(f);o.weighted+=n*p*100;o.atMs=Math.min(o.atMs,t);
     const rr=result(f);if(rr)o.result=rr;m.set(id,o);
   }
