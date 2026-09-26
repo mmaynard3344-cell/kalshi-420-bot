@@ -90,7 +90,7 @@ import {
   ACTIVE_ENTRY_SERIES_POLICY,
 } from "../lib/week2EntryPolicy.js";
 import { isManualNewOrderSubmissionDisabled } from "../lib/manualOrderBoundary.js";
-import { getEthMartingaleBlockerStatus, reconcileEthMartingaleSettlements } from "../lib/strategies/ethOnlyMartingale.js";
+import { ETH_PRINCIPALS_CENTS, getEthMartingaleBlockerStatus, reconcileEthMartingaleSettlements } from "../lib/strategies/ethOnlyMartingale.js";
 import { ETH_MARTINGALE_ACTIVE_GENERATION_STARTED_AT_MS } from "../lib/tradeStore.js";
 
 const router = Router();
@@ -926,9 +926,9 @@ router.get("/trade/martingale", requireTradeAuth, async (_req, res) => {
   res.json({
     eastern_date: dashboard.easternDate,
     state: {
-      next_side: dashboard.state.side,
+      next_side: "yes",
       martingale_step: dashboard.state.martingaleStep,
-      next_principal_cents: [1500, 3000, 6000, 12000, 24000, 32000][Math.max(0, Math.min(5, dashboard.state.martingaleStep))],
+      next_principal_cents: ETH_PRINCIPALS_CENTS[Math.max(0, Math.min(ETH_PRINCIPALS_CENTS.length - 1, dashboard.state.martingaleStep))],
       realized_pnl_dollars: dashboard.state.realizedPnlCents / 100,
     },
     session: {
