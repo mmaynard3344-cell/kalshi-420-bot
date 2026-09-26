@@ -12,7 +12,7 @@ const LIMIT_PRICE_CENTS = 50;
 const PRINCIPALS_CENTS = [10_000, 20_000, 40_000] as const;
 const CONTRACTS = [200, 400, 800] as const;
 const POLL_MS = 2_000;
-const ENTRY_WINDOW_MS = 90_000;
+const ENTRY_WINDOW_MS = 15 * 60_000;
 const CANCEL_AFTER_CLOSE_MS = 1_000;
 const TERMINAL = new Set(["filled", "executed", "canceled", "cancelled", "expired", "rejected"]);
 
