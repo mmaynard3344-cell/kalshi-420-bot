@@ -36,7 +36,7 @@ export function _setEth420CandidateOrderbookCaptureForTesting(reader: CandidateO
   candidateOrderbookCapture = reader ?? captureOrderbook;
 }
 export const ETH_420_CANDIDATE_LABEL = "ETH_420_6_STEP_RESET_SHADOW_ONLY";
-export const ETH_420_PRINCIPALS_CENTS = [50, 50, 50, 100, 250, 300] as const;
+export const ETH_420_PRINCIPALS_CENTS = [50, 100, 200, 400, 800, 1600] as const;
 export const ETH_420_OVERRIDE_CENTS = 420;
 /** Retained-side (≥50¢) Back Flip entries cross the chosen-side ask up to $420. */
 export const ETH_420_BACK_FLIP_RETAIN_WAGER_CENTS = 420;
