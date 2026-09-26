@@ -83,7 +83,7 @@ export async function prepareEthAshleyIntent(input: {
     return empty("invalid_market_identity");
   }
   const ageMs = nowMs - input.market.openTimeMs!;
-  if (ageMs < 0 || ageMs > 120_000) return empty("outside_entry_window", { ageMs });
+  if (ageMs < 0 || ageMs > 15 * 60_000) return empty("outside_entry_window", { ageMs });
 
   const [priorStrike, currentStrike] = await Promise.all([
     readExactPriorStrike(input.market.openTimeMs!),
