@@ -533,8 +533,9 @@ async function restartDailyPnlDiagnostics(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
   const restartMs = Date.parse('2026-09-23T00:09:04Z'); // 8:09:04 PM ET Sep 22
   try {
-    const [fills, marketRows] = await Promise.all([
+    const [fills, orders, marketRows, ownershipRows] = await Promise.all([
       loadGracePages('/api/trade/fills', 'fills', restartMs),
+      loadGracePages('/api/trade/orders', 'orders', restartMs),
       withReadOnlyDb(async (client) => {
         const result = await client.query(`
           SELECT ticker, lower(result) AS result
@@ -542,6 +543,36 @@ async function restartDailyPnlDiagnostics(req, res) {
           WHERE ticker LIKE 'KXETH15M-%' AND lower(result) IN ('yes','no')
         `);
         return result.rows;
+      }),
+      withReadOnlyDb(async (client) => {
+        const out = [];
+        const push = (service, rows) => {
+          for (const row of rows ?? []) {
+            if (row.order_id) out.push({ orderId:String(row.order_id), service });
+          }
+        };
+        push('A · Regular', (await client.query(`SELECT kalshi_order_id AS order_id FROM eth_martingale_orders WHERE kalshi_order_id IS NOT NULL`)).rows);
+        const cand = await client.query(`SELECT kalshi_order_id AS order_id, origin_service FROM eth420_candidate_live_orders WHERE kalshi_order_id IS NOT NULL`);
+        const candMap = (origin) => {
+          const s=String(origin??'').toLowerCase();
+          if (s==='kalshi-420-bot'||s==='martingale') return 'A · Regular';
+          if (s==='eth-jump-service'||s==='jump') return 'B · Jump';
+          if (s==='eth-reversal-service'||s==='reversal') return 'C · Reversal';
+          if (s==='eth-breakout-reversal'||s==='eth-breakout-reversal-service') return 'D · Breakout Reversal';
+          if (s==='eth-downfade-e'||s==='downfade_e') return 'E · Downfade';
+          if (s==='eth-downfade-f'||s==='downfade_f') return 'F · Downfade';
+          if (s==='eth-downfade-g'||s==='downfade_g') return 'G · Streak Reversal';
+          if (s==='ashley'||s==='eth-ashley') return 'H · Ashley';
+          return 'Unattributed';
+        };
+        for (const row of cand.rows ?? []) if (row.order_id) out.push({orderId:String(row.order_id),service:candMap(row.origin_service)});
+        const big = await client.query(`SELECT kalshi_order_id AS order_id, strategy FROM eth_big_bet_orders WHERE kalshi_order_id IS NOT NULL`);
+        const bigMap={jump:'B · Jump',reversal:'C · Reversal',breakout_reversal:'D · Breakout Reversal',downfade_p80_p90:'E · Downfade',downfade_p90_p95:'F · Downfade',probe_g:'G · Streak Reversal',downfade_p95_p99:'H · Ashley',ash_v2_i:'I · Ash V2'};
+        for (const row of big.rows ?? []) if (row.order_id && bigMap[String(row.strategy??'')]) out.push({orderId:String(row.order_id),service:bigMap[String(row.strategy??'')]});
+        push('G · Streak Reversal', (await client.query(`SELECT kalshi_order_id AS order_id FROM eth_g_streak_reversal_orders WHERE kalshi_order_id IS NOT NULL`)).rows);
+        push('J · Jackpot', (await client.query(`SELECT j_kalshi_order_id AS order_id FROM jackpot_attempts WHERE j_kalshi_order_id IS NOT NULL`)).rows);
+        push('K · Kamakazee', (await client.query(`SELECT kalshi_order_id AS order_id FROM kamakazee_orders WHERE kalshi_order_id IS NOT NULL`)).rows);
+        return out;
       }),
     ]);
     const resultByTicker = new Map((marketRows ?? []).map((row) => [String(row.ticker), String(row.result).toLowerCase()]));
@@ -559,11 +590,21 @@ async function restartDailyPnlDiagnostics(req, res) {
       const fillId = String(fill?.fill_id ?? fill?.fillId ?? (orderId + ':' + atMs + ':' + side + ':' + contracts + ':' + priceDollars));
       if (!byFillId.has(fillId)) byFillId.set(fillId, { fill, ticker, atMs, side, contracts, priceDollars, orderId });
     }
+    const ownership = new Map();
+    for (const row of ownershipRows ?? []) ownership.set(String(row.orderId), String(row.service));
+    const orderIndex = new Map((orders ?? []).map((row) => [String(row?.order_id ?? row?.orderId ?? ''), row]));
     const orderAgg = new Map();
     for (const item of byFillId.values()) {
       const key = item.orderId || (item.ticker + ':' + item.side + ':' + item.atMs);
+      const sourceOrder = orderIndex.get(item.orderId);
+      const clientId = String(sourceOrder?.client_order_id ?? sourceOrder?.clientOrderId ?? '');
+      let service = ownership.get(item.orderId) ?? 'Unattributed';
+      if (service === 'Unattributed') {
+        if (clientId.startsWith('g-streak-reversal-v1:')) service='G · Streak Reversal';
+        else if (clientId.endsWith(':kamakazee-k-v1')) service='K · Kamakazee';
+      }
       const row = orderAgg.get(key) ?? {
-        ticker:item.ticker, side:item.side, atMs:item.atMs, contracts:0, principalCents:0, feesCents:0
+        ticker:item.ticker, side:item.side, atMs:item.atMs, contracts:0, principalCents:0, feesCents:0, service
       };
       row.atMs = Math.min(row.atMs, item.atMs);
       row.contracts += item.contracts;
@@ -580,6 +621,7 @@ async function restartDailyPnlDiagnostics(req, res) {
       trades.push({ ...row, result, won, pnlCents, easternDate:pnlDiagDay(row.atMs) });
     }
     const byDay = new Map();
+    const byServiceDay = new Map();
     for (const trade of trades) {
       const day = byDay.get(trade.easternDate) ?? { easternDate:trade.easternDate, settled:0, wins:0, losses:0, feesCents:0, pnlCents:0 };
       day.settled += 1;
@@ -588,13 +630,19 @@ async function restartDailyPnlDiagnostics(req, res) {
       day.feesCents += trade.feesCents;
       day.pnlCents += trade.pnlCents;
       byDay.set(trade.easternDate, day);
+      const sk=trade.easternDate+'|'+trade.service;
+      const svc=byServiceDay.get(sk) ?? {easternDate:trade.easternDate,service:trade.service,settled:0,wins:0,losses:0,feesCents:0,pnlCents:0};
+      svc.settled+=1;svc.wins+=trade.won?1:0;svc.losses+=trade.won?0:1;svc.feesCents+=trade.feesCents;svc.pnlCents+=trade.pnlCents;
+      byServiceDay.set(sk,svc);
     }
     const days = [...byDay.values()].sort((a,b) => a.easternDate.localeCompare(b.easternDate));
+    const byService = [...byServiceDay.values()].sort((a,b)=>a.easternDate.localeCompare(b.easternDate)||a.service.localeCompare(b.service));
     const payload = {
       restartAt:'2026-09-22T20:09:04-04:00',
       dashboardRebuiltAt:'2026-09-22T23:45:03-04:00',
       method:'actual_exchange_fills_plus_canonical_market_results',
       days,
+      byService,
       totalPnlCents:days.reduce((s,d)=>s+d.pnlCents,0),
       settledTrades:trades.length,
     };
