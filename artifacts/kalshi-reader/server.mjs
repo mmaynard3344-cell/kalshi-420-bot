@@ -917,7 +917,7 @@ function serveStatic(req, res, url) {
   if (!existsSync(filePath)) return send(res, 404, 'UI build not found');
   res.writeHead(200, {
     'content-type': CONTENT_TYPES[extname(filePath)] ?? 'application/octet-stream',
-    'cache-control': filePath.endsWith('.html') ? 'no-store' : 'public, max-age=31536000, immutable',
+    'cache-control': (filePath.endsWith('.html') || filePath.endsWith('pnl-runtime.js')) ? 'no-store' : 'public, max-age=31536000, immutable',
     'x-content-type-options': 'nosniff',
   });
   if (req.method === 'HEAD') return res.end();
