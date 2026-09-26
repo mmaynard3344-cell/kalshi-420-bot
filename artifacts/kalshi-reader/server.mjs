@@ -1192,17 +1192,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Read-only ETH 420 operator UI listening on ${port}`);
-  setTimeout(async () => {
-    for (const path of ['/api/diagnostics/restart-daily-pnl','/api/diagnostics/service-ledger-today']) {
-      try {
-        const response = await fetch('http://127.0.0.1:' + port + path, { headers:{ accept:'application/json' } });
-        const body = await response.text();
-        console.log('SELF_RECONCILE_DIAGNOSTIC', path, response.status, body);
-      } catch (error) {
-        console.error('SELF_RECONCILE_DIAGNOSTIC_FAILED', path, String(error?.message ?? error));
-      }
-    }
-  }, 1500);
   void Promise.all([
     graceJson('/api/trade/status').then((s) => console.log('TRADE_STATUS_PNL_DIAGNOSTIC', JSON.stringify({
       date: s?.date ?? null,
