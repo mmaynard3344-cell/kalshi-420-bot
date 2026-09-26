@@ -1193,12 +1193,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Read-only ETH 420 operator UI listening on ${port}`);
-  setTimeout(async()=>{try{
-    const r=await fetch('http://127.0.0.1:'+port+'/api/diagnostics/restart-daily-pnl');
-    const x=await r.json();
-    const d=(x?.days??[]).find(v=>v?.easternDate===easternDateKey());
-    console.log('CORRECTED_TODAY_PNL_VERIFY',JSON.stringify(d??null));
-  }catch(error){console.error('CORRECTED_TODAY_PNL_VERIFY_FAILED',String(error?.message??error))}},1200);
   void Promise.all([
     graceJson('/api/trade/status').then((s) => console.log('TRADE_STATUS_PNL_DIAGNOSTIC', JSON.stringify({
       date: s?.date ?? null,
