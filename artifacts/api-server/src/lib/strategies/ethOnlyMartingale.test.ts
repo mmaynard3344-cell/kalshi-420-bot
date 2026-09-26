@@ -173,6 +173,38 @@ test("daily loss -250 boundary is enforced by the shared preflight-and-placement
   }
 });
 
+test("Service A forces YES even when persisted sequence state is NO", async () => {
+  const restore = setEnabled();
+  const now = Date.now();
+  let reserved: { side: string; step: number; requestedContracts: number } | null = null;
+  _setEthNoMartingaleDependenciesForTesting({
+    now: () => now,
+    isEthOrderSubmissionPermitted: () => true,
+    authFetch: async () => ({ order: { order_id: "service-a-always-yes", status: "resting", fill_count_fp: "0.00" } }),
+    store: makeStore({
+      getEthMartingaleState: async () => ({
+        easternDate: easternDay(new Date(now)), side: "no", martingaleStep: 6,
+        spentCents: 0, realizedPnlCents: 0,
+      }),
+      reserveEthMartingaleEntry: async (entry: any) => {
+        reserved = {
+          side: entry.side,
+          step: entry.martingaleStep,
+          requestedContracts: entry.requestedContracts,
+        };
+        return true;
+      },
+    }),
+  } as any);
+  try {
+    await runEthPreflightAndPlacement({ state: openMarket("KXETH15M-service-a-always-yes", now) });
+    assert.deepEqual(reserved, { side: "yes", step: 6, requestedContracts: 8 });
+  } finally {
+    _setEthNoMartingaleDependenciesForTesting(null);
+    restore();
+  }
+});
+
 test("shared gateway uses an explicitly supplied side and step without changing legacy defaults", async () => {
   const restore = setEnabled();
   const now = Date.now();
@@ -505,9 +537,13 @@ test("ETH-only final entry boundary permanently rejects DOGE and BTC policy esca
 
 // ── principal ladder ──────────────────────────────────────────────────────────
 
-test("ETH uses exactly three principals [1500, 3000, 6000] and clamps at step 2", () => {
-  assert.deepEqual(ETH_PRINCIPALS_CENTS, [1500, 3000, 6000]);
-  assert.deepEqual([0, 1, 2, 3, 4].map(ethPrincipalForStep), [1500, 3000, 6000, 6000, 6000]);
+test("Service A uses the 13-step 50/50/100/200/200/200/400/400/800x5 cent ladder", () => {
+  assert.deepEqual(ETH_PRINCIPALS_CENTS, [50, 50, 100, 200, 200, 200, 400, 400, 800, 800, 800, 800, 800]);
+  assert.deepEqual(
+    Array.from({ length: 13 }, (_, step) => ethPrincipalForStep(step)),
+    [50, 50, 100, 200, 200, 200, 400, 400, 800, 800, 800, 800, 800],
+  );
+  assert.equal(ethPrincipalForStep(13), 800, "out-of-range reads clamp at the final rung");
 });
 
 // ── GTC payload correctness ───────────────────────────────────────────────────
