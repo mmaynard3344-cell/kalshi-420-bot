@@ -119,29 +119,38 @@ function renderShadow(d){
 function renderPnl(fills,orders,owners,ledgerToday,marketResults,bigBetRows){
   const canonicalResults=new Map((Array.isArray(marketResults?.rows)?marketResults.rows:[]).map(r=>[String(r?.ticker??''),String(r?.result??'').toLowerCase()]));
   const canonicalBigBets=new Map((Array.isArray(bigBetRows?.rows)?bigBetRows.rows:[]).map(r=>[(String(r?.strategy??'').toLowerCase()+'|'+String(r?.ticker??'')),r]));
-  const fm=fillsByOrder(fills,orders,owners,canonicalResults),td=today(),settled=[...fm.values()].filter(x=>x.result&&x.netCents!=null&&dk(x.atMs)===td);
-  const wins=settled.filter(x=>x.won).length,losses=settled.length-wins,fees=settled.reduce((s,x)=>s+x.feesCents,0);
-  const total=num(ledgerToday?.totalPnlCents);
-  $('pnl').textContent=total==null?'—':money(total);
-  $('pnl').className='metric '+(total==null?'':total>0?'good':total<0?'bad':'');
-  const durableSettled=num(ledgerToday?.settledCount);
-  $('settled').textContent=durableSettled==null?String(settled.length):String(durableSettled);
+  const fm=fillsByOrder(fills,orders,owners,canonicalResults);
+  for(const row of fm.values()){
+    const strategyKey=row.service==='B · Jump'?'jump':row.service==='C · Reversal'?'reversal':'';
+    if(!strategyKey)continue;
+    const canonical=canonicalBigBets.get(strategyKey+'|'+row.ticker);
+    if(!canonical)continue;
+    const contracts=num(canonical?.filled_contracts),avg=num(canonical?.fill_price_cents),fees=num(canonical?.actual_fee_cents),pnl=num(canonical?.canonical_pnl_cents);
+    const result=String(canonical?.market_result??'').toLowerCase();
+    if(contracts!=null)row.contracts=contracts;
+    if(avg!=null)row.avgFillPriceCents=avg;
+    if(fees!=null)row.feesCents=fees;
+    if(result==='yes'||result==='no'){row.result=result;row.won=row.side===result}
+    row.netCents=pnl;
+  }
+  const td=today(),settled=[...fm.values()].filter(x=>x.result&&x.netCents!=null&&dk(x.atMs)===td);
+  const wins=settled.filter(x=>x.won).length,losses=settled.length-wins,fees=settled.reduce((s,x)=>s+Number(x.feesCents||0),0);
+  const total=settled.reduce((s,x)=>s+Number(x.netCents||0),0);
+  $('pnl').textContent=money(total);
+  $('pnl').className='metric '+(total>0?'good':total<0?'bad':'');
+  $('settled').textContent=String(settled.length);
   $('wins').textContent=String(wins);$('losses').textContent=String(losses);$('fees').textContent=money(fees,false);
-  const ledgerRows=Array.isArray(ledgerToday?.byService)?ledgerToday.byService:[];
-  const svc=SERVICES.map(name=>{
-    const r=ledgerRows.find(x=>x?.service===name);
-    return{name,n:num(r?.settled,0)||0,pnl:num(r?.pnlCents,0)||0};
-  }).filter(x=>x.n>0||x.name!=='Unattributed');
+  const byService=new Map();
+  for(const row of settled){
+    const name=row.service||'Unattributed',prior=byService.get(name)||{name,n:0,pnl:0};
+    prior.n+=1;prior.pnl+=Number(row.netCents||0);byService.set(name,prior);
+  }
+  const svc=SERVICES.map(name=>byService.get(name)||{name,n:0,pnl:0}).filter(x=>x.n>0||x.name!=='Unattributed');
   $('serviceRows').innerHTML=svc.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${x.n}</td><td class="num ${x.pnl>0?'good':x.pnl<0?'bad':''}">${money(x.pnl)}</td></tr>`).join('');
   const rows=orders.filter(eth).sort((a,b)=>(ms(b)||0)-(ms(a)||0)).slice(0,100);
   $('tradeCount').textContent=rows.length+' recent';
   $('tradeRows').innerHTML=rows.length?rows.map(o=>{
-    const f=fm.get(oid(o)),t=ms(o),svc=service(o,owners),strategyKey=svc==='B · Jump'?'jump':svc==='C · Reversal'?'reversal':'';
-    const canonical=strategyKey?canonicalBigBets.get(strategyKey+'|'+String(o.ticker??'')):null;
-    const filled=canonical?num(canonical?.filled_contracts):f?.contracts??num(o?.fill_count_fp,o?.filled_count_fp,o?.filled_count,o?.filledContracts);
-    const avg=canonical?num(canonical?.fill_price_cents):f?.avgFillPriceCents;
-    const pnl=canonical?num(canonical?.canonical_pnl_cents):f?.netCents;
-    const fee=canonical?num(canonical?.actual_fee_cents):f?.feesCents;
+    const f=fm.get(oid(o)),t=ms(o),svc=service(o,owners),filled=f?.contracts??num(o?.fill_count_fp,o?.filled_count_fp,o?.filled_count,o?.filledContracts),avg=f?.avgFillPriceCents,pnl=f?.netCents,fee=f?.feesCents;
     return`<tr><td>${t==null?'—':time(t)}</td><td>${esc(svc)}</td><td>${esc(o.ticker??'—')}</td><td>${esc(String(side(o)||'—').toUpperCase())}</td><td class="num">${esc(requested(o)??'—')}</td><td class="num">${esc(filled??'—')}</td><td class="num">${avg==null?'—':Number(avg).toFixed(1)+'¢'}</td><td>${esc(status(o)||'—')}</td><td class="num">${fee==null?'—':money(fee,false)}</td><td class="num ${pnl>0?'good':pnl<0?'bad':''}">${pnl==null?'Pending':money(pnl)}</td></tr>`
   }).join(''):'<tr><td colspan="10" class="empty">No Sep. 22-forward ETH orders.</td></tr>';
 }
