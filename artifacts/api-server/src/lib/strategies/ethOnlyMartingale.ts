@@ -1,9 +1,10 @@
 /**
  * Execution-only ETH strategy — KXETH15M series only.
  *
- * Three-step martingale. Principals: $15, $30, $60 (cents: 1500, 3000, 6000).
- * Side starts "no" each ET day. After a win: side flips yes↔no, step=0.
- * After a loss: side unchanged, step increments; after step 2 it resets to 0.
+ * Thirteen-step always-YES ladder. Principals (cents):
+ * 50, 50, 100, 200, 200, 200, 400, 400, 800, 800, 800, 800, 800.
+ * After a win: remain YES and reset to step 0.
+ * After a loss: remain YES and advance one step; after step 12 reset to step 0.
  * Daily state resets when the ET day changes (no timer).
  * Fail-closed if current day realized P&L ≤ -$250.00 (-25000 cents).
  *
@@ -51,7 +52,8 @@ export interface EthMarketState {
   status: string | null;
 }
 
-export const ETH_PRINCIPALS_CENTS = [1500, 3000, 6000] as const;
+export const ETH_PRINCIPALS_CENTS = [50, 50, 100, 200, 200, 200, 400, 400, 800, 800, 800, 800, 800] as const;
+export const ETH_MAX_MARTINGALE_STEP = ETH_PRINCIPALS_CENTS.length - 1;
 /** Loss stop: fail closed if realized daily P&L (even-money cents) is at or below this. */
 export const ETH_DAILY_LOSS_STOP_CENTS = -25_000;
 /** A pending row has not entered POST yet, so it can be released after this bound. */
@@ -105,7 +107,7 @@ export function isEthMarketEligible(
 }
 
 export function ethPrincipalForStep(step: number): number {
-  return ETH_PRINCIPALS_CENTS[Math.max(0, Math.min(2, step))]!;
+  return ETH_PRINCIPALS_CENTS[Math.max(0, Math.min(ETH_MAX_MARTINGALE_STEP, step))]!;
 }
 
 /** Kalshi taker fee, rounded up to whole cents as charged by the exchange. */
@@ -899,10 +901,11 @@ export const runEthPreflightAndPlacement: EthPreflightAndPlacementGateway = asyn
       ? (isNewDay ? 0 : sequence.realizedPnlCents)
       : Math.trunc(requestedRealizedPnlCents);
     const effectiveStep = requestedStep == null
-      ? (isNewDay ? 0 : sequence.martingaleStep)
+      ? Math.max(0, Math.min(ETH_MAX_MARTINGALE_STEP, isNewDay ? 0 : sequence.martingaleStep))
       : Math.max(0, Math.trunc(requestedStep));
-    // Side also resets to "no" at the start of each fresh ET day.
-    const effectiveSide: "yes" | "no" = requestedSide ?? (isNewDay ? "no" : sequence.side);
+    // Service A is permanently YES. Explicit side overrides are retained only
+    // for other isolated callers that reuse this execution gateway.
+    const effectiveSide: "yes" | "no" = requestedSide ?? "yes";
 
     // Fail closed: loss stop
     if (effectivePnl <= dailyLossStopCents) {
@@ -992,10 +995,10 @@ export async function getEthMartingalePriorOrderSideHints(): Promise<Array<{
       ticker: row.ticker,
       persistedSide: row.side,
       persistedStep: row.martingaleStep,
-      winNextSide: row.side === "yes" ? "no" : "yes",
+      winNextSide: "yes",
       winNextStep: 0,
-      lossNextSide: row.side,
-      lossNextStep: row.martingaleStep >= 2 ? 0 : row.martingaleStep + 1,
+      lossNextSide: "yes",
+      lossNextStep: row.martingaleStep >= ETH_MAX_MARTINGALE_STEP ? 0 : row.martingaleStep + 1,
       createdAtMs: row.createdAtMs,
     }));
 }
