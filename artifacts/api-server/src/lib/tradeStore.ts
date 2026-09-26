@@ -10931,8 +10931,8 @@ export function nextEthMartingaleSequence(
 ): { side: "yes" | "no"; step: number } {
   const won = result === orderSide;
   return {
-    side: won ? (orderSide === "yes" ? "no" : "yes") : orderSide,
-    step: won ? 0 : orderStep >= 5 ? 0 : orderStep + 1,
+    side: "yes",
+    step: won ? 0 : orderStep >= 12 ? 0 : orderStep + 1,
   };
 }
 
