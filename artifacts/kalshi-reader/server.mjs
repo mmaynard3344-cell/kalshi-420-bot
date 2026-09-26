@@ -650,6 +650,7 @@ async function restartDailyPnlDiagnostics(req, res) {
     if (req.method === 'HEAD') return send(res, 200, '', 'application/json; charset=utf-8');
     console.log('DAILY_SERIES_CHECK ' + JSON.stringify(payload.days));
     console.log('SERVICE_DAY_CHECK ' + JSON.stringify(payload.byService));
+    console.log('A_REPLAY_SEQUENCE ' + JSON.stringify(trades.filter(t=>t.service==='A · Regular').sort((a,b)=>a.atMs-b.atMs).map(t=>({atMs:t.atMs,day:t.easternDate,side:t.side,result:t.result,won:t.won,priceCents:Math.round((t.principalCents/t.contracts)*100)/100,contracts:t.contracts,feeCents:t.feesCents}))));
     return send(res, 200, JSON.stringify(payload), 'application/json; charset=utf-8');
   } catch (error) {
     console.error('Restart daily P&L diagnostic failed', error);
