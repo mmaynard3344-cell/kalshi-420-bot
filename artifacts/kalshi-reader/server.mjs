@@ -648,32 +648,7 @@ async function restartDailyPnlDiagnostics(req, res) {
       settledTrades:trades.length,
     };
     if (req.method === 'HEAD') return send(res, 200, '', 'application/json; charset=utf-8');
-    console.log('DAILY_SERIES_CHECK ' + JSON.stringify(payload.days));
-    console.log('SERVICE_DAY_CHECK ' + JSON.stringify(payload.byService));
-    console.log('A_REPLAY_SEQUENCE ' + JSON.stringify(trades.filter(t=>t.service==='A · Regular').sort((a,b)=>a.atMs-b.atMs).map(t=>({atMs:t.atMs,day:t.easternDate,side:t.side,result:t.result,won:t.won,priceCents:Math.round((t.principalCents/t.contracts)*100)/100,contracts:t.contracts,feeCents:t.feesCents}))));
-    const aSeq = trades.filter(t=>t.service==='A · Regular').sort((a,b)=>a.atMs-b.atMs);
-    const replayLadder = (name, principals) => {
-      let step=0, day=null, cum=0, peak=0, maxDrawdown=0, maxRisk=0, totalFees=0, wins=0, losses=0, step6Uses=0;
-      const byDay=new Map();
-      for (const t of aSeq) {
-        if (t.easternDate!==day) { day=t.easternDate; step=0; }
-        const principal=principals[step];
-        const contracts=Math.max(1,Math.floor(principal/50));
-        const px=t.contracts>0?t.principalCents/t.contracts:50;
-        const fee=Math.ceil(0.07*contracts*px*(100-px)/100);
-        const pnl=(t.won?contracts*100:0)-Math.round(contracts*px)-fee;
-        if(step===5)step6Uses++;
-        cum+=pnl; totalFees+=fee; wins+=t.won?1:0; losses+=t.won?0:1; maxRisk=Math.max(maxRisk,Math.round(contracts*px)+fee);
-        peak=Math.max(peak,cum); maxDrawdown=Math.max(maxDrawdown,peak-cum);
-        const d=byDay.get(t.easternDate)??{day:t.easternDate,pnlCents:0,trades:0}; d.pnlCents+=pnl; d.trades++; byDay.set(t.easternDate,d);
-        if(t.won) step=0; else step=step>=5?0:step+1;
-      }
-      return {name,principals,totalPnlCents:cum,totalFeesCents:totalFees,maxDrawdownCents:maxDrawdown,maxSingleTradeRiskCents:maxRisk,wins,losses,step6Uses,byDay:[...byDay.values()]};
-    };
-    console.log('A_LADDER_REPLAY ' + JSON.stringify([
-      replayLadder('current',[50,50,50,100,250,300]),
-      replayLadder('pre_scale',[1500,3000,6000,12000,24000,32000])
-    ]));
+
     return send(res, 200, JSON.stringify(payload), 'application/json; charset=utf-8');
   } catch (error) {
     console.error('Restart daily P&L diagnostic failed', error);
@@ -1219,7 +1194,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Read-only ETH 420 operator UI listening on ${port}`);
-  setTimeout(async()=>{try{await fetch('http://127.0.0.1:'+port+'/api/diagnostics/restart-daily-pnl')}catch{}},1200);
   void Promise.all([
     graceJson('/api/trade/status').then((s) => console.log('TRADE_STATUS_PNL_DIAGNOSTIC', JSON.stringify({
       date: s?.date ?? null,
