@@ -13,7 +13,7 @@ export const ETH_ASHLEY_MIN_DECLINE_RATIO = 0.0070;
 export const ETH_ASHLEY_MAX_DECLINE_RATIO = 0.0095;
 export const ETH_ASHLEY_WAGER_CENTS = positiveIntegerEnv("ETH_H_WAGER_CENTS", 22_000);
 export const ETH_ASHLEY_LIMIT_PRICE_CENTS = 50;
-export const ETH_ASHLEY_ENTRY_WINDOW_MS = 120_000;
+export const ETH_ASHLEY_ENTRY_WINDOW_MS = 15 * 60_000;
 export const ETH_ASHLEY_ORDER_TAG = "eth-ashley-h-v1";
 
 export interface EthAshleyEvidence {
