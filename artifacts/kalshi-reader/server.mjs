@@ -648,6 +648,24 @@ async function restartDailyPnlDiagnostics(req, res) {
       fillActionsToday[k] = (fillActionsToday[k] ?? 0) + 1;
     }
     console.log('FILL_ACTION_DIAGNOSTIC', JSON.stringify(fillActionsToday));
+    const rawFillSample = [...byFillId.values()]
+      .filter(item => pnlDiagDay(item.atMs) === easternDateKey())
+      .slice(0, 24)
+      .map(item => {
+        const raw=item.fill??{};
+        return {
+          service:ownership.get(item.orderId)??'Unattributed',
+          ticker:item.ticker,
+          orderId:item.orderId,
+          action:raw?.action??raw?.order_action??null,
+          side:raw?.side??raw?.order_side??raw?.outcome_side??null,
+          yes_price:raw?.yes_price_dollars??raw?.yes_price??null,
+          no_price:raw?.no_price_dollars??raw?.no_price??null,
+          count:raw?.count_fp??raw?.count??null,
+          fee:raw?.fee_cost_dollars??raw?.fee_cost??null
+        };
+      });
+    console.log('RAW_FILL_SAMPLE_DIAGNOSTIC', JSON.stringify(rawFillSample));
     const payload = {
       restartAt:'2026-09-22T20:09:04-04:00',
       dashboardRebuiltAt:'2026-09-22T23:45:03-04:00',
