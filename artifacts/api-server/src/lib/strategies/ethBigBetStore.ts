@@ -386,3 +386,54 @@ export async function listUnresolvedEthBigBetOrderIds(strategy?: EthBigBetStrate
     .map((row) => String(row["id"] ?? ""))
     .filter(Boolean);
 }
+
+
+/** Read-only bounded dashboard view of big-bet strategy orders. */
+export async function listRecentEthBigBetOrders(
+  strategy: EthBigBetStrategy,
+  limit = 50,
+): Promise<{ available: boolean; orders: EthBigBetLedgerRow[] }> {
+  const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit) || 50));
+  try {
+    const db = await getDb();
+    const result = await db.execute(sql`
+      SELECT id, strategy, order_tag, ticker, market_open_time_ms, side,
+             wager_cents, limit_price_cents, requested_contracts,
+             kalshi_order_id, status, filled_contracts, actual_notional_cents,
+             actual_fee_cents, fill_price_cents, settlement_result,
+             realized_pnl_cents, created_at_ms, updated_at_ms
+      FROM eth_big_bet_orders
+      WHERE strategy=${strategy}
+      ORDER BY created_at_ms DESC
+      LIMIT ${safeLimit}
+    `);
+    const rows = (result as { rows?: Array<Record<string, unknown>> }).rows ?? [];
+    return {
+      available: true,
+      orders: rows.map((row) => ({
+        id: String(row["id"]),
+        strategy: String(row["strategy"]) as EthBigBetStrategy,
+        orderTag: String(row["order_tag"]),
+        ticker: String(row["ticker"]),
+        marketOpenTimeMs: Number(row["market_open_time_ms"]),
+        side: row["side"] === "no" ? "no" as const : "yes" as const,
+        wagerCents: Number(row["wager_cents"]),
+        limitPriceCents: Number(row["limit_price_cents"]),
+        requestedContracts: Number(row["requested_contracts"]),
+        kalshiOrderId: row["kalshi_order_id"] == null ? null : String(row["kalshi_order_id"]),
+        status: String(row["status"]) as EthBigBetOrderStatus,
+        filledContracts: row["filled_contracts"] == null ? null : Number(row["filled_contracts"]),
+        actualNotionalCents: row["actual_notional_cents"] == null ? null : Number(row["actual_notional_cents"]),
+        actualFeeCents: row["actual_fee_cents"] == null ? null : Number(row["actual_fee_cents"]),
+        fillPriceCents: row["fill_price_cents"] == null ? null : Number(row["fill_price_cents"]),
+        settlementResult: row["settlement_result"] === "yes" || row["settlement_result"] === "no"
+          ? row["settlement_result"] as EthBigBetSide : null,
+        realizedPnlCents: row["realized_pnl_cents"] == null ? null : Number(row["realized_pnl_cents"]),
+        createdAtMs: Number(row["created_at_ms"]),
+        updatedAtMs: Number(row["updated_at_ms"]),
+      })),
+    };
+  } catch {
+    return { available: false, orders: [] };
+  }
+}
