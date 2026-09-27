@@ -91,6 +91,7 @@ import {
 } from "../lib/week2EntryPolicy.js";
 import { isManualNewOrderSubmissionDisabled } from "../lib/manualOrderBoundary.js";
 import { ETH_PRINCIPALS_CENTS, getEthMartingaleBlockerStatus, reconcileEthMartingaleSettlements } from "../lib/strategies/ethOnlyMartingale.js";
+import { listRecentEthBigBetOrders, type EthBigBetLedgerRow } from "../lib/strategies/ethBigBetStore.js";
 import { ETH_MARTINGALE_ACTIVE_GENERATION_STARTED_AT_MS } from "../lib/tradeStore.js";
 
 const router = Router();
@@ -2188,6 +2189,7 @@ export async function loadEth420CandidateHistoryData(
 export function buildEth420CandidateHistoryResponse(
   data: Eth420CandidateHistoryData,
   nowMs: number = Date.now(),
+  der200Ledger: { available: boolean; orders: EthBigBetLedgerRow[] } = { available: true, orders: [] },
 ): Record<string, unknown> {
   const { entries, state, recentOrders, telemetry, dailyPnl } = data;
   const orders = recentOrders.orders;
@@ -2233,6 +2235,27 @@ export function buildEth420CandidateHistoryResponse(
       : !stateConsistent && orders.length > 0
         ? { status: "blocked_missing_or_inconsistent_state", reason: "durable_state_unavailable_or_invalid" }
         : { status: "unavailable_pending_market_evaluation", reason: "no_persisted_current_evaluation" };
+  const transactionOrders = [
+    ...orders.map((order) => ({ ...order, service: "ETH420" })),
+    ...der200Ledger.orders.map((order) => ({
+      id: order.id,
+      ticker: order.ticker,
+      side: order.side,
+      step: 0,
+      requestedContracts: order.requestedContracts,
+      effectiveWagerCents: order.wagerCents,
+      filledContracts: order.filledContracts,
+      realizedPnlDeltaCents: order.realizedPnlCents,
+      status: order.status,
+      settlementResult: order.settlementResult,
+      actualNotionalDollars: order.actualNotionalCents == null ? null : (order.actualNotionalCents / 100).toFixed(2),
+      actualFeeDollars: order.actualFeeCents == null ? null : (order.actualFeeCents / 100).toFixed(2),
+      fillPriceCents: order.fillPriceCents,
+      createdAtMs: order.createdAtMs,
+      service: "DER200",
+    })),
+  ].sort((left, right) => right.createdAtMs - left.createdAtMs);
+
   return {
     label: "ETH_420_6_STEP_RESET_SHADOW_ONLY",
     counterfactual: true,
@@ -2243,6 +2266,8 @@ export function buildEth420CandidateHistoryResponse(
     state,
     orders,
     ordersAvailability: { available: recentOrders.available },
+    transactionOrders,
+    transactionOrdersAvailability: { available: recentOrders.available && der200Ledger.available },
     finalizedReconciliation: {
       available: recentOrders.available,
       thresholdMs: ETH_420_FINALIZED_RECONCILIATION_ALERT_THRESHOLD_MS,
@@ -2272,7 +2297,11 @@ export function buildEth420CandidateHistoryResponse(
 /** Read-only, explicitly counterfactual ETH 420 rehearsal history. */
 router.get("/trade/analytics/eth420-candidate-history", requireTradeAuth, async (req, res) => {
   const limit = Math.min(500, Math.max(1, Number(req.query["limit"] ?? 100) || 100));
-  res.json(buildEth420CandidateHistoryResponse(await loadEth420CandidateHistoryData(limit)));
+  const [history, der200Ledger] = await Promise.all([
+    loadEth420CandidateHistoryData(limit),
+    listRecentEthBigBetOrders("der200", Math.min(limit, 100)),
+  ]);
+  res.json(buildEth420CandidateHistoryResponse(history, Date.now(), der200Ledger));
 });
 
 /**
