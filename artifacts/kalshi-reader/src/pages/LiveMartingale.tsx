@@ -65,6 +65,8 @@ interface Eth420CandidateData {
   executionApproved: boolean; liveEnabled: boolean; shadowEnabled: boolean;
   state: { easternDate: string; side: 'yes' | 'no'; step: number; realizedPnlCents: number } | null;
   orders: Array<{ id: string; ticker: string; side: 'yes' | 'no'; step: number; requestedContracts: number; effectiveWagerCents: number; filledContracts: number | null; realizedPnlDeltaCents: number | null; status: string; settlementResult: string | null; lastRecoveryOutcome?: string | null; actualNotionalDollars?: string | null; actualFeeDollars?: string | null; fillPriceCents?: number | null; createdAtMs: number }>;
+  transactionOrders?: Array<{ id: string; ticker: string; service?: string; side: 'yes' | 'no'; step: number; requestedContracts: number; effectiveWagerCents: number; filledContracts: number | null; realizedPnlDeltaCents: number | null; status: string; settlementResult: string | null; actualNotionalDollars?: string | null; actualFeeDollars?: string | null; fillPriceCents?: number | null; createdAtMs: number }>;
+  transactionOrdersAvailability?: { available: boolean };
   ordersAvailability: { available: boolean };
   finalizedReconciliation: {
     available: boolean;
@@ -162,21 +164,23 @@ function formatConfirmedCloseTime(value: string | null | undefined): string {
 export function Eth420DailyTransactionLog({
   data,
 }: {
-  data: Pick<Eth420CandidateData, 'orders' | 'ordersAvailability'>;
+  data: Pick<Eth420CandidateData, 'orders' | 'ordersAvailability' | 'transactionOrders' | 'transactionOrdersAvailability'>;
 }) {
-  const orderHistoryDisplay = getEth420OrderHistoryDisplayState(data);
-  // Keep every record the refreshed history endpoint returns, newest first.
-  // A display-only date boundary here would hide new candidate orders.
-  const transactionOrders = [...data.orders].sort((left, right) => right.createdAtMs - left.createdAtMs);
+  const orderHistoryDisplay = getEth420OrderHistoryDisplayState({
+    ordersAvailability: data.transactionOrdersAvailability ?? data.ordersAvailability,
+  });
+  // Combined read-only feed: existing candidate orders plus DER200.
+  const transactionOrders = [...(data.transactionOrders ?? data.orders)]
+    .sort((left, right) => right.createdAtMs - left.createdAtMs);
 
   return <section className="p-4 sm:p-5">
     <div className="flex flex-wrap items-baseline justify-between gap-3">
-      <div><p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Read-only order ledger</p><h3 className="mt-1 text-lg font-semibold tracking-tight">Daily transaction log</h3><p className="mt-1 text-sm text-muted-foreground">Latest candidate orders from the existing history interface; refreshed automatically every 30 seconds.</p></div>
+      <div><p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Read-only order ledger</p><h3 className="mt-1 text-lg font-semibold tracking-tight">Daily transaction log</h3><p className="mt-1 text-sm text-muted-foreground">Latest ETH strategy orders, including DER200, from the durable ledgers; refreshed automatically every 30 seconds.</p></div>
       <span className="font-mono text-[10px] uppercase text-muted-foreground">{transactionOrders.length} records shown</span>
     </div>
     <div className="mt-5 overflow-x-auto border border-border">
       {orderHistoryDisplay.kind === 'unavailable' ? <div className="p-6 text-center text-sm font-mono text-muted-foreground">{orderHistoryDisplay.detail}</div> : transactionOrders.length === 0 ? <div className="p-6 text-center text-sm font-mono text-muted-foreground">No candidate orders are currently available.</div> :
-        <table className="w-full min-w-[900px] text-left font-mono text-xs"><thead className="bg-muted/30 text-[10px] uppercase text-muted-foreground"><tr><th className="p-3">ET day / time</th><th className="p-3">Ticker</th><th className="p-3">Step</th><th className="p-3">Side</th><th className="p-3 text-right">Requested / filled</th><th className="p-3 text-right">Wager</th><th className="p-3">Status</th><th className="p-3 text-right">Realized P&amp;L</th></tr></thead><tbody className="divide-y divide-border">{transactionOrders.map((order) => <tr key={order.id}><td className="p-3 whitespace-nowrap">{displayEasternDate(easternDateKey(order.createdAtMs))} · {easternClock(order.createdAtMs)}</td><td className="p-3 max-w-56 truncate" title={order.ticker}>{order.ticker}</td><td className="p-3">Step {order.step}</td><td className="p-3 uppercase">{order.side}</td><td className="p-3 text-right">{order.requestedContracts} / {order.filledContracts ?? '—'}</td><td className="p-3 text-right">${(order.effectiveWagerCents / 100).toFixed(2)}</td><td className="p-3 uppercase">{order.status.replaceAll('_', ' ')}{order.settlementResult ? ` · ${order.settlementResult}` : ''}</td><td className={cn('p-3 text-right font-medium', (order.realizedPnlDeltaCents ?? 0) > 0 ? 'text-emerald-600' : (order.realizedPnlDeltaCents ?? 0) < 0 ? 'text-destructive' : '')}>{order.realizedPnlDeltaCents == null ? 'Pending' : formatCandidatePnl(order.realizedPnlDeltaCents)}</td></tr>)}</tbody></table>}
+        <table className="w-full min-w-[1120px] text-left font-mono text-xs"><thead className="bg-muted/30 text-[10px] uppercase text-muted-foreground"><tr><th className="p-3">ET day / time</th><th className="p-3">Service</th><th className="p-3">Ticker</th><th className="p-3">Step</th><th className="p-3">Side</th><th className="p-3 text-right">Requested / filled</th><th className="p-3 text-right">Avg fill</th><th className="p-3 text-right">Fee</th><th className="p-3 text-right">Wager</th><th className="p-3">Status</th><th className="p-3 text-right">Realized P&amp;L</th></tr></thead><tbody className="divide-y divide-border">{transactionOrders.map((order) => <tr key={order.id}><td className="p-3 whitespace-nowrap">{displayEasternDate(easternDateKey(order.createdAtMs))} · {easternClock(order.createdAtMs)}</td><td className="p-3 font-medium">{order.service ?? 'ETH420'}</td><td className="p-3 max-w-56 truncate" title={order.ticker}>{order.ticker}</td><td className="p-3">{order.service === 'DER200' ? '—' : `Step ${order.step}`}</td><td className="p-3 uppercase">{order.side}</td><td className="p-3 text-right">{order.requestedContracts} / {order.filledContracts ?? '—'}</td><td className="p-3 text-right">{order.fillPriceCents == null ? '—' : `${order.fillPriceCents.toFixed(1)}¢`}</td><td className="p-3 text-right">{order.actualFeeDollars == null ? '—' : `${Number(order.actualFeeDollars).toFixed(2)}`}</td><td className="p-3 text-right">${(order.effectiveWagerCents / 100).toFixed(2)}</td><td className="p-3 uppercase">{order.status.replaceAll('_', ' ')}{order.settlementResult ? ` · ${order.settlementResult}` : ''}</td><td className={cn('p-3 text-right font-medium', (order.realizedPnlDeltaCents ?? 0) > 0 ? 'text-emerald-600' : (order.realizedPnlDeltaCents ?? 0) < 0 ? 'text-destructive' : '')}>{order.realizedPnlDeltaCents == null ? 'Pending' : formatCandidatePnl(order.realizedPnlDeltaCents)}</td></tr>)}</tbody></table>}
     </div>
     <p className="mt-3 text-xs text-muted-foreground">This read-only table does not create, change, reconcile, or backfill records.</p>
   </section>;
