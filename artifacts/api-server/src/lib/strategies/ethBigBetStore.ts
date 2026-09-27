@@ -56,7 +56,7 @@ export function isEthBigBetTerminalStatus(status: EthBigBetOrderStatus): boolean
 }
 
 export function validateEthBigBetIntentForStorage(intent: EthBigBetOrderIntent): boolean {
-  return (intent.strategy === "jump" || intent.strategy === "reversal")
+  return (intent.strategy === "jump" || intent.strategy === "reversal" || intent.strategy === "der200")
     && /^KXETH15M-/.test(intent.ticker)
     && (intent.side === "yes" || intent.side === "no")
     && Number.isInteger(intent.marketOpenTimeMs)
@@ -105,7 +105,7 @@ export async function initEthBigBetStore(): Promise<void> {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS eth_big_bet_orders (
       id text PRIMARY KEY,
-      strategy text NOT NULL CHECK (strategy IN ('jump', 'reversal')),
+      strategy text NOT NULL CHECK (strategy IN ('jump', 'reversal', 'der200')),
       order_tag text NOT NULL,
       ticker text NOT NULL,
       market_open_time_ms bigint NOT NULL,
@@ -126,6 +126,13 @@ export async function initEthBigBetStore(): Promise<void> {
       UNIQUE (strategy, ticker),
       UNIQUE (order_tag, ticker)
     )
+  `);
+  await db.execute(sql`
+    ALTER TABLE eth_big_bet_orders
+      DROP CONSTRAINT IF EXISTS eth_big_bet_orders_strategy_check;
+    ALTER TABLE eth_big_bet_orders
+      ADD CONSTRAINT eth_big_bet_orders_strategy_check
+      CHECK (strategy IN ('jump', 'reversal', 'der200'))
   `);
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS eth_big_bet_orders_unresolved_idx
@@ -187,7 +194,48 @@ export async function reserveEthBigBetIntentWithCapital(params: {
   try {
     return await db.transaction(async (tx) => {
       // Stable project-local key; transaction-scoped so crashes cannot strand it.
+      // A, B/C, Back Flip, and DER200 all use this same lock when deciding
+      // whether DER200 owns a market, closing the cross-process admission race.
       await tx.execute(sql`SELECT pg_advisory_xact_lock(42015000)`);
+
+      if (params.intent.strategy === "der200") {
+        const [aClaim, candidateClaim, otherStrategy] = await Promise.all([
+          tx.execute(sql`
+            SELECT 1 FROM eth_martingale_claims
+            WHERE generation='ETH_NO_MARTINGALE_V2' AND ticker=${params.intent.ticker}
+            LIMIT 1
+          `),
+          tx.execute(sql`
+            SELECT 1 FROM eth420_candidate_live_orders
+            WHERE ticker=${params.intent.ticker}
+              AND status NOT IN ('settled', 'rejected_insufficient_balance')
+            LIMIT 1
+          `),
+          tx.execute(sql`
+            SELECT 1 FROM eth_big_bet_orders
+            WHERE ticker=${params.intent.ticker}
+              AND strategy IN ('jump', 'reversal')
+            LIMIT 1
+          `),
+        ]);
+        const occupied = [aClaim, candidateClaim, otherStrategy].some((result) =>
+          ((result as { rows?: unknown[] }).rows ?? []).length > 0
+        );
+        if (occupied) return "reservation_failed";
+      } else {
+        // A durable DER200 row owns its qualifying market permanently, even if
+        // its exchange submission was rejected or zero-filled. B/C cannot later
+        // reuse the same ticker.
+        const der200Owner = await tx.execute(sql`
+          SELECT 1 FROM eth_big_bet_orders
+          WHERE ticker=${params.intent.ticker} AND strategy='der200'
+          LIMIT 1
+        `);
+        if (((der200Owner as { rows?: unknown[] }).rows ?? []).length > 0) {
+          return "reservation_failed";
+        }
+      }
+
       const otherBigBetReservedCents = await unresolvedCapitalRiskCents(tx);
       if (otherBigBetReservedCents == null) return "reservation_failed";
       const capital = evaluateEthAccountCapital({
