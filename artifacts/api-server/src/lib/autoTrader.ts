@@ -696,6 +696,7 @@ import {
 } from "./strategies/eth420SixStepCandidate.js";
 import { runEthJumpServiceWhenExplicitlyEnabled } from "./strategies/ethJumpLiveRunner.js";
 import { runEthReversalServiceWhenExplicitlyEnabled } from "./strategies/ethReversalLiveRunner.js";
+import { routeDer200WhenExplicitlyEnabled } from "./strategies/der200.js";
 import { currentEthServiceRole, serviceMayRunMartingale } from "./strategies/ethServiceRole.js";
 export type { WindowLogEntry } from "./windowLog";
 export { getWindowLog } from "./windowLog";
@@ -964,14 +965,26 @@ async function evaluate(
   if (isEthTicker(state.ticker)) {
     const ethServiceRole = currentEthServiceRole();
     if (serviceMayRunMartingale(ethServiceRole)) {
-      await (_evaluateEthNoMartingaleImpl ?? evaluateEthNoMartingale)({
+      const der200Route = await routeDer200WhenExplicitlyEnabled({
         ticker: state.ticker,
         exchangeIndex: state.exchangeIndex ?? null,
         openTime: state.openTime,
         closeTime: state.closeTime,
         status: state.status,
+        floorStrike: state.floorStrike ?? null,
       });
-      await evaluateEth420Candidate(state, _timing);
+      // A qualifying DER200 signal owns the whole market. Missing signal
+      // evidence also fails closed rather than allowing A/Back Flip to race it.
+      if (der200Route === "regular") {
+        await (_evaluateEthNoMartingaleImpl ?? evaluateEthNoMartingale)({
+          ticker: state.ticker,
+          exchangeIndex: state.exchangeIndex ?? null,
+          openTime: state.openTime,
+          closeTime: state.closeTime,
+          status: state.status,
+        });
+        await evaluateEth420Candidate(state, _timing);
+      }
     }
   const jumpOpenTimeMs = state.openTime == null ? null : Date.parse(state.openTime);
   await runEthJumpServiceWhenExplicitlyEnabled({
