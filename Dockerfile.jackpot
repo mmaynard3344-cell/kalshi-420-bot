@@ -9,7 +9,10 @@ RUN node artifacts/api-server/scripts/apply-jackpot-reobserve-runaway.mjs
 RUN node artifacts/api-server/scripts/apply-jackpot-v2-repair.mjs
 RUN node artifacts/api-server/scripts/apply-jackpot-next-strike-hydration.mjs
 RUN node artifacts/api-server/scripts/apply-jackpot-morning-sizing.mjs
-# J now uses the core A zero-fill rescue path directly; no V7 signal gate is applied.
+# Restore only the narrow Jackpot execution filter: A still zero/resting at +5s,
+# ask >=73c, ask risen >=2c since +2s, and full J size executable <=75c.
+# This does not restore any separate legacy V7 signal dependency.
+RUN node artifacts/api-server/scripts/apply-jackpot-v7-gate.mjs
 RUN pnpm install --frozen-lockfile
 RUN cd artifacts/api-server && node scripts/run-jackpot-test.mjs && node build-jackpot.mjs
 
