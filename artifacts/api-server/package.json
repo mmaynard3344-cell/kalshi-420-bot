@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:cross-market-shadow": "node scripts/run-cross-market-shadow-test.mjs",
     "test:phase4b": "node scripts/run-phase4b-test.mjs",
     "test:compact-shadow-worker": "node scripts/run-compact-shadow-worker-test.mjs",
     "test:stale-gap-counterfactual": "node scripts/run-stale-gap-counterfactual-test.mjs",

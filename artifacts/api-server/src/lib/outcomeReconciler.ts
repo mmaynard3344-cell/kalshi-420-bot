@@ -160,6 +160,17 @@ async function _reconcile(
         .then(({ enqueueRecoverabilityOutcome }) => enqueueRecoverabilityOutcome(ticker, result as "yes" | "no"))
         .catch((err) => logger.warn({ err }, "recoverabilityCapture: outcome enqueue unavailable"));
     }
+    if (process.env["CROSS_MARKET_SHADOW_ENABLED"] === "true") {
+      try {
+        const [{ refreshCrossMarketShadowSettlement }, store] = await Promise.all([
+          import("./crossMarketShadowStudy.js"),
+          import("./tradeStore.js"),
+        ]);
+        await refreshCrossMarketShadowSettlement(store, ticker, result as "yes" | "no", closeMs);
+      } catch (err) {
+        logger.warn({ err, ticker }, "cross-market shadow settlement enrichment failed");
+      }
+    }
     // Counterfactual ETH 420 rehearsal only. This path consumes the already
     // confirmed market result and persists a zero-fill assumption; it has no
     // exchange order, reservation, claim, or placement behavior.

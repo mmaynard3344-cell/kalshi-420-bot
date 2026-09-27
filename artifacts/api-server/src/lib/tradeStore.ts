@@ -9460,6 +9460,44 @@ export async function listEth30ShadowObservations(ticker: string, afterMs = 0): 
     return [];
   }
 }
+/**
+ * Research-only loader for the frozen BTC/ETH asset-local shadow study.
+ * Returns only on-time open anchors, newest bounded set reordered oldest-first.
+ * It never participates in an execution, claim, balance, or reservation path.
+ */
+export async function listCrossMarketShadowAnchors(
+  asset: "BTC" | "ETH",
+  beforeMs: number,
+  limit = 500,
+): Promise<Eth30ShadowObservationParams[]> {
+  if (!_db || !_healthy) return [];
+  const prefix = asset === "BTC" ? "KXBTC15M-%" : "KXETH15M-%";
+  const safeLimit = Math.max(1, Math.min(2_000, Math.trunc(limit)));
+  try {
+    const result = await _db.execute(sql`
+      SELECT id, ticker, observed_at_ms, payload_json
+      FROM eth30_shadow_observations
+      WHERE ticker LIKE ${prefix}
+        AND observed_at_ms < ${beforeMs}
+        AND payload_json::jsonb ->> 'studyVersion' = 'asset-local-btc-eth-v1'
+        AND payload_json::jsonb ->> 'observationKind' = 'open_anchor'
+        AND payload_json::jsonb ->> 'anchorQuality' = 'on_time'
+      ORDER BY observed_at_ms DESC
+      LIMIT ${safeLimit}
+    `);
+    const rows = (result as unknown as { rows: Array<Record<string, unknown>> }).rows.reverse();
+    return rows.map((row) => ({
+      id: String(row["id"]),
+      ticker: String(row["ticker"]),
+      observedAtMs: Number(row["observed_at_ms"]),
+      payloadJson: String(row["payload_json"]),
+    }));
+  } catch (err) {
+    logger.warn({ err, asset }, "cross-market shadow anchor history unavailable");
+    return [];
+  }
+}
+
 export async function upsertEth30ShadowEvent(params: Eth30ShadowEventParams): Promise<void> {
   if (!_db || !_healthy) return;
   try {

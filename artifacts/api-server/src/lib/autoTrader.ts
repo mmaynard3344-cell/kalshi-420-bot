@@ -133,6 +133,11 @@ import {
   enqueuePhase4BPassiveCapture,
   isPhase4BPassiveCaptureEnabled,
 } from "./phase4b/passiveCapture.js";
+import {
+  isCrossMarketShadowEnabled,
+  observeCrossMarketShadowStudy,
+} from "./crossMarketShadowStudy.js";
+import { getKrakenPrices } from "./krakenPrices.js";
 import type {
   Phase4BCaptureInput,
   Phase4BFinalDecisionClassification,
@@ -810,6 +815,37 @@ function mergeState(
   };
 
   marketState.set(ticker, next);
+
+  // Frozen BTC/ETH asset-local research v1. Attach to the raw WS/REST merge
+  // boundary rather than evaluate(): a trading guard or runtime-health return
+  // must never suppress a passive anchor/checkpoint. Still fire-and-forget.
+  if (isCrossMarketShadowEnabled()) {
+    const threshold = thresholdRuleFromState(next, incomingMs);
+    void observeCrossMarketShadowStudy({
+      store: tradeStore,
+      getReference: async (asset, atMs) => {
+        const prices = await getKrakenPrices(atMs);
+        return { price: asset === "BTC" ? prices.btc : prices.eth, sourceTimestampMs: prices.sourceTimestampMs };
+      },
+      getVisibleDepth: async (marketTicker, side) => {
+        const book = await captureOrderbook(marketTicker, side, 99);
+        return {
+          bestAskCents: book.lowestLevelCents ?? null,
+          depthContracts: book.error ? null : Math.max(0, Math.floor(book.depthAtOrBetterContracts ?? 0)),
+        };
+      },
+    }, {
+      ticker: next.ticker,
+      openTime: next.openTime,
+      closeTime: next.closeTime,
+      floorStrike: threshold.floorStrike,
+      comparisonOperator: threshold.comparisonOperator,
+      yesBid: next.yesBid, yesAsk: next.yesAsk, noBid: next.noBid, noAsk: next.noAsk,
+      quoteUpdatedAtMs: next.bidUpdatedMs,
+      observedAtMs: incomingMs,
+    }).catch((err) => logger.warn({ err, ticker: next.ticker }, "cross-market shadow capture failed"));
+  }
+
   // Append-only research timer registration. It has no path back into
   // evaluation, submission, cancellation, sizing, or strategy state.
   observeEth420BoundaryResearch(next, () => marketState.get(ticker));
