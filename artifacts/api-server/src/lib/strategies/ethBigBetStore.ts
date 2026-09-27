@@ -198,24 +198,22 @@ export async function claimDer200Market(ticker: string, nowMs = Date.now()): Pro
       `);
       if (((existing as { rows?: unknown[] }).rows ?? []).length > 0) return true;
 
-      const [aClaim, candidateClaim, otherStrategy] = await Promise.all([
-        tx.execute(sql`
-          SELECT 1 FROM eth_martingale_claims
-          WHERE generation='ETH_NO_MARTINGALE_V2' AND ticker=${ticker}
-          LIMIT 1
-        `),
-        tx.execute(sql`
-          SELECT 1 FROM eth420_candidate_live_orders
-          WHERE ticker=${ticker}
-            AND status NOT IN ('settled', 'rejected_insufficient_balance')
-          LIMIT 1
-        `),
-        tx.execute(sql`
-          SELECT 1 FROM eth_big_bet_orders
-          WHERE ticker=${ticker} AND strategy IN ('jump', 'reversal')
-          LIMIT 1
-        `),
-      ]);
+      const aClaim = await tx.execute(sql`
+        SELECT 1 FROM eth_martingale_claims
+        WHERE generation='ETH_NO_MARTINGALE_V2' AND ticker=${ticker}
+        LIMIT 1
+      `);
+      const candidateClaim = await tx.execute(sql`
+        SELECT 1 FROM eth420_candidate_live_orders
+        WHERE ticker=${ticker}
+          AND status NOT IN ('settled', 'rejected_insufficient_balance')
+        LIMIT 1
+      `);
+      const otherStrategy = await tx.execute(sql`
+        SELECT 1 FROM eth_big_bet_orders
+        WHERE ticker=${ticker} AND strategy IN ('jump', 'reversal')
+        LIMIT 1
+      `);
       const occupied = [aClaim, candidateClaim, otherStrategy].some((result) =>
         ((result as { rows?: unknown[] }).rows ?? []).length > 0
       );
