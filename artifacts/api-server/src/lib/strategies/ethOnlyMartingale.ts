@@ -196,15 +196,17 @@ type EthUnsettledOrder = Exclude<
 
 
 let ethShardFundingRequested = false;
+const ETH_SHARD_2_TARGET_CENTS = 4_000;
 
 type KalshiIntraTransferResponse = {
   transfer_id?: string;
   status?: string;
 };
 
-export async function requestEthShardFunding(exchangeIndex: number, shortfallCents: number): Promise<void> {
-  if (ethShardFundingRequested || exchangeIndex !== 2) return;
-  if (!Number.isSafeInteger(shortfallCents) || shortfallCents <= 0) return;
+export async function requestEthShardFunding(exchangeIndex: number, shortfallCents: number, preferredCents = 0): Promise<number> {
+  if (ethShardFundingRequested || exchangeIndex !== 2) return 0;
+  if (!Number.isSafeInteger(shortfallCents) || shortfallCents < 0
+    || !Number.isSafeInteger(preferredCents) || preferredCents < 0) return 0;
 
   const sourceRead = await ethDependencies.fetchAccountBalance(0);
   const sourceAvailableCents = kalshiBalanceCents(sourceRead.value);
@@ -214,11 +216,14 @@ export async function requestEthShardFunding(exchangeIndex: number, shortfallCen
   if (sourceRead.stale || sourceAvailableCents == null || sourceAvailableCents < shortfallCents) {
     throw new Error(`exchange 0 has insufficient transferable cash for ${shortfallCents} cent move: ${sourceAvailableCents}`);
   }
+  const desiredCents = Math.max(shortfallCents, preferredCents);
+  const transferCents = sourceAvailableCents >= desiredCents ? desiredCents : shortfallCents;
+  if (transferCents === 0) return 0;
 
   logger.warn({
     source: "event_contract",
     destination: "event_contract",
-    amountCenticents: shortfallCents * 100,
+    amountCenticents: transferCents * 100,
     sourceExchangeShard: 0,
     destinationExchangeShard: exchangeIndex,
   }, "ETH A requesting immediate Kalshi intra-account shard transfer");
@@ -228,7 +233,7 @@ export async function requestEthShardFunding(exchangeIndex: number, shortfallCen
     {
       source: "event_contract",
       destination: "event_contract",
-      amount: shortfallCents * 100,
+      amount: transferCents * 100,
       source_exchange_shard: 0,
       destination_exchange_shard: exchangeIndex,
       source_subaccount: 0,
@@ -242,6 +247,7 @@ export async function requestEthShardFunding(exchangeIndex: number, shortfallCen
     transferId: transfer.transfer_id ?? null,
     transferStatus: transfer.status ?? null,
   }, "ETH A immediate Kalshi shard transfer accepted");
+  return transferCents;
 }
 
 async function waitForEthShardFunding(
@@ -1014,6 +1020,24 @@ export const runEthPreflightAndPlacement: EthPreflightAndPlacementGateway = asyn
   }
   active.add(state.ticker);
   try {
+    // The user requested one $40 move from the default shard to crypto. Perform
+    // it even while a prior order rests, using fresh balances and waiting for
+    // Kalshi to reflect the accepted asynchronous transfer.
+    if (routingExchangeIndex === 2 && !ethShardFundingRequested) {
+      try {
+        const destinationRead = await ethDependencies.fetchAccountBalance(2);
+        const destinationCents = kalshiBalanceCents(destinationRead.value);
+        if (!destinationRead.stale && destinationCents != null && destinationCents < ETH_SHARD_2_TARGET_CENTS) {
+          const transferCents = await requestEthShardFunding(2, 0, ETH_SHARD_2_TARGET_CENTS);
+          if (transferCents > 0) {
+            const reflected = await waitForEthShardFunding(2, destinationCents + transferCents);
+            if (reflected != null) ethShardFundingRequested = false;
+          }
+        }
+      } catch (err) {
+        logger.warn({ err }, "ETH A requested $40 shard transfer failed");
+      }
+    }
     // Resolve any accepted-or-ambiguous prior GTC first; if unresolved, block new entries.
     if (!await reconcileEthMartingaleSettlements()) return;
     const unsettled = await ethDependencies.store.listUnsettledEthMartingaleOrders();
@@ -1125,12 +1149,14 @@ const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;
 
     // Kalshi requires collateral on the market's exchange shard. Transfer only
     // the amount needed for this entry when shard 0 has enough available cash.
-    if (availableBalanceCents < requiredBalanceCents && routingExchangeIndex === 2) {
+    if (routingExchangeIndex === 2 && availableBalanceCents < requiredBalanceCents) {
       try {
-        await requestEthShardFunding(routingExchangeIndex, requiredBalanceCents - availableBalanceCents);
+        const transferCents = await requestEthShardFunding(
+          routingExchangeIndex, requiredBalanceCents - availableBalanceCents,
+        );
         if (ethShardFundingRequested) {
           availableBalanceCents = await waitForEthShardFunding(
-            routingExchangeIndex, requiredBalanceCents,
+            routingExchangeIndex, Math.max(requiredBalanceCents, availableBalanceCents + transferCents),
           );
           if (availableBalanceCents != null) ethShardFundingRequested = false;
         }
