@@ -644,7 +644,7 @@ test("missing exchange index blocks an ETH entry before reservation or POST", as
   }
 });
 
-test("Service A transfers the requested $40 from shard 0 to crypto shard 2", async () => {
+test("Service A transfers only the fee-inclusive entry shortfall to crypto shard 2", async () => {
   const requests: Array<{ method: string; path: string; body: any }> = [];
   _setEthNoMartingaleDependenciesForTesting({
     fetchAccountBalance: async (exchangeIndex: number) => {
@@ -657,32 +657,15 @@ test("Service A transfers the requested $40 from shard 0 to crypto shard 2", asy
     },
   } as any);
   try {
-    assert.equal(await requestEthShardFunding(2, 0, 4_000), 4_000);
+    assert.equal(await requestEthShardFunding(2, 2), 2);
     assert.deepEqual(requests, [{
       method: "POST", path: "/portfolio/intra_exchange_instance_transfer",
       body: {
-        source: "event_contract", destination: "event_contract", amount: 400_000,
+        source: "event_contract", destination: "event_contract", amount: 200,
         source_exchange_shard: 0, destination_exchange_shard: 2,
         source_subaccount: 0, destination_subaccount: 0,
       },
     }]);
-  } finally {
-    _setEthNoMartingaleDependenciesForTesting(null);
-  }
-});
-
-test("Service A falls back to an entry shortfall when $40 is unavailable", async () => {
-  let amount: number | null = null;
-  _setEthNoMartingaleDependenciesForTesting({
-    fetchAccountBalance: async () => ({ value: { balance: 100 }, stale: false }),
-    authFetch: async (_method: string, _path: string, body: any) => {
-      amount = body.amount;
-      return { transfer_id: "small-transfer" } as never;
-    },
-  } as any);
-  try {
-    assert.equal(await requestEthShardFunding(2, 2, 4_000), 2);
-    assert.equal(amount, 200);
   } finally {
     _setEthNoMartingaleDependenciesForTesting(null);
   }
