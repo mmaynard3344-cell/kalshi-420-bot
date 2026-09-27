@@ -127,12 +127,12 @@ export async function initEthBigBetStore(): Promise<void> {
       UNIQUE (order_tag, ticker)
     )
   `);
+  // Existing production history contains retired strategy labels. Do not
+  // rewrite or invalidate those immutable rows during startup. New writes are
+  // still fail-closed by validateEthBigBetIntentForStorage().
   await db.execute(sql`
     ALTER TABLE eth_big_bet_orders
-      DROP CONSTRAINT IF EXISTS eth_big_bet_orders_strategy_check;
-    ALTER TABLE eth_big_bet_orders
-      ADD CONSTRAINT eth_big_bet_orders_strategy_check
-      CHECK (strategy IN ('jump', 'reversal', 'der200'))
+      DROP CONSTRAINT IF EXISTS eth_big_bet_orders_strategy_check
   `);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS der200_market_claims (
