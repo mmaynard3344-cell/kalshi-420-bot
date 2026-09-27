@@ -8240,6 +8240,12 @@ export async function reserveEth420CandidateLiveOrderIfStateMatches(params: Omit
   if (!beginEth420CandidateEntryReservation()) return false;
   try {
     return await _db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(42015000)`);
+      const der200Owner = await tx.execute(sql`
+        SELECT 1 FROM der200_market_claims WHERE ticker=${params.ticker} LIMIT 1
+      `);
+      if (((der200Owner as unknown as { rows?: unknown[] }).rows ?? []).length > 0) return false;
+
       // Serialize the immutable activation boundary with each primary
       // reservation. The boundary timestamp is created under the same lock, so
       // a row cannot race from "already existed" into post-cutover eligibility.
@@ -11204,6 +11210,16 @@ export async function reserveEthMartingaleEntry(params: {
   const cost = params.noPriceCents * params.requestedContracts + params.reservedFeeCents;
   try {
     return await _db.transaction(async (tx) => {
+      // Serialize only DER200 ownership against the existing A/B/C/Back Flip
+      // reservation paths. A and B/C otherwise retain their current behavior.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(42015000)`);
+      const der200Owner = await tx.execute(sql`
+        SELECT 1 FROM der200_market_claims WHERE ticker=${params.ticker} LIMIT 1
+      `);
+      if (((der200Owner as unknown as { rows?: unknown[] }).rows ?? []).length > 0) {
+        throw new EthMartingaleReservationRollback("DER200 owns this ETH ticker");
+      }
+
       if (params.claimProofFence) {
         const proofClaim = await tx.execute(sql`
           INSERT INTO eth_martingale_proof_fences (generation, claimed_at_ms, ticker, client_order_id)

@@ -65,6 +65,7 @@ import {
 import { resumeEth420CandidateExecutionTelemetry } from "./lib/eth420ExecutionTelemetry.js";
 import { refreshEth420RunawayResearch } from "./lib/eth420RunawayResearch.js";
 import { runEthBigBetAccountingSweepSingleFlight } from "./lib/strategies/ethBigBetAccountingSweep.js";
+import { initEthBigBetStore } from "./lib/strategies/ethBigBetStore.js";
 import {
   WEEK_2_PRODUCTION_NEW_ENTRY_SERIES,
 } from "./lib/week2EntryPolicy.js";
@@ -130,6 +131,9 @@ app.listen(port, "0.0.0.0", async () => {
   // before any order attempt. If SQL is unavailable, claimOrderSlot() returns
   // false and trading is halted until storage recovers.
   await initTradeStore();
+  // Ensure the shared B/C/DER200 accounting + ownership schema exists before
+  // any A or candidate reservation can inspect DER200 market ownership.
+  await initEthBigBetStore();
   // Read-only evidence bootstrap. It is intentionally non-blocking so an
   // unavailable public catalog cannot delay the authoritative runner; until a
   // complete history arrives, ETH 420 remains on its existing live-only input.
