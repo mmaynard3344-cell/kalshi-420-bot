@@ -1015,9 +1015,20 @@ export const runEthPreflightAndPlacement: EthPreflightAndPlacementGateway = asyn
   active.add(state.ticker);
   try {
     // Resolve any accepted-or-ambiguous prior GTC first; if unresolved, block new entries.
-    // A successful reconciliation now includes the authoritative live-exposure proof,
-    // so do not immediately repeat the same bounded ledger read and re-block a clean window.
     if (!await reconcileEthMartingaleSettlements()) return;
+    const unsettled = await ethDependencies.store.listUnsettledEthMartingaleOrders();
+    // A failed list is never equivalent to an empty list: a transient database
+    // timeout must not make a potentially live prior GTC invisible.
+    // A terminal fill remains fenced until exact fill economics and settlement
+    // have durably advanced (or preserved) the sequence. A zero-fill awaiting
+    // its official result is excluded from this exposure list and must not
+    // block a fresh window; a later sweep advances its sequence when the
+    // result posts.
+    if (unsettled == null) {
+      scheduleEthDurableRetry("durable_store_failure");
+      return;
+    }
+    if (unsettled.length > 0) return;
 
     const residualExposure = await hasManualRecoveryResidualExposure();
     if (residualExposure === "unavailable") {
@@ -1057,6 +1068,12 @@ const effectiveStep = requestedStep == null
 // for isolated callers that intentionally reuse this protected gateway.
 const effectiveSide: "yes" | "no" = requestedSide ?? "yes";
 
+    // Fail closed: loss stop
+    if (effectivePnl <= dailyLossStopCents) {
+      setEthBlockerStatus("daily_loss_stop", "ETH daily realized-loss stop is active");
+      return;
+    }
+
     // GTC at fixed 50¢: contracts = floor(principal / 50).
     // noPriceCents is always 50 for GTC orders (symmetric price).
     const noPriceCents = ETH_GTC_LIMIT_PRICE_CENTS;
@@ -1065,6 +1082,17 @@ const effectiveSide: "yes" | "no" = requestedSide ?? "yes";
     if (contracts < 1) return;
 
     const reservedFeeCents = ethTakerFeeCents(noPriceCents, contracts);
+
+const projectedFullLossPnlCents =
+  effectivePnl - requestedPrincipalCents - reservedFeeCents;
+
+if (projectedFullLossPnlCents < dailyLossStopCents) {
+  setEthBlockerStatus(
+    "daily_loss_stop",
+    "ETH entry is blocked because a full loss on this wager would exceed the daily loss limit",
+  );
+  return;
+}
 
 const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;
     let accountBalance;
@@ -1209,16 +1237,8 @@ async function reconcileEthMartingaleSettlementsOnce(): Promise<boolean> {
   // deployed are backfilled rather than permanently retaining their 50¢ limit.
   const economicsQueue = await ethDependencies.store.listEthMartingaleOrdersNeedingFillEconomics();
   if (economicsQueue == null) {
-    // Historical fill-economics maintenance must never be mistaken for live exposure.
-    // Keep its bounded retry scheduled, but independently prove the live ledger is clean.
-    scheduleEthDurableRetry("durable_store_failure", null, "historical fill-economics queue unavailable");
-    const liveExposure = await ethDependencies.store.listUnsettledEthMartingaleOrders();
-    if (liveExposure == null || liveExposure.length > 0) return false;
-    setEthBlockerStatus(
-      "ready",
-      "No unresolved ETH martingale exposure; historical fill-economics maintenance will retry in background",
-    );
-    return true;
+    scheduleEthDurableRetry("durable_store_failure");
+    return false;
   }
   let durableEconomicsRepairPending = false;
   for (const order of economicsQueue) {
@@ -1237,16 +1257,9 @@ async function reconcileEthMartingaleSettlementsOnce(): Promise<boolean> {
     return false;
   }
   if (unsettledOrders.length === 0) {
-    // A settled historical row can still require exact-economics maintenance, but
-    // it is not live exposure. Preserve the scheduled repair retry without blocking
-    // a new Service A window after the authoritative unsettled ledger proved empty.
-    if (durableEconomicsRepairPending) {
-      setEthBlockerStatus(
-        "ready",
-        "No unresolved ETH martingale exposure; settled historical fill-economics repair will retry in background",
-      );
-      return true;
-    }
+    // A settled historical row can still require a durable exact-economics
+    // repair. Keep its bounded retry alive even though no live exposure remains.
+    if (durableEconomicsRepairPending) return false;
     clearEthDurableRetry();
     setEthBlockerStatus("ready", "No unresolved ETH martingale exposure");
     return true;
@@ -1439,17 +1452,6 @@ async function reconcileEthMartingaleSettlementsOnce(): Promise<boolean> {
       return false;
     }
   }
-  // A true reconciliation result is also the live-entry exposure proof. Re-read once
-  // after a sweep that began with unresolved rows because the in-memory row objects
-  // may be stale after durable terminal transitions. Never let true mean "still exposed".
-  const remainingExposure = await ethDependencies.store.listUnsettledEthMartingaleOrders();
-  if (remainingExposure == null) {
-    scheduleEthDurableRetry("durable_store_failure", null, "final live exposure read unavailable");
-    return false;
-  }
-  if (remainingExposure.length > 0) return false;
-  clearEthDurableRetry();
-  setEthBlockerStatus("ready", "No unresolved ETH martingale exposure");
   return true;
 }
 
@@ -1463,23 +1465,8 @@ async function reconcileEthMartingaleSettlementsOnce(): Promise<boolean> {
 export async function reconcileEthMartingaleZeroFillLadders(): Promise<boolean> {
   const zeroFills = await ethDependencies.store.listUnsettledEthMartingaleZeroFillOrders();
   if (!zeroFills) {
-    // A zero-fill settlement queue is historical sequence/accounting maintenance,
-    // not proof of live Kalshi exposure. Keep that maintenance retrying, but
-    // independently require the authoritative unsettled-order ledger to prove
-    // there is no pending/resting/partial/ambiguous Service A order before a
-    // fresh window can proceed. If the live ledger is unavailable, fail closed.
-    scheduleEthDurableRetry(
-      "durable_store_failure",
-      null,
-      "zero-fill settlement maintenance queue unavailable",
-    );
-    const liveExposure = await ethDependencies.store.listUnsettledEthMartingaleOrders();
-    if (liveExposure == null || liveExposure.length > 0) return false;
-    setEthBlockerStatus(
-      "ready",
-      "No unresolved ETH martingale exposure; zero-fill settlement maintenance will retry in background",
-    );
-    return true;
+    scheduleEthDurableRetry("durable_store_failure");
+    return false;
   }
 
   for (const order of zeroFills) {
