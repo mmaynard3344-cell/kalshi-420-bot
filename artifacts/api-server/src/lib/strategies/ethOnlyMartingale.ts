@@ -195,14 +195,6 @@ type EthUnsettledOrder = Exclude<
 >[number];
 
 
-type KalshiTargetAllocation = { exchange_index: number; percent: number };
-type KalshiTargetAllocationResponse = {
-  allocations?: KalshiTargetAllocation[];
-  resting_margin_reservation?: string;
-};
-
-const ETH_SHARD_2_TRANSFER_CENTS = 9_000;
-const ETH_SHARD_2_TRANSFER_CENTICENTS = 900_000;
 let ethShardFundingRequested = false;
 
 type KalshiIntraTransferResponse = {
@@ -210,22 +202,23 @@ type KalshiIntraTransferResponse = {
   status?: string;
 };
 
-async function requestEthShardFunding(exchangeIndex: number): Promise<void> {
+async function requestEthShardFunding(exchangeIndex: number, shortfallCents: number): Promise<void> {
   if (ethShardFundingRequested || exchangeIndex !== 2) return;
+  if (!Number.isSafeInteger(shortfallCents) || shortfallCents <= 0) return;
 
   const sourceRead = await fetchFreshKalshiBalanceForExchangeRead(0);
   const sourceAvailableCents = kalshiBalanceCents(sourceRead.value);
   logger.warn({ sourceExchangeIndex: 0, destinationExchangeIndex: exchangeIndex, sourceAvailableCents },
     "ETH A checking source shard for immediate Kalshi transfer");
 
-  if (sourceRead.stale || sourceAvailableCents == null || sourceAvailableCents < ETH_SHARD_2_TRANSFER_CENTS) {
-    throw new Error(`exchange 0 has insufficient transferable cash for $90 move: ${sourceAvailableCents}`);
+  if (sourceRead.stale || sourceAvailableCents == null || sourceAvailableCents < shortfallCents) {
+    throw new Error(`exchange 0 has insufficient transferable cash for ${shortfallCents} cent move: ${sourceAvailableCents}`);
   }
 
   logger.warn({
     source: "event_contract",
     destination: "event_contract",
-    amountCenticents: ETH_SHARD_2_TRANSFER_CENTICENTS,
+    amountCenticents: shortfallCents * 100,
     sourceExchangeShard: 0,
     destinationExchangeShard: exchangeIndex,
   }, "ETH A requesting immediate Kalshi intra-account shard transfer");
@@ -235,7 +228,7 @@ async function requestEthShardFunding(exchangeIndex: number): Promise<void> {
     {
       source: "event_contract",
       destination: "event_contract",
-      amount: ETH_SHARD_2_TRANSFER_CENTICENTS,
+      amount: shortfallCents * 100,
       source_exchange_shard: 0,
       destination_exchange_shard: exchangeIndex,
       source_subaccount: 0,
@@ -1129,21 +1122,20 @@ const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;
       return;
     }
 
-    // The Kalshi app exposes aggregate event cash, while the API now partitions
-    // order collateral by exchange_index. If shard 2 is underfunded but the
-    // aggregate account has enough cash, request the user's approved ~$90
-    // one-time rebalance through Kalshi's target-balance allocation API.
+    // Kalshi requires collateral on the market's exchange shard. Transfer only
+    // the amount needed for this entry when shard 0 has enough available cash.
     if (availableBalanceCents < requiredBalanceCents && routingExchangeIndex === 2) {
       try {
-        await requestEthShardFunding(routingExchangeIndex);
+        await requestEthShardFunding(routingExchangeIndex, requiredBalanceCents - availableBalanceCents);
         if (ethShardFundingRequested) {
           availableBalanceCents = await waitForEthShardFunding(
             routingExchangeIndex, requiredBalanceCents,
           );
+          if (availableBalanceCents != null) ethShardFundingRequested = false;
         }
       } catch (err) {
         logger.warn({ err, exchangeIndex: routingExchangeIndex },
-          "ETH A Kalshi shard-funding allocation request failed");
+          "ETH A Kalshi shard transfer request failed");
       }
     }
 
