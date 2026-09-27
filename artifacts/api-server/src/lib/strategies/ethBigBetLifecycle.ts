@@ -4,7 +4,7 @@
  * Settlement is accounting evidence only and never gates evaluation of a later
  * 15-minute market.
  */
-export type EthBigBetStrategy = "jump" | "reversal";
+export type EthBigBetStrategy = "jump" | "reversal" | "der200";
 export type EthBigBetSide = "yes" | "no";
 
 export interface EthBigBetOrderIntent {
