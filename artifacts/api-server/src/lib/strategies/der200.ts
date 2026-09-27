@@ -7,7 +7,7 @@ import {
 import { createEthBigBetKalshiSubmitter } from "./ethBigBetKalshiExchange.js";
 import { submitEthBigBetIntent } from "./ethBigBetExecutor.js";
 import { ethBigBetExecutionStore } from "./ethBigBetExecutionStoreAdapter.js";
-import { initEthBigBetStore } from "./ethBigBetStore.js";
+import { claimDer200Market, initEthBigBetStore } from "./ethBigBetStore.js";
 import { ethBigBetCapitalRiskCents, type EthBigBetOrderIntent } from "./ethBigBetLifecycle.js";
 import { evaluateEthAccountCapital } from "./ethAccountCapitalGuard.js";
 import { readApprovedEthBigBetCapitalBase } from "./ethBigBetApprovedCapitalProvider.js";
@@ -217,6 +217,12 @@ export async function routeDer200WhenExplicitlyEnabled(input: {
     await ensureStoreReady();
   } catch {
     logger.error({ ticker: input.ticker }, "DER200 qualified but storage is unavailable");
+    return "der200";
+  }
+
+  const claimed = await claimDer200Market(input.ticker);
+  if (!claimed) {
+    logger.info({ ticker: input.ticker }, "DER200 qualified but market is already owned by A/B/C/Back Flip");
     return "der200";
   }
 
