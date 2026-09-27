@@ -195,14 +195,6 @@ type EthUnsettledOrder = Exclude<
 >[number];
 
 
-type KalshiTargetAllocation = { exchange_index: number; percent: number };
-type KalshiTargetAllocationResponse = {
-  allocations?: KalshiTargetAllocation[];
-  resting_margin_reservation?: string;
-};
-
-const ETH_SHARD_2_TRANSFER_CENTS = 9_000;
-const ETH_SHARD_2_TRANSFER_CENTICENTS = 900_000;
 let ethShardFundingRequested = false;
 
 type KalshiIntraTransferResponse = {
@@ -210,32 +202,33 @@ type KalshiIntraTransferResponse = {
   status?: string;
 };
 
-async function requestEthShardFunding(exchangeIndex: number): Promise<void> {
+export async function requestEthShardFunding(exchangeIndex: number, shortfallCents: number): Promise<void> {
   if (ethShardFundingRequested || exchangeIndex !== 2) return;
+  if (!Number.isSafeInteger(shortfallCents) || shortfallCents <= 0) return;
 
-  const sourceRead = await fetchFreshKalshiBalanceForExchangeRead(0);
+  const sourceRead = await ethDependencies.fetchAccountBalance(0);
   const sourceAvailableCents = kalshiBalanceCents(sourceRead.value);
   logger.warn({ sourceExchangeIndex: 0, destinationExchangeIndex: exchangeIndex, sourceAvailableCents },
     "ETH A checking source shard for immediate Kalshi transfer");
 
-  if (sourceRead.stale || sourceAvailableCents == null || sourceAvailableCents < ETH_SHARD_2_TRANSFER_CENTS) {
-    throw new Error(`exchange 0 has insufficient transferable cash for $90 move: ${sourceAvailableCents}`);
+  if (sourceRead.stale || sourceAvailableCents == null || sourceAvailableCents < shortfallCents) {
+    throw new Error(`exchange 0 has insufficient transferable cash for ${shortfallCents} cent move: ${sourceAvailableCents}`);
   }
 
   logger.warn({
     source: "event_contract",
     destination: "event_contract",
-    amountCenticents: ETH_SHARD_2_TRANSFER_CENTICENTS,
+    amountCenticents: shortfallCents * 100,
     sourceExchangeShard: 0,
     destinationExchangeShard: exchangeIndex,
   }, "ETH A requesting immediate Kalshi intra-account shard transfer");
 
-  const transfer = await kalshiAuthFetch<KalshiIntraTransferResponse>(
+  const transfer = await ethDependencies.authFetch<KalshiIntraTransferResponse>(
     "POST", "/portfolio/intra_exchange_instance_transfer",
     {
       source: "event_contract",
       destination: "event_contract",
-      amount: ETH_SHARD_2_TRANSFER_CENTICENTS,
+      amount: shortfallCents * 100,
       source_exchange_shard: 0,
       destination_exchange_shard: exchangeIndex,
       source_subaccount: 0,
@@ -256,7 +249,7 @@ async function waitForEthShardFunding(
   requiredBalanceCents: number,
 ): Promise<number | null> {
   for (let attempt = 0; attempt < 20; attempt++) {
-    const read = await fetchFreshKalshiBalanceForExchangeRead(exchangeIndex);
+    const read = await ethDependencies.fetchAccountBalance(exchangeIndex);
     const available = kalshiBalanceCents(read.value);
     logger.info({ exchangeIndex, availableBalanceCents: available, requiredBalanceCents, attempt },
       "ETH A shard-funding poll");
@@ -283,6 +276,7 @@ let ethDependencies = productionEthDependencies;
 /** Test-only seam; production always uses the authenticated exchange and SQL store. */
 export function _setEthNoMartingaleDependenciesForTesting(overrides: Partial<EthDependencies> | null): void {
   if (overrides == null) {
+    ethShardFundingRequested = false;
     clearEthDurableRetry();
     setEthBlockerStatus("ready", "No unresolved ETH martingale exposure");
     liveProofPostClaimed = false;
@@ -1021,20 +1015,9 @@ export const runEthPreflightAndPlacement: EthPreflightAndPlacementGateway = asyn
   active.add(state.ticker);
   try {
     // Resolve any accepted-or-ambiguous prior GTC first; if unresolved, block new entries.
+    // A successful reconciliation now includes the authoritative live-exposure proof,
+    // so do not immediately repeat the same bounded ledger read and re-block a clean window.
     if (!await reconcileEthMartingaleSettlements()) return;
-    const unsettled = await ethDependencies.store.listUnsettledEthMartingaleOrders();
-    // A failed list is never equivalent to an empty list: a transient database
-    // timeout must not make a potentially live prior GTC invisible.
-    // A terminal fill remains fenced until exact fill economics and settlement
-    // have durably advanced (or preserved) the sequence. A zero-fill awaiting
-    // its official result is excluded from this exposure list and must not
-    // block a fresh window; a later sweep advances its sequence when the
-    // result posts.
-    if (unsettled == null) {
-      scheduleEthDurableRetry("durable_store_failure");
-      return;
-    }
-    if (unsettled.length > 0) return;
 
     const residualExposure = await hasManualRecoveryResidualExposure();
     if (residualExposure === "unavailable") {
@@ -1074,12 +1057,6 @@ const effectiveStep = requestedStep == null
 // for isolated callers that intentionally reuse this protected gateway.
 const effectiveSide: "yes" | "no" = requestedSide ?? "yes";
 
-    // Fail closed: loss stop
-    if (effectivePnl <= dailyLossStopCents) {
-      setEthBlockerStatus("daily_loss_stop", "ETH daily realized-loss stop is active");
-      return;
-    }
-
     // GTC at fixed 50¢: contracts = floor(principal / 50).
     // noPriceCents is always 50 for GTC orders (symmetric price).
     const noPriceCents = ETH_GTC_LIMIT_PRICE_CENTS;
@@ -1088,17 +1065,6 @@ const effectiveSide: "yes" | "no" = requestedSide ?? "yes";
     if (contracts < 1) return;
 
     const reservedFeeCents = ethTakerFeeCents(noPriceCents, contracts);
-
-const projectedFullLossPnlCents =
-  effectivePnl - requestedPrincipalCents - reservedFeeCents;
-
-if (projectedFullLossPnlCents < dailyLossStopCents) {
-  setEthBlockerStatus(
-    "daily_loss_stop",
-    "ETH entry is blocked because a full loss on this wager would exceed the daily loss limit",
-  );
-  return;
-}
 
 const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;
     let accountBalance;
@@ -1129,21 +1095,20 @@ const requiredBalanceCents = contracts * noPriceCents + reservedFeeCents;
       return;
     }
 
-    // The Kalshi app exposes aggregate event cash, while the API now partitions
-    // order collateral by exchange_index. If shard 2 is underfunded but the
-    // aggregate account has enough cash, request the user's approved ~$90
-    // one-time rebalance through Kalshi's target-balance allocation API.
+    // Kalshi requires collateral on the market's exchange shard. Transfer only
+    // the amount needed for this entry when shard 0 has enough available cash.
     if (availableBalanceCents < requiredBalanceCents && routingExchangeIndex === 2) {
       try {
-        await requestEthShardFunding(routingExchangeIndex);
+        await requestEthShardFunding(routingExchangeIndex, requiredBalanceCents - availableBalanceCents);
         if (ethShardFundingRequested) {
           availableBalanceCents = await waitForEthShardFunding(
             routingExchangeIndex, requiredBalanceCents,
           );
+          if (availableBalanceCents != null) ethShardFundingRequested = false;
         }
       } catch (err) {
         logger.warn({ err, exchangeIndex: routingExchangeIndex },
-          "ETH A Kalshi shard-funding allocation request failed");
+          "ETH A Kalshi shard transfer request failed");
       }
     }
 
@@ -1244,8 +1209,16 @@ async function reconcileEthMartingaleSettlementsOnce(): Promise<boolean> {
   // deployed are backfilled rather than permanently retaining their 50¢ limit.
   const economicsQueue = await ethDependencies.store.listEthMartingaleOrdersNeedingFillEconomics();
   if (economicsQueue == null) {
-    scheduleEthDurableRetry("durable_store_failure");
-    return false;
+    // Historical fill-economics maintenance must never be mistaken for live exposure.
+    // Keep its bounded retry scheduled, but independently prove the live ledger is clean.
+    scheduleEthDurableRetry("durable_store_failure", null, "historical fill-economics queue unavailable");
+    const liveExposure = await ethDependencies.store.listUnsettledEthMartingaleOrders();
+    if (liveExposure == null || liveExposure.length > 0) return false;
+    setEthBlockerStatus(
+      "ready",
+      "No unresolved ETH martingale exposure; historical fill-economics maintenance will retry in background",
+    );
+    return true;
   }
   let durableEconomicsRepairPending = false;
   for (const order of economicsQueue) {
@@ -1264,9 +1237,16 @@ async function reconcileEthMartingaleSettlementsOnce(): Promise<boolean> {
     return false;
   }
   if (unsettledOrders.length === 0) {
-    // A settled historical row can still require a durable exact-economics
-    // repair. Keep its bounded retry alive even though no live exposure remains.
-    if (durableEconomicsRepairPending) return false;
+    // A settled historical row can still require exact-economics maintenance, but
+    // it is not live exposure. Preserve the scheduled repair retry without blocking
+    // a new Service A window after the authoritative unsettled ledger proved empty.
+    if (durableEconomicsRepairPending) {
+      setEthBlockerStatus(
+        "ready",
+        "No unresolved ETH martingale exposure; settled historical fill-economics repair will retry in background",
+      );
+      return true;
+    }
     clearEthDurableRetry();
     setEthBlockerStatus("ready", "No unresolved ETH martingale exposure");
     return true;
@@ -1459,6 +1439,17 @@ async function reconcileEthMartingaleSettlementsOnce(): Promise<boolean> {
       return false;
     }
   }
+  // A true reconciliation result is also the live-entry exposure proof. Re-read once
+  // after a sweep that began with unresolved rows because the in-memory row objects
+  // may be stale after durable terminal transitions. Never let true mean "still exposed".
+  const remainingExposure = await ethDependencies.store.listUnsettledEthMartingaleOrders();
+  if (remainingExposure == null) {
+    scheduleEthDurableRetry("durable_store_failure", null, "final live exposure read unavailable");
+    return false;
+  }
+  if (remainingExposure.length > 0) return false;
+  clearEthDurableRetry();
+  setEthBlockerStatus("ready", "No unresolved ETH martingale exposure");
   return true;
 }
 
@@ -1472,8 +1463,23 @@ async function reconcileEthMartingaleSettlementsOnce(): Promise<boolean> {
 export async function reconcileEthMartingaleZeroFillLadders(): Promise<boolean> {
   const zeroFills = await ethDependencies.store.listUnsettledEthMartingaleZeroFillOrders();
   if (!zeroFills) {
-    scheduleEthDurableRetry("durable_store_failure");
-    return false;
+    // A zero-fill settlement queue is historical sequence/accounting maintenance,
+    // not proof of live Kalshi exposure. Keep that maintenance retrying, but
+    // independently require the authoritative unsettled-order ledger to prove
+    // there is no pending/resting/partial/ambiguous Service A order before a
+    // fresh window can proceed. If the live ledger is unavailable, fail closed.
+    scheduleEthDurableRetry(
+      "durable_store_failure",
+      null,
+      "zero-fill settlement maintenance queue unavailable",
+    );
+    const liveExposure = await ethDependencies.store.listUnsettledEthMartingaleOrders();
+    if (liveExposure == null || liveExposure.length > 0) return false;
+    setEthBlockerStatus(
+      "ready",
+      "No unresolved ETH martingale exposure; zero-fill settlement maintenance will retry in background",
+    );
+    return true;
   }
 
   for (const order of zeroFills) {

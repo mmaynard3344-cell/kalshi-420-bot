@@ -20,6 +20,7 @@ import {
   placeEthMartingaleGtcEntry,
   reconcileEthMartingaleZeroFillLadders,
   reconcileEthMartingaleSettlements,
+  requestEthShardFunding,
   runEthPreflightAndPlacement,
 } from "./ethOnlyMartingale.js";
 import { easternDay } from "../dailyBudget.js";
@@ -640,6 +641,50 @@ test("missing exchange index blocks an ETH entry before reservation or POST", as
   } finally {
     _setEthNoMartingaleDependenciesForTesting(null);
     restore();
+  }
+});
+
+test("Service A transfers only the fee-inclusive shortfall from shard 0 to crypto shard 2", async () => {
+  const requests: Array<{ method: string; path: string; body: any }> = [];
+  _setEthNoMartingaleDependenciesForTesting({
+    fetchAccountBalance: async (exchangeIndex: number) => {
+      assert.equal(exchangeIndex, 0);
+      return { value: { balance: 4_197 }, stale: false };
+    },
+    authFetch: async (method: string, path: string, body: any) => {
+      requests.push({ method, path, body });
+      return { transfer_id: "shortfall-transfer" } as never;
+    },
+  } as any);
+  try {
+    await requestEthShardFunding(2, 2);
+    assert.deepEqual(requests, [{
+      method: "POST", path: "/portfolio/intra_exchange_instance_transfer",
+      body: {
+        source: "event_contract", destination: "event_contract", amount: 200,
+        source_exchange_shard: 0, destination_exchange_shard: 2,
+        source_subaccount: 0, destination_subaccount: 0,
+      },
+    }]);
+  } finally {
+    _setEthNoMartingaleDependenciesForTesting(null);
+  }
+});
+
+test("Service A refuses a transfer when source cash is short or stale", async () => {
+  let posts = 0;
+  let stale = false;
+  _setEthNoMartingaleDependenciesForTesting({
+    fetchAccountBalance: async () => ({ value: { balance: 1 }, stale }),
+    authFetch: async () => { posts++; return {} as never; },
+  } as any);
+  try {
+    await assert.rejects(requestEthShardFunding(2, 2), /insufficient transferable cash/);
+    stale = true;
+    await assert.rejects(requestEthShardFunding(2, 1), /insufficient transferable cash/);
+    assert.equal(posts, 0);
+  } finally {
+    _setEthNoMartingaleDependenciesForTesting(null);
   }
 });
 
