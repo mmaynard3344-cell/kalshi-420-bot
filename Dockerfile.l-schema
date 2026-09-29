@@ -1,0 +1,3 @@
+FROM postgres:16
+COPY scripts/l-live-schema.sql /l-live-schema.sql
+ENTRYPOINT ["sh", "-ec", "psql \"$DATABASE_URL\" -X -v ON_ERROR_STOP=1 -f /l-live-schema.sql && echo L_SCHEMA_INSTALLED && sleep infinity"]
