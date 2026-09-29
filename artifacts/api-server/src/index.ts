@@ -65,6 +65,7 @@ import {
 import { resumeEth420CandidateExecutionTelemetry } from "./lib/eth420ExecutionTelemetry.js";
 import { refreshEth420RunawayResearch } from "./lib/eth420RunawayResearch.js";
 import { runEthBigBetAccountingSweepSingleFlight } from "./lib/strategies/ethBigBetAccountingSweep.js";
+import { startLSweepReclaimLiveRuntime } from "./lib/strategies/sweepReclaimLiveRuntime.js";
 import {
   WEEK_2_PRODUCTION_NEW_ENTRY_SERIES,
 } from "./lib/week2EntryPolicy.js";
@@ -136,15 +137,19 @@ app.listen(port, "0.0.0.0", async () => {
   await initTradeStore();
 
   if (isProductionRuntime() && process.env["L_SWEEP_RECLAIM_RUNTIME_ONLY"] === "true") {
-    await ensureLSweepReclaimDryRunSchema();
-    startLSweepReclaimDryRunRuntime();
+    const live = process.env["L_SWEEP_RECLAIM_LIVE_EXECUTION_ENABLED"] === "true";
+    if (live) startLSweepReclaimLiveRuntime();
+    else {
+      await ensureLSweepReclaimDryRunSchema();
+      startLSweepReclaimDryRunRuntime();
+    }
     logger.info(
       {
         strategy: "L_SWEEP_RECLAIM_V1",
         enabled: process.env["L_SWEEP_RECLAIM_ENABLED"] === "true",
         runtimeOnly: true,
-        executionAdapter: "dry_run_only",
-        orderSubmissionPermitted: false,
+        executionAdapter: live ? "live_with_durable_claim_and_recovery" : "dry_run_only",
+        orderSubmissionPermitted: live && !isTradingHalted(),
       },
       "L sweep/reclaim runtime-only service started",
     );

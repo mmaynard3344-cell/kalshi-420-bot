@@ -286,7 +286,7 @@ export class PostgresEthLongReversalStore implements EthLongReversalStore {
     const result = await this.db.execute(sql`
       UPDATE eth_long_reversal_reservations
       SET state=${input.to}, updated_at_ms=${input.updatedAtMs}
-      WHERE id=${input.id} AND state = ANY(${from})
+      WHERE id=${input.id} AND state IN (${sql.join(from.map(state => sql`${state}`), sql`, `)})
       RETURNING id
     `);
     return rowsOf(result).length === 1;
@@ -322,7 +322,7 @@ export class PostgresEthLongReversalStore implements EthLongReversalStore {
           last_adjustment_reason=${input.reason},
           updated_at_ms=${input.updatedAtMs}
       WHERE source_order_id=${input.sourceOrderId}
-        AND state = ANY(${from})
+        AND state IN (${sql.join(from.map(state => sql`${state}`), sql`, `)})
       RETURNING id
     `);
     return rowsOf(result).length === 1;
@@ -340,7 +340,7 @@ export class PostgresEthLongReversalStore implements EthLongReversalStore {
       UPDATE eth_long_reversal_reservations
       SET state=${input.to}, updated_at_ms=${input.updatedAtMs}
       WHERE source_order_id=${input.sourceOrderId}
-        AND state = ANY(${from})
+        AND state IN (${sql.join(from.map(state => sql`${state}`), sql`, `)})
       RETURNING id
     `);
     return rowsOf(result).length === 1;

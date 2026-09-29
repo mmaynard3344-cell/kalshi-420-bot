@@ -10,6 +10,8 @@ import {
   transitionSweepReclaimSharedReservation,
 } from "./sweepReclaimLiveAdmission.js";
 import type { SweepReclaimRuntimeConfig } from "./sweepReclaimV1.js";
+import { isTradingHalted } from "../tradingKillSwitch.js";
+import { fetchFreshKalshiBalanceForExchangeRead, kalshiBalanceCents } from "../kalshiBalance.js";
 
 export const L_SWEEP_RECLAIM_LIVE_EXECUTION_ENV = "L_SWEEP_RECLAIM_LIVE_EXECUTION_ENABLED" as const;
 export const L_SWEEP_RECLAIM_SUPPORTED_ORDER_TYPE = "good_till_canceled" as const;
@@ -27,6 +29,7 @@ export type SweepReclaimExecutionOutcome =
   | "correlated_cap_unavailable"
   | "persistence_failed"
   | "routing_unavailable"
+  | "funds_or_halt_blocked"
   | "submitted"
   | "submission_unknown"
   | "rejected"
@@ -63,6 +66,8 @@ let exchangeOverride: EthBigBetExchangeSubmitter | null = null;
 let claimTransitionOverride: ClaimTransition | null = null;
 let claimUpdaterOverride: ClaimUpdater | null = null;
 let reservationTransitionOverride: ReservationTransition | null = null;
+type SubmitGuard = (exchangeIndex: number, riskCents: number) => Promise<boolean>;
+let submitGuardOverride: SubmitGuard | null = null;
 
 export function _setSweepReclaimExecutionDepsForTesting(input: {
   priceReader?: PriceReader | null;
@@ -70,12 +75,23 @@ export function _setSweepReclaimExecutionDepsForTesting(input: {
   claimTransition?: ClaimTransition | null;
   claimUpdater?: ClaimUpdater | null;
   reservationTransition?: ReservationTransition | null;
+  submitGuard?: SubmitGuard | null;
 }): void {
   priceReaderOverride = input.priceReader ?? null;
   exchangeOverride = input.exchange ?? null;
   claimTransitionOverride = input.claimTransition ?? null;
   claimUpdaterOverride = input.claimUpdater ?? null;
   reservationTransitionOverride = input.reservationTransition ?? null;
+  submitGuardOverride = input.submitGuard ?? null;
+}
+
+async function productionSubmitGuard(exchangeIndex: number, riskCents: number): Promise<boolean> {
+  if (isTradingHalted()) return false;
+  try {
+    const balance = await fetchFreshKalshiBalanceForExchangeRead(exchangeIndex);
+    const cents = kalshiBalanceCents(balance.value);
+    return !isTradingHalted() && !balance.stale && cents != null && cents >= riskCents;
+  } catch { return false; }
 }
 
 function claimTransition(input: Parameters<ClaimTransition>[0]): Promise<boolean> {
@@ -180,6 +196,13 @@ export async function executeSweepReclaimV1(
   if (admission.outcome !== "admitted") return admission.outcome;
 
   const reservationId = admission.reservationId!;
+  const ready = await (submitGuardOverride ?? productionSubmitGuard)(input.exchangeIndex, size.requestedRiskCents);
+  if (!ready) {
+    await transitionReservation({ reservationId, from: "reserved", to: "released" }).catch(() => false);
+    await claimTransition({ id: input.claimId, from: "ADMITTED", to: "REJECTED",
+      patch: { rejectionReason: "live_funds_or_halt_guard_blocked" } }).catch(() => false);
+    return "funds_or_halt_blocked";
+  }
   const secondBook = await priceReader(
     input.destinationTicker,
     "yes",
@@ -205,6 +228,14 @@ export async function executeSweepReclaimV1(
       },
     }).catch(() => false);
     return secondPrice == null ? "price_unavailable" : "price_cap_blocked";
+  }
+
+  if ((!submitGuardOverride && isTradingHalted())
+    || input.destinationCloseTimeMs - (input.nowMs ?? Date.now()) < config.minimumSecondsRemaining * 1000) {
+    await transitionReservation({ reservationId, from: "reserved", to: "released" }).catch(() => false);
+    await claimTransition({ id: input.claimId, from: "ADMITTED", to: "REJECTED",
+      patch: { rejectionReason: "minimum_time_remaining_blocked" } }).catch(() => false);
+    return "too_late";
   }
 
   const submitting = await claimTransition({

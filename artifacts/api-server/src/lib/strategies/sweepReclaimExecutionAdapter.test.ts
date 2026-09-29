@@ -95,6 +95,7 @@ function harness(prices: Array<number | null>) {
     },
   });
   _setSweepReclaimExecutionDepsForTesting({
+    submitGuard: async () => true,
     priceReader: async () => snapshot(prices.shift() ?? null),
     exchange: {
       async submit() {
@@ -146,6 +147,23 @@ test("order sizing uses stake as a hard principal budget at the configured cap p
   });
 });
 
+test("approved L stake at 75 cents sizes 66 contracts within the 52 dollar risk cap", () => {
+  assert.deepEqual(buildSweepReclaimOrderSize(config({stakeCents:5000,maxEntryPriceCents:75})),
+    {contracts:66,maxPrincipalCents:4950,feeHeadroomCents:87,requestedRiskCents:5037});
+});
+
+test("failed fresh funds or halt guard prevents POST and releases reservation", async () => {
+  const h = harness([40,40]);
+  _setSweepReclaimExecutionDepsForTesting({
+    submitGuard: async () => false,
+    priceReader: async () => snapshot(40),
+    exchange: { async submit() { throw new Error("must not POST"); } },
+    claimTransition: async () => true,
+  });
+  assert.equal(await executeSweepReclaimV1(input()), "funds_or_halt_blocked");
+  assert.equal([...h.rows.values()][0]?.state,"released");
+});
+
 test("live execution flag defaults to a hard stop with no POST", async () => {
   const h = harness([40, 40]);
   const result = await executeSweepReclaimV1(input({
@@ -176,6 +194,7 @@ test("atomic ADMITTED to SUBMITTING fence prevents duplicate POST", async () => 
   const h = harness([40, 40]);
   // Simulate another worker already owning submission after admission completed.
   _setSweepReclaimExecutionDepsForTesting({
+    submitGuard: async () => true,
     priceReader: async () => snapshot(40),
     exchange: {
       async submit() { throw new Error("must not post"); },
@@ -205,6 +224,7 @@ test("ambiguous submission retains shared exposure as submission_unknown", async
     claimUpdater: async (u) => { if (u.lifecycleState) state = u.lifecycleState; return true; },
   });
   _setSweepReclaimExecutionDepsForTesting({
+    submitGuard: async () => true,
     priceReader: async () => snapshot(40),
     exchange: { async submit() { return { kind: "unknown" }; } },
     claimUpdater: async (u) => { if (u.lifecycleState) state = u.lifecycleState; return true; },
@@ -229,6 +249,7 @@ test("definitive rejection releases active correlated capacity", async () => {
     claimUpdater: async (u) => { if (u.lifecycleState) state = u.lifecycleState; return true; },
   });
   _setSweepReclaimExecutionDepsForTesting({
+    submitGuard: async () => true,
     priceReader: async () => snapshot(40),
     exchange: { async submit() { return { kind: "rejected", reason: "exchange_rejected_test" }; } },
     claimUpdater: async (u) => { if (u.lifecycleState) state = u.lifecycleState; return true; },
