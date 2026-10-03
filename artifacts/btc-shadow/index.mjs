@@ -10,7 +10,7 @@ const startedAtMs = Date.now();
 const totals = Object.fromEntries(SERVICES.map((service) => [service, { evaluations: 0, qualifyingWindows: 0 }]));
 const seenSignals = new Set();
 const json = (event) => console.log(JSON.stringify({ ...event, ordersEnabled: false, mode: "shadow" }));
-const status = () => ({ service: "BTC B-L Shadow", version: process.env.COMMIT_SHA ?? "unknown", mode: "shadow",
+const status = () => ({ service: "BTC B-L Shadow", version: process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.COMMIT_SHA ?? "unknown", mode: "shadow",
   ordersEnabled: false, stakeCents: 500, initializing, lastSuccessMs, currentTicker, lastError, candleError, countersSinceMs: startedAtMs,
   historyCount: history.length, candleCount: candles.length,
   healthy: !initializing && lastSuccessMs != null && Date.now() - lastSuccessMs < 60_000,
