@@ -22,7 +22,8 @@
     "test:eth420-emergency-reduction": "node scripts/run-eth420-emergency-reduction-test.mjs",
     "test:eth30": "node scripts/run-eth30-test.mjs",
     "test:sol30": "node scripts/run-sol30-test.mjs",
-    "test": "node scripts/run-all-tests.mjs"
+    "test": "node scripts/run-all-tests.mjs",
+    "test:btc-jump-signal": "node scripts/run-btc-jump-signal-test.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
