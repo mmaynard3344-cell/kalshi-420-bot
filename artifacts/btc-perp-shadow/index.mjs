@@ -166,6 +166,27 @@ function settleVirtualTrades(candles, nowMs) {
   if (changed) saveState();
 }
 
+function liveOpenSimulations(nowMs = Date.now()) {
+  if (!Number.isFinite(latestPrice)) return [];
+  return state.virtualTrades.filter((v) => v.status === "open").map((v) => {
+    const tpPx = targetPrice(v.entryPrice, v.direction, v.tp);
+    const slPx = stopPrice(v.entryPrice, v.direction, v.sl);
+    const gross = markToMarketReturn(v.entryPrice, latestPrice, v.direction);
+    const net = gross - 2 * FEE_RATE;
+    const tpDistance = v.direction === "long" ? (tpPx - latestPrice) / latestPrice : (latestPrice - tpPx) / latestPrice;
+    const slDistance = v.direction === "long" ? (latestPrice - slPx) / latestPrice : (slPx - latestPrice) / latestPrice;
+    const remainingMs = Math.max(0, v.entryMs + v.holdMin * 60_000 - nowMs);
+    return {
+      id: v.id, service: v.service, direction: v.direction,
+      entryMs: v.entryMs, entryPrice: v.entryPrice, currentPrice: latestPrice,
+      tp: v.tp, tpPrice: tpPx, tpDistance,
+      sl: v.sl, slPrice: slPx, slDistance,
+      holdMin: v.holdMin, remainingSeconds: Math.ceil(remainingMs / 1000),
+      grossReturn: gross, netReturn: net, pnlUsd: NOTIONAL_USD * net,
+    };
+  }).sort((a,b) => a.holdMin - b.holdMin || a.tp - b.tp || a.sl - b.sl);
+}
+
 function aggregate() {
   const map = new Map();
   for (const v of state.virtualTrades) {
@@ -206,6 +227,7 @@ function status() {
     signalCount: state.signals.length, openVirtualTrades: open, closedVirtualTrades: closed,
     grid: { takeProfit:[...TPS], stopLoss:[...SLS], maxHoldMinutes:[...HOLDS_MIN] },
     recentSignals: state.signals.slice(-20).reverse(),
+    openSimulations: liveOpenSimulations(),
     leaderboard: aggregate().slice(0,40),
   };
 }
@@ -224,11 +246,16 @@ const server = http.createServer((req,res) => {
     res.end(JSON.stringify(s)); return;
   }
   if (pathname !== "/") { res.writeHead(404); res.end("not found"); return; }
+  const liveRows = s.openSimulations.map((x) => {
+    const mins = Math.floor(x.remainingSeconds / 60);
+    const secs = String(x.remainingSeconds % 60).padStart(2, "0");
+    return `<tr><td>${esc(x.service)}</td><td>${esc(x.direction.toUpperCase())}</td><td>${x.entryPrice.toFixed(1)}</td><td>${x.currentPrice.toFixed(1)}</td><td>${(x.tp*100).toFixed(2)}%</td><td>${(x.tpDistance*100).toFixed(3)}%</td><td>${(x.sl*100).toFixed(2)}%</td><td>${(x.slDistance*100).toFixed(3)}%</td><td>${x.holdMin}m</td><td>${mins}:${secs}</td><td>${(x.grossReturn*100).toFixed(3)}%</td><td>${(x.netReturn*100).toFixed(3)}%</td><td>${x.pnlUsd.toFixed(3)}</td></tr>`;
+  }).join("");
   const rows = s.leaderboard.slice(0,20).map((x) =>
-    `<tr><td>${esc(x.service)}</td><td>${(x.tp*100).toFixed(2)}%</td><td>${(x.sl*100).toFixed(2)}%</td><td>${x.holdMin}m</td><td>${x.n}</td><td>${(x.winRate*100).toFixed(1)}%</td><td>${(x.avgNetReturn*100).toFixed(3)}%</td><td>$${x.pnlUsd.toFixed(3)}</td></tr>`
+    `<tr><td>${esc(x.service)}</td><td>${(x.tp*100).toFixed(2)}%</td><td>${(x.sl*100).toFixed(2)}%</td><td>${x.holdMin}m</td><td>${x.n}</td><td>${(x.winRate*100).toFixed(1)}%</td><td>${(x.avgNetReturn*100).toFixed(3)}%</td><td>${x.pnlUsd.toFixed(3)}</td></tr>`
   ).join("");
   res.writeHead(200, {"content-type":"text/html; charset=utf-8","cache-control":"no-store"});
-  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="20"><title>BTC Perp Shadow</title><style>body{background:#101722;color:#e7eef7;font:15px system-ui;max-width:1100px;margin:30px auto;padding:0 16px}h1{font-size:26px}.ok{color:#8adbc1}p{color:#a9b9cd}table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:10px 7px;border-bottom:1px solid #2c3949;text-align:right}th:first-child,td:first-child{text-align:left}.wrap{overflow:auto}</style></head><body><h1>BTC Perpetual Experiment</h1><p class="ok">SHADOW ONLY · no Kalshi perp orders can be placed</p><p>B/G/H/I · 1× · $${NOTIONAL_USD.toFixed(2)} modeled notional · ${FEE_BPS_PER_SIDE.toFixed(1)} bps/side fee assumption · Kraken XBTUSD 1-minute proxy</p><p>Signals: ${s.signalCount} · Open paths: ${s.openVirtualTrades} · Closed paths: ${s.closedVirtualTrades} · BTC proxy: ${latestPrice ?? "—"}</p><div class="wrap"><table><thead><tr><th>Service</th><th>TP</th><th>SL</th><th>Hold</th><th>N</th><th>Win</th><th>Avg net</th><th>P&L</th></tr></thead><tbody>${rows || '<tr><td colspan="8">Waiting for B/G/H/I signals to complete.</td></tr>'}</tbody></table></div></body></html>`);
+  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="20"><title>BTC Perp Shadow</title><style>body{background:#101722;color:#e7eef7;font:15px system-ui;max-width:1280px;margin:30px auto;padding:0 16px}h1{font-size:26px}h2{font-size:18px;margin-top:28px}.ok{color:#8adbc1}p{color:#a9b9cd}table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:10px 7px;border-bottom:1px solid #2c3949;text-align:right}th:first-child,td:first-child{text-align:left}.wrap{overflow:auto}</style></head><body><h1>BTC Perpetual Experiment</h1><p class="ok">SHADOW ONLY · no Kalshi perp orders can be placed</p><p>B/G/H/I · 1× · $${NOTIONAL_USD.toFixed(2)} modeled notional · ${FEE_BPS_PER_SIDE.toFixed(1)} bps/side fee assumption · Kraken XBTUSD 1-minute proxy</p><p>Signals: ${s.signalCount} · Open paths: ${s.openVirtualTrades} · Closed paths: ${s.closedVirtualTrades} · BTC proxy: ${latestPrice ?? "—"}</p><h2>Open simulations — live mark-to-market</h2><div class="wrap"><table><thead><tr><th>Svc</th><th>Dir</th><th>Entry</th><th>Now</th><th>TP</th><th>To TP</th><th>SL</th><th>To SL</th><th>Hold</th><th>Left</th><th>Gross</th><th>Net</th><th>P&L</th></tr></thead><tbody>${liveRows || '<tr><td colspan="13">No simulations are open right now.</td></tr>'}</tbody></table></div><h2>Completed-path leaderboard</h2><div class="wrap"><table><thead><tr><th>Service</th><th>TP</th><th>SL</th><th>Hold</th><th>N</th><th>Win</th><th>Avg net</th><th>P&L</th></tr></thead><tbody>${rows || '<tr><td colspan="8">Waiting for B/G/H/I signals to complete.</td></tr>'}</tbody></table></div></body></html>`);
 });
 server.listen(Number(process.env.PORT ?? 8080), "0.0.0.0", () => {
   console.log(JSON.stringify({event:"btc_perp_shadow_started",ordersEnabled:false,mode:"shadow_only",notionalUsd:NOTIONAL_USD,feeBpsPerSide:FEE_BPS_PER_SIDE}));
