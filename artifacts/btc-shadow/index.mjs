@@ -18,6 +18,7 @@ const countedSignals = new Set();
 const activeOrders = new Set();
 const RETRYABLE_ORDER_RESULTS = new Set(["retry"]);
 let lastOrderEvent = null;
+const recentOrders = [];
 
 const json = (event) => console.log(JSON.stringify({ ...event, ordersEnabled: LIVE_ENABLED, mode: LIVE_ENABLED ? "live" : "shadow" }));
 
@@ -181,6 +182,19 @@ async function executeDecision(decision, market) {
       orderId: raw?.order?.order_id ?? raw?.order_id ?? null,
       status: raw?.order?.status ?? raw?.status ?? "accepted",
     };
+    const order = raw?.order ?? raw ?? {};
+    const filledContracts = firstFinite(order.fill_count_fp, order.fill_count, order.filled_count_fp, order.filled_count) ?? 0;
+    const remainingContracts = firstFinite(order.remaining_count_fp, order.remaining_count);
+    const yesPx = firstFinite(order.yes_price_dollars, order.yes_price);
+    const noPx = firstFinite(order.no_price_dollars, order.no_price);
+    const outcomePx = decision.side === "yes" ? yesPx : noPx;
+    const avgFillCents = outcomePx == null ? null : (outcomePx <= 1 ? outcomePx * 100 : outcomePx);
+    const feeUsd = firstFinite(order.taker_fees_dollars, order.maker_fees_dollars, order.fees_dollars, order.fee_dollars);
+    addRecentOrder({
+      at: lastOrderEvent.at, service: decision.service, ticker: decision.ticker, side: decision.side,
+      requestedPrincipalCents: required, requestedContracts: contracts, filledContracts, remainingContracts,
+      avgFillCents, feeUsd, pnlUsd: null, clientOrderId, orderId: lastOrderEvent.orderId, status: lastOrderEvent.status,
+    });
     json({ event: "btc_live_order_submitted", ...lastOrderEvent });
     return "submitted";
   } catch (error) {
@@ -193,6 +207,30 @@ async function executeDecision(decision, market) {
   }
 }
 
+function firstFinite(...values) {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function addRecentOrder(row) {
+  recentOrders.unshift(row);
+  if (recentOrders.length > 100) recentOrders.length = 100;
+}
+
+function renderRecentOrders(rows) {
+  if (!rows.length) return '<tr><td colspan="10">No BTC orders recorded since this deployment.</td></tr>';
+  return rows.map((o) => {
+    const when = o.at ? new Date(o.at).toLocaleString('en-US', { timeZone: 'America/New_York' }) : '—';
+    const avg = o.avgFillCents == null ? '—' : Number(o.avgFillCents).toFixed(1) + '¢';
+    const fee = o.feeUsd == null ? '—' : '$' + Number(o.feeUsd).toFixed(2);
+    const pnl = o.pnlUsd == null ? 'Pending' : '$' + Number(o.pnlUsd).toFixed(2);
+    return '<tr><td>' + esc(when) + '</td><td>' + esc(o.service) + '</td><td>' + esc(o.ticker) + '</td><td>' + esc(o.side?.toUpperCase()) + '</td><td>$' + ((o.requestedPrincipalCents ?? 0) / 100).toFixed(2) + '</td><td>' + esc(o.filledContracts ?? 0) + '/' + esc(o.requestedContracts ?? '—') + '</td><td>' + avg + '</td><td>' + esc(o.status) + '</td><td>' + fee + '</td><td>' + pnl + '</td></tr>';
+  }).join('');
+}
+
 const status = () => ({
   service: "BTC B-L",
   version: process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.COMMIT_SHA ?? "unknown",
@@ -203,6 +241,7 @@ const status = () => ({
   countersSinceMs: startedAtMs, historyCount: history.length, candleCount: candles.length,
   healthy: !initializing && lastSuccessMs != null && Date.now() - lastSuccessMs < 60_000,
   services: evaluations.map((e) => ({ ...e, totals: totals[e.service] })),
+  recentOrders: recentOrders.slice(0,50),
   exclusions: { A: "not_requested", J: "requires BTC A order; no BTC A is running", K: "weather_only" },
 });
 
@@ -216,7 +255,7 @@ const server = http.createServer((req, res) => {
   }
   if (req.url !== "/") { res.writeHead(404); res.end("not found"); return; }
   res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="15"><title>BTC B–L</title><style>body{background:#101722;color:#e7eef7;font:16px system-ui;max-width:1080px;margin:32px auto;padding:0 16px}h1{font-size:26px}p{color:#a9b9cd}.badge{color:#8adbc1}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;border-bottom:1px solid #2c3949;padding:12px 8px}.wrap{overflow:auto}.yes{color:#8adbc1}.quiet{color:#a9b9cd}footer{margin-top:24px;color:#a9b9cd;font-size:13px}</style></head><body><h1>BTC B–L</h1><p class="badge">${LIVE_ENABLED ? "LIVE · Real-money IOC orders enabled" : "SHADOW · Real-money orders disabled"} · $5 principal cap per signal</p><p>${esc(currentTicker)} · Updated ${esc(lastSuccessMs ? new Date(lastSuccessMs).toISOString() : "initializing")}</p><div class="wrap"><table><thead><tr><th>Service</th><th>Signal</th><th>Side</th><th>Stake</th><th>Reason</th><th>Orders</th></tr></thead><tbody>${s.services.map((e) => `<tr><td>${esc(e.service)}</td><td class="${e.fires ? "yes" : "quiet"}">${e.fires ? "QUALIFIES" : "WAITING"}</td><td>${esc(e.side?.toUpperCase())}</td><td>${e.service === "K" ? "—" : "$5.00"}</td><td>${esc(e.reason)}</td><td>${e.totals.acceptedOrders}</td></tr>`).join("")}</tbody></table></div><footer>B always YES. Live signals use executable ask ≤ strategy limit, IOC, and a maximum $5 principal. J remains inactive without BTC A. K remains weather-only. ETH services are separate.</footer></body></html>`);
+  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="15"><title>BTC B–L</title><style>body{background:#101722;color:#e7eef7;font:16px system-ui;max-width:1080px;margin:32px auto;padding:0 16px}h1{font-size:26px}p{color:#a9b9cd}.badge{color:#8adbc1}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;border-bottom:1px solid #2c3949;padding:12px 8px}.wrap{overflow:auto}.yes{color:#8adbc1}.quiet{color:#a9b9cd}footer{margin-top:24px;color:#a9b9cd;font-size:13px}</style></head><body><h1>BTC B–L</h1><p class="badge">${LIVE_ENABLED ? "LIVE · Real-money IOC orders enabled" : "SHADOW · Real-money orders disabled"} · $5 principal cap per signal</p><p>${esc(currentTicker)} · Updated ${esc(lastSuccessMs ? new Date(lastSuccessMs).toISOString() : "initializing")}</p><h2>Recent BTC Orders</h2><div class="wrap"><table><thead><tr><th>Time ET</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Avg Fill</th><th>Status</th><th>Fee</th><th>P&amp;L</th></tr></thead><tbody>${renderRecentOrders(s.recentOrders)}</tbody></table></div><h2>Signal Status</h2><div class="wrap"><table><thead><tr><th>Service</th><th>Signal</th><th>Side</th><th>Stake</th><th>Reason</th><th>Orders</th></tr></thead><tbody>${s.services.map((e) => `<tr><td>${esc(e.service)}</td><td class="${e.fires ? "yes" : "quiet"}">${e.fires ? "QUALIFIES" : "WAITING"}</td><td>${esc(e.side?.toUpperCase())}</td><td>${e.service === "K" ? "—" : "$5.00"}</td><td>${esc(e.reason)}</td><td>${e.totals.acceptedOrders}</td></tr>`).join("")}</tbody></table></div><footer>B always YES. Live signals use executable ask ≤ strategy limit, IOC, and a maximum $5 principal. J remains inactive without BTC A. K remains weather-only. ETH services are separate.</footer></body></html>`);
 });
 server.listen(Number(process.env.PORT ?? 8080), "0.0.0.0", () => json({ event: "btc_runtime_http_started", port: Number(process.env.PORT ?? 8080) }));
 
