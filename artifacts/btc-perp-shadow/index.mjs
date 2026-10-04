@@ -4,6 +4,27 @@ import path from "node:path";
 import { evaluatePortfolio, WINDOW_MS, HISTORY_MS } from "../btc-shadow/signals.mjs";
 import { bootstrapHistory, parseFact, selectCurrent, PUBLIC_BASE } from "../btc-shadow/client.mjs";
 
+
+/**
+ * Retired 2026-10-04: research-only BTC perpetual shadow evaluator.
+ * Keep the service endpoint alive for an explicit retired status, but do not
+ * fetch markets, evaluate signals, mutate its research state, or create new
+ * telemetry. The live BTC B-L runtime is a different Railway service.
+ */
+const SHADOW_RETIRED = true;
+if (SHADOW_RETIRED) {
+  const port = Number(process.env.PORT ?? 8080);
+  const retiredServer = http.createServer((req, res) => {
+    if (req.method !== "GET") { res.writeHead(405); res.end("read only"); return; }
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+    res.end(JSON.stringify({ service: "BTC Perp B-G-H-I Shadow", status: "retired", evaluating: false, ordersEnabled: false }));
+  });
+  retiredServer.listen(port, "0.0.0.0", () => {
+    console.log(JSON.stringify({ event: "btc_perp_shadow_retired", evaluating: false, ordersEnabled: false, port }));
+  });
+  await new Promise(() => {});
+}
+
 const SERVICES = new Set(["B", "G", "H", "I"]);
 const TPS = [0.0020, 0.0030, 0.0040, 0.0050];
 const SLS = [0.0015, 0.0020, 0.0025, 0.0030];
