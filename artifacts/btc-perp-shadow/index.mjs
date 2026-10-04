@@ -212,17 +212,18 @@ function status() {
 
 const server = http.createServer((req,res) => {
   if (req.method !== "GET") { res.writeHead(405); res.end("read only"); return; }
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
   const s = status();
-  if (req.url === "/health") {
+  if (pathname === "/health") {
     const healthy = lastSuccessMs != null && Date.now() - lastSuccessMs < 60_000;
     res.writeHead(healthy ? 200 : 503, {"content-type":"application/json","cache-control":"no-store"});
     res.end(JSON.stringify({healthy,...s})); return;
   }
-  if (req.url === "/status") {
+  if (pathname === "/status") {
     res.writeHead(200, {"content-type":"application/json","cache-control":"no-store"});
     res.end(JSON.stringify(s)); return;
   }
-  if (req.url !== "/") { res.writeHead(404); res.end("not found"); return; }
+  if (pathname !== "/") { res.writeHead(404); res.end("not found"); return; }
   const rows = s.leaderboard.slice(0,20).map((x) =>
     `<tr><td>${esc(x.service)}</td><td>${(x.tp*100).toFixed(2)}%</td><td>${(x.sl*100).toFixed(2)}%</td><td>${x.holdMin}m</td><td>${x.n}</td><td>${(x.winRate*100).toFixed(1)}%</td><td>${(x.avgNetReturn*100).toFixed(3)}%</td><td>$${x.pnlUsd.toFixed(3)}</td></tr>`
   ).join("");
