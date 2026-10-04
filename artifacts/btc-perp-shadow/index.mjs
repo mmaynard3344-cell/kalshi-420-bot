@@ -15,7 +15,11 @@ const FEE_RATE = FEE_BPS_PER_SIDE / 10_000;
 const POLL_MS = 10_000;
 const DATA_DIR = process.env.DATA_DIR ?? "/data";
 const STATE_PATH = path.join(DATA_DIR, "btc-perp-shadow-state.json");
-const KRAKEN_OHLC = "https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1";
+const KRAKEN_OHLC = KRAKEN_OHLC_BASE;
+const BACKFILL_DAYS = Number(process.env.PERP_BACKFILL_DAYS ?? 7);
+const BACKFILL_STATE_PATH = path.join(DATA_DIR, "btc-perp-backfill-v1.json");
+const KRAKEN_OHLC_BASE = "https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1";
+
 
 let history = [];
 let lastHistoryMs = 0;
@@ -24,6 +28,7 @@ let currentTicker = null;
 let lastSuccessMs = null;
 let lastError = null;
 let latestPrice = null;
+let backfill = { status:"not_started", startedAt:null, completedAt:null, windowDays:BACKFILL_DAYS, signalCount:0, tradeCount:0, error:null, leaderboard:[] };
 
 function emptyState() {
   return {
@@ -187,6 +192,154 @@ function liveOpenSimulations(nowMs = Date.now()) {
   }).sort((a,b) => a.holdMin - b.holdMin || a.tp - b.tp || a.sl - b.sl);
 }
 
+
+async function fetchSettledFactsDeep(nowMs, evaluationDays = BACKFILL_DAYS) {
+  const oldestNeeded = nowMs - (HISTORY_MS + evaluationDays*86400000 + 2*WINDOW_MS);
+  let cursor = "", facts = [], earliest = Infinity;
+  const seenCursors = new Set();
+  for (let page = 0; page < 20; page++) {
+    const url = new URL(`${PUBLIC_BASE}/markets`);
+    url.searchParams.set("series_ticker","KXBTC15M");
+    url.searchParams.set("status","settled");
+    url.searchParams.set("limit","1000");
+    if (cursor) url.searchParams.set("cursor",cursor);
+    const body = await getJson(url.toString());
+    if (!Array.isArray(body.markets)) throw new Error("invalid_backfill_market_catalog");
+    const batch = body.markets.map(parseFact).filter(Boolean);
+    facts.push(...batch);
+    if (batch.length) earliest = Math.min(earliest, ...batch.map((x)=>x.openTimeMs));
+    cursor = body.cursor ?? "";
+    if (earliest <= oldestNeeded || !cursor) break;
+    if (seenCursors.has(cursor)) throw new Error("repeated_backfill_market_cursor");
+    seenCursors.add(cursor);
+  }
+  if (earliest > oldestNeeded) throw new Error("incomplete_backfill_signal_history");
+  return facts.filter((x)=>x.openTimeMs >= oldestNeeded).sort((a,b)=>a.openTimeMs-b.openTimeMs);
+}
+
+function parseKrakenPage(body) {
+  if (Array.isArray(body.error) && body.error.length) throw new Error("kraken_backfill_error");
+  const entries = Object.entries(body.result ?? {}).filter(([k])=>k!=="last");
+  if (entries.length !== 1 || !Array.isArray(entries[0][1])) throw new Error("invalid_kraken_backfill");
+  return {
+    candles: entries[0][1].map((r)=>({
+      openTimeMs:Number(r[0])*1000, closeTimeMs:Number(r[0])*1000+60000,
+      open:Number(r[1]), high:Number(r[2]), low:Number(r[3]), close:Number(r[4]),
+    })).filter((x)=>Number.isFinite(x.open)&&Number.isFinite(x.high)&&Number.isFinite(x.low)&&Number.isFinite(x.close)),
+    last: Number(body.result?.last ?? 0),
+  };
+}
+
+async function fetchMinuteCandlesRange(startMs, endMs) {
+  const map = new Map();
+  let since = Math.floor(startMs/1000)-60;
+  let stagnant = 0;
+  for (let page=0; page<80; page++) {
+    const url = KRAKEN_OHLC_BASE + "&since=" + encodeURIComponent(String(since));
+    const parsed = parseKrakenPage(await getJson(url));
+    let added = 0;
+    for (const candle of parsed.candles) {
+      if (candle.openTimeMs >= startMs-60000 && candle.openTimeMs <= endMs+60000 && !map.has(candle.openTimeMs)) {
+        map.set(candle.openTimeMs,candle); added++;
+      }
+    }
+    const maxTs = parsed.candles.length ? Math.max(...parsed.candles.map((x)=>x.openTimeMs)) : 0;
+    if (maxTs >= endMs || !parsed.candles.length) break;
+    const nextSince = parsed.last || Math.floor(maxTs/1000)+60;
+    if (nextSince <= since || added === 0) stagnant++; else stagnant=0;
+    if (stagnant >= 2) break;
+    since = nextSince;
+    await new Promise((resolve)=>setTimeout(resolve,350));
+  }
+  return [...map.values()].sort((a,b)=>a.openTimeMs-b.openTimeMs);
+}
+
+function scoreHistoricalPath({signal,tp,sl,holdMin,candles}) {
+  const deadline = signal.entryMs + holdMin*60000;
+  const relevant = candles.filter((x)=>x.openTimeMs >= signal.entryMs && x.openTimeMs < deadline);
+  let exit = null;
+  for (const candle of relevant) {
+    const probe = { entryPrice:signal.entryPrice, direction:signal.direction, tp, sl };
+    const hit = hitForCandle(probe,candle);
+    if (hit) { exit={...hit,ms:candle.closeTimeMs}; break; }
+  }
+  if (!exit) {
+    const eligible = candles.filter((x)=>x.closeTimeMs <= deadline && x.closeTimeMs > signal.entryMs);
+    const last = eligible[eligible.length-1];
+    if (!last) return null;
+    exit={reason:"time",price:last.close,ms:deadline};
+  }
+  const grossReturn=markToMarketReturn(signal.entryPrice,exit.price,signal.direction);
+  const netReturn=grossReturn-2*FEE_RATE;
+  return { service:signal.service,tp,sl,holdMin,netReturn,grossReturn,pnlUsd:NOTIONAL_USD*netReturn,exitReason:exit.reason };
+}
+
+function aggregateBackfillTrades(trades) {
+  const groups=new Map();
+  for (const t of trades) {
+    const key=[t.service,t.tp,t.sl,t.holdMin].join("|");
+    let g=groups.get(key);
+    if(!g) g={service:t.service,tp:t.tp,sl:t.sl,holdMin:t.holdMin,returns:[],pnlUsd:0,wins:0,grossProfit:0,grossLoss:0,tpExits:0,slExits:0,timeExits:0};
+    g.returns.push(t.netReturn); g.pnlUsd+=t.pnlUsd;
+    if(t.netReturn>0){g.wins++;g.grossProfit+=t.netReturn;} else g.grossLoss+=Math.abs(t.netReturn);
+    if(t.exitReason==="tp")g.tpExits++; else if(t.exitReason?.startsWith("sl"))g.slExits++; else g.timeExits++;
+    groups.set(key,g);
+  }
+  return [...groups.values()].map((g)=>{
+    const sorted=[...g.returns].sort((a,b)=>a-b), n=sorted.length;
+    const median=n?sorted[Math.floor((n-1)/2)]:null;
+    const avg=n?sorted.reduce((a,b)=>a+b,0)/n:null;
+    let equity=0,peak=0,maxDd=0;
+    for(const r of g.returns){equity+=r;peak=Math.max(peak,equity);maxDd=Math.max(maxDd,peak-equity);}
+    return {...g,n,avgNetReturn:avg,medianNetReturn:median,winRate:n?g.wins/n:null,
+      profitFactor:g.grossLoss>0?g.grossProfit/g.grossLoss:null,maxDrawdown:maxDd,
+      tpRate:n?g.tpExits/n:null,slRate:n?g.slExits/n:null,timeRate:n?g.timeExits/n:null};
+  }).sort((a,b)=>(b.avgNetReturn??-Infinity)-(a.avgNetReturn??-Infinity));
+}
+
+async function runHistoricalBackfill() {
+  if (backfill.status === "running" || backfill.status === "complete") return;
+  backfill={...backfill,status:"running",startedAt:new Date().toISOString(),completedAt:null,error:null};
+  try {
+    const now=Date.now();
+    const evalStart=Math.floor((now-BACKFILL_DAYS*86400000)/WINDOW_MS)*WINDOW_MS;
+    const facts=await fetchSettledFactsDeep(now,BACKFILL_DAYS);
+    const byOpen=new Map(facts.map((x)=>[x.openTimeMs,x]));
+    const evaluationFacts=facts.filter((x)=>x.openTimeMs>=evalStart && x.openTimeMs<Math.floor(now/WINDOW_MS)*WINDOW_MS);
+    const priceStart=evalStart;
+    const priceEnd=now+60*60000;
+    const minuteCandles=await fetchMinuteCandlesRange(priceStart,priceEnd);
+    const byMinute=new Map(minuteCandles.map((x)=>[x.openTimeMs,x]));
+    const signals=[];
+    for(const fact of evaluationFacts){
+      const entryCandle=byMinute.get(fact.openTimeMs);
+      if(!entryCandle) continue;
+      const market={ticker:fact.ticker,floorStrike:fact.floorStrike,openTimeMs:fact.openTimeMs,observedAtMs:fact.openTimeMs+1};
+      const evals=evaluatePortfolio({market,history:facts,candles:[]}).filter((x)=>SERVICES.has(x.service)&&x.fires&&direction(x.side));
+      for(const e of evals) signals.push({
+        id:"hist:"+e.service+":"+e.ticker,service:e.service,ticker:e.ticker,side:e.side,direction:direction(e.side),
+        entryMs:fact.openTimeMs,entryPrice:entryCandle.open,reason:e.reason
+      });
+    }
+    const trades=[];
+    for(const signal of signals){
+      const local=minuteCandles.filter((x)=>x.openTimeMs>=signal.entryMs && x.openTimeMs<=signal.entryMs+60*60000);
+      for(const tp of TPS) for(const sl of SLS) for(const holdMin of HOLDS_MIN){
+        const scored=scoreHistoricalPath({signal,tp,sl,holdMin,candles:local});
+        if(scored) trades.push(scored);
+      }
+    }
+    const leaderboard=aggregateBackfillTrades(trades);
+    backfill={...backfill,status:"complete",completedAt:new Date().toISOString(),signalCount:signals.length,tradeCount:trades.length,error:null,leaderboard};
+    fs.mkdirSync(DATA_DIR,{recursive:true});
+    fs.writeFileSync(BACKFILL_STATE_PATH,JSON.stringify({backfill,signals:signals.slice(-1000),tradesCount:trades.length}));
+    console.log(JSON.stringify({event:"btc_perp_backfill_complete",signalCount:signals.length,tradeCount:trades.length,windowDays:BACKFILL_DAYS,ordersEnabled:false}));
+  } catch(e) {
+    backfill={...backfill,status:"error",completedAt:new Date().toISOString(),error:e instanceof Error?e.message:"backfill_failed"};
+    console.log(JSON.stringify({event:"btc_perp_backfill_error",error:backfill.error,ordersEnabled:false}));
+  }
+}
+
 function aggregate() {
   const map = new Map();
   for (const v of state.virtualTrades) {
@@ -229,6 +382,7 @@ function status() {
     recentSignals: state.signals.slice(-20).reverse(),
     openSimulations: liveOpenSimulations(),
     leaderboard: aggregate().slice(0,40),
+    historicalBackfill: {...backfill, leaderboard: backfill.leaderboard.slice(0,40)},
   };
 }
 
@@ -251,11 +405,14 @@ const server = http.createServer((req,res) => {
     const secs = String(x.remainingSeconds % 60).padStart(2, "0");
     return `<tr><td>${esc(x.service)}</td><td>${esc(x.direction.toUpperCase())}</td><td>${x.entryPrice.toFixed(1)}</td><td>${x.currentPrice.toFixed(1)}</td><td>${(x.tp*100).toFixed(2)}%</td><td>${(x.tpDistance*100).toFixed(3)}%</td><td>${(x.sl*100).toFixed(2)}%</td><td>${(x.slDistance*100).toFixed(3)}%</td><td>${x.holdMin}m</td><td>${mins}:${secs}</td><td>${(x.grossReturn*100).toFixed(3)}%</td><td>${(x.netReturn*100).toFixed(3)}%</td><td>${x.pnlUsd.toFixed(3)}</td></tr>`;
   }).join("");
+  const backfillRows = s.historicalBackfill.leaderboard.slice(0,20).map((x) =>
+    `<tr><td>${esc(x.service)}</td><td>${(x.tp*100).toFixed(2)}%</td><td>${(x.sl*100).toFixed(2)}%</td><td>${x.holdMin}m</td><td>${x.n}</td><td>${(x.winRate*100).toFixed(1)}%</td><td>${(x.avgNetReturn*100).toFixed(3)}%</td><td>${(x.medianNetReturn*100).toFixed(3)}%</td><td>${x.profitFactor==null?"—":x.profitFactor.toFixed(2)}</td><td>${(x.maxDrawdown*100).toFixed(2)}%</td><td>${(x.tpRate*100).toFixed(1)}%</td><td>${(x.slRate*100).toFixed(1)}%</td><td>${(x.timeRate*100).toFixed(1)}%</td><td>${x.pnlUsd.toFixed(3)}</td></tr>`
+  ).join("");
   const rows = s.leaderboard.slice(0,20).map((x) =>
     `<tr><td>${esc(x.service)}</td><td>${(x.tp*100).toFixed(2)}%</td><td>${(x.sl*100).toFixed(2)}%</td><td>${x.holdMin}m</td><td>${x.n}</td><td>${(x.winRate*100).toFixed(1)}%</td><td>${(x.avgNetReturn*100).toFixed(3)}%</td><td>${x.pnlUsd.toFixed(3)}</td></tr>`
   ).join("");
   res.writeHead(200, {"content-type":"text/html; charset=utf-8","cache-control":"no-store"});
-  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="20"><title>BTC Perp Shadow</title><style>body{background:#101722;color:#e7eef7;font:15px system-ui;max-width:1280px;margin:30px auto;padding:0 16px}h1{font-size:26px}h2{font-size:18px;margin-top:28px}.ok{color:#8adbc1}p{color:#a9b9cd}table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:10px 7px;border-bottom:1px solid #2c3949;text-align:right}th:first-child,td:first-child{text-align:left}.wrap{overflow:auto}</style></head><body><h1>BTC Perpetual Experiment</h1><p class="ok">SHADOW ONLY · no Kalshi perp orders can be placed</p><p>B/G/H/I · 1× · $${NOTIONAL_USD.toFixed(2)} modeled notional · ${FEE_BPS_PER_SIDE.toFixed(1)} bps/side fee assumption · Kraken XBTUSD 1-minute proxy</p><p>Signals: ${s.signalCount} · Open paths: ${s.openVirtualTrades} · Closed paths: ${s.closedVirtualTrades} · BTC proxy: ${latestPrice ?? "—"}</p><h2>Open simulated trades — what would be happening now</h2><div class="wrap"><table><thead><tr><th>Signal</th><th>Bet</th><th>Entry BTC</th><th>BTC Now</th><th>Profit Target</th><th>Distance to Win</th><th>Stop Loss</th><th>Distance to Stop</th><th>Max Hold</th><th>Time Left</th><th>Price Move</th><th>After Fees</th><th>Current Profit</th></tr></thead><tbody>${liveRows || '<tr><td colspan="13">No simulations are open right now.</td></tr>'}</tbody></table></div><h2>Completed simulations — which exit plan has worked best</h2><div class="wrap"><table><thead><tr><th>Signal</th><th>Profit Target</th><th>Stop Loss</th><th>Max Hold</th><th>Samples</th><th>Win Rate</th><th>Avg After Fees</th><th>Total Sim Profit</th></tr></thead><tbody>${rows || '<tr><td colspan="8">Waiting for B/G/H/I signals to complete.</td></tr>'}</tbody></table></div></body></html>`);
+  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="20"><title>BTC Perp Shadow</title><style>body{background:#101722;color:#e7eef7;font:15px system-ui;max-width:1280px;margin:30px auto;padding:0 16px}h1{font-size:26px}h2{font-size:18px;margin-top:28px}.ok{color:#8adbc1}p{color:#a9b9cd}table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:10px 7px;border-bottom:1px solid #2c3949;text-align:right}th:first-child,td:first-child{text-align:left}.wrap{overflow:auto}</style></head><body><h1>BTC Perpetual Experiment</h1><p class="ok">SHADOW ONLY · no Kalshi perp orders can be placed</p><p>B/G/H/I · 1× · $${NOTIONAL_USD.toFixed(2)} modeled notional · ${FEE_BPS_PER_SIDE.toFixed(1)} bps/side fee assumption · Kraken XBTUSD 1-minute proxy</p><p>Signals: ${s.signalCount} · Open paths: ${s.openVirtualTrades} · Closed paths: ${s.closedVirtualTrades} · BTC proxy: ${latestPrice ?? "—"}</p><h2>Historical backfill</h2><p>Status: ${esc(s.historicalBackfill.status)} · Window: ${s.historicalBackfill.windowDays}d · Signals: ${s.historicalBackfill.signalCount} · Sim paths: ${s.historicalBackfill.tradeCount}${s.historicalBackfill.error ? " · Error: "+esc(s.historicalBackfill.error) : ""}</p><div class="wrap"><table><thead><tr><th>Signal</th><th>TP</th><th>SL</th><th>Hold</th><th>N</th><th>Win</th><th>Expectancy</th><th>Median</th><th>Profit Factor</th><th>Max DD</th><th>TP Exit</th><th>SL Exit</th><th>Time Exit</th><th>P&L</th></tr></thead><tbody>${backfillRows || '<tr><td colspan="14">Backfill is running or has no completed paths yet.</td></tr>'}</tbody></table></div><h2>Open simulated trades — what would be happening now</h2><div class="wrap"><table><thead><tr><th>Signal</th><th>Bet</th><th>Entry BTC</th><th>BTC Now</th><th>Profit Target</th><th>Distance to Win</th><th>Stop Loss</th><th>Distance to Stop</th><th>Max Hold</th><th>Time Left</th><th>Price Move</th><th>After Fees</th><th>Current Profit</th></tr></thead><tbody>${liveRows || '<tr><td colspan="13">No simulations are open right now.</td></tr>'}</tbody></table></div><h2>Completed simulations — which exit plan has worked best</h2><div class="wrap"><table><thead><tr><th>Signal</th><th>Profit Target</th><th>Stop Loss</th><th>Max Hold</th><th>Samples</th><th>Win Rate</th><th>Avg After Fees</th><th>Total Sim Profit</th></tr></thead><tbody>${rows || '<tr><td colspan="8">Waiting for B/G/H/I signals to complete.</td></tr>'}</tbody></table></div></body></html>`);
 });
 server.listen(Number(process.env.PORT ?? 8080), "0.0.0.0", () => {
   console.log(JSON.stringify({event:"btc_perp_shadow_started",ordersEnabled:false,mode:"shadow_only",notionalUsd:NOTIONAL_USD,feeBpsPerSide:FEE_BPS_PER_SIDE}));
@@ -326,3 +483,4 @@ async function tick() {
 }
 tick();
 setInterval(tick,POLL_MS);
+setTimeout(() => { void runHistoricalBackfill(); }, 5000);
