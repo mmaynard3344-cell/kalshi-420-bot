@@ -3,7 +3,8 @@ export const PUBLIC_BASE = "https://api.elections.kalshi.com/trade-api/v2";
 export async function publicJson(url, fetcher = fetch) {
   const target = new URL(url);
   if (target.protocol !== "https:" || target.username || target.password || (target.port && target.port !== "443")
-    || !(target.hostname === "api.elections.kalshi.com" && target.pathname === "/trade-api/v2/markets")
+    || !(target.hostname === "api.elections.kalshi.com"
+      && (target.pathname === "/trade-api/v2/markets" || target.pathname.startsWith("/trade-api/v2/markets/")))
       && !(target.hostname === "api.kraken.com" && target.pathname === "/0/public/OHLC")) throw new Error("unapproved_public_source");
   const response = await fetcher(url, { method: "GET", signal: AbortSignal.timeout(20_000) });
   if (!response.ok) throw new Error(`public_source_http_${response.status}`);
