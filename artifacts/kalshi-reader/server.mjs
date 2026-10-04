@@ -9,6 +9,7 @@ import { gzipSync } from 'node:zlib';
 const port = Number(process.env.PORT ?? 3000);
 const graceBase = (process.env.GRACE_API_BASE_URL ?? '').replace(/\/$/, '');
 const graceToken = process.env.GRACE_TRADE_API_TOKEN ?? '';
+const btcBlBase = (process.env.BTC_BL_BASE_URL ?? '').replace(/\/$/, '');
 const databaseUrl = process.env.DATABASE_URL ?? '';
 const root = join(fileURLToPath(new URL('.', import.meta.url)), 'dist', 'public');
 
@@ -140,6 +141,28 @@ async function proxyRead(req, res, url) {
   } catch (error) {
     console.error('Grace read proxy failed', error);
     send(res, 502, JSON.stringify({ error: 'Grace API unavailable' }), 'application/json; charset=utf-8');
+  }
+}
+
+async function btcBlStatusDiagnostics(req, res) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
+  if (!btcBlBase) {
+    return send(res, 503, JSON.stringify({ error: 'BTC B-L runtime URL is not configured' }), 'application/json; charset=utf-8');
+  }
+  try {
+    const upstream = await fetch(btcBlBase + '/status', {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(5000),
+    });
+    const text = await upstream.text();
+    if (!upstream.ok) throw new Error('BTC B-L status returned ' + upstream.status + ': ' + text.slice(0, 200));
+    if (req.method === 'HEAD') return send(res, 200, '', 'application/json; charset=utf-8');
+    return send(res, 200, text, 'application/json; charset=utf-8');
+  } catch (error) {
+    console.error('BTC B-L status read failed', error);
+    return send(res, 502, JSON.stringify({ error: 'BTC B-L runtime unavailable' }), 'application/json; charset=utf-8');
   }
 }
 
@@ -1177,6 +1200,7 @@ function serveStatic(req, res, url) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  if (url.pathname === '/api/diagnostics/btc-bl-status') return void btcBlStatusDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/service-ownership') return void serviceOwnershipDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/service-ledger-today') return void serviceLedgerTodayDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/market-results-recent') return void recentMarketResultsDiagnostics(req, res);
