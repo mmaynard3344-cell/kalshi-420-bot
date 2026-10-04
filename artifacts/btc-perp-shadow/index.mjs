@@ -15,10 +15,10 @@ const FEE_RATE = FEE_BPS_PER_SIDE / 10_000;
 const POLL_MS = 10_000;
 const DATA_DIR = process.env.DATA_DIR ?? "/data";
 const STATE_PATH = path.join(DATA_DIR, "btc-perp-shadow-state.json");
+const KRAKEN_OHLC_BASE = "https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1";
 const KRAKEN_OHLC = KRAKEN_OHLC_BASE;
 const BACKFILL_DAYS = Number(process.env.PERP_BACKFILL_DAYS ?? 7);
 const BACKFILL_STATE_PATH = path.join(DATA_DIR, "btc-perp-backfill-v1.json");
-const KRAKEN_OHLC_BASE = "https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1";
 
 
 let history = [];
