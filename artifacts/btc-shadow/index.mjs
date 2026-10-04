@@ -4,7 +4,8 @@ import { evaluatePortfolio, SERVICES, WINDOW_MS, HISTORY_MS } from "./signals.mj
 import { bootstrapHistory, parseFact, selectCurrent, parseCandles, publicJson, PUBLIC_BASE } from "./client.mjs";
 
 const LIVE_ENABLED = process.env.BTC_LIVE_ENABLED === "true" && process.env.TRADING_ENABLED === "true";
-const ORDER_EXECUTION_ENABLED = false; // review branch safety gate: quote verification only
+const ORDER_EXECUTION_ENABLED =
+  process.env.ORDER_EXECUTION_ENABLED === "true";
 const STAKE_CENTS = 500;
 const TRADE_BASE = "https://external-api.kalshi.com/trade-api/v2";
 
