@@ -12,7 +12,9 @@ let initializing = true, lastError = null, candleError = null, lastSuccessMs = n
 const startedAtMs = Date.now();
 const totals = Object.fromEntries(SERVICES.map((service) => [service, { evaluations: 0, qualifyingWindows: 0, orderAttempts: 0, acceptedOrders: 0, skippedOrders: 0 }]));
 const seenSignals = new Set();
+const countedSignals = new Set();
 const activeOrders = new Set();
+const RETRYABLE_ORDER_RESULTS = new Set(["retry"]);
 let lastOrderEvent = null;
 
 const json = (event) => console.log(JSON.stringify({ ...event, ordersEnabled: LIVE_ENABLED, mode: LIVE_ENABLED ? "live" : "shadow" }));
@@ -111,11 +113,11 @@ async function freshBalanceCents() {
 }
 
 async function executeDecision(decision, market) {
-  if (!LIVE_ENABLED || !decision.fires || (decision.side !== "yes" && decision.side !== "no")) return;
-  if (decision.service === "J" || decision.service === "K") return;
+  if (!LIVE_ENABLED || !decision.fires || (decision.side !== "yes" && decision.side !== "no")) return "terminal";
+  if (decision.service === "J" || decision.service === "K") return "terminal";
 
   const key = decision.service + ":" + decision.ticker;
-  if (activeOrders.has(key)) return;
+  if (activeOrders.has(key)) return "retry";
   activeOrders.add(key);
   totals[decision.service].orderAttempts++;
 
@@ -124,35 +126,35 @@ async function executeDecision(decision, market) {
     const askCents = quoteCents(market, decision.side);
     if (!Number.isInteger(askCents) || askCents < 1 || askCents > 99) {
       totals[decision.service].skippedOrders++;
-      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, reason: "executable_ask_unavailable" });
-      return;
+      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, reason: "executable_ask_unavailable", retryable: true });
+      return "retry";
     }
     if (askCents > limitPriceCents) {
       totals[decision.service].skippedOrders++;
-      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, askCents, limitPriceCents, reason: "ask_above_limit" });
-      return;
+      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, askCents, limitPriceCents, reason: "ask_above_limit", retryable: true });
+      return "retry";
     }
 
     const contracts = Math.floor(STAKE_CENTS / askCents);
     if (contracts < 1) {
       totals[decision.service].skippedOrders++;
-      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, askCents, reason: "stake_too_small" });
-      return;
+      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, askCents, reason: "stake_too_small", retryable: false });
+      return "terminal";
     }
 
     const balance = await freshBalanceCents();
     const required = contracts * askCents;
     if (balance < required) {
       totals[decision.service].skippedOrders++;
-      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, balanceCents: balance, requiredCents: required, reason: "insufficient_fresh_balance" });
-      return;
+      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, balanceCents: balance, requiredCents: required, reason: "insufficient_fresh_balance", retryable: true });
+      return "retry";
     }
 
     const clientOrderId = deterministicUuid(decision.service, decision.ticker);
     if (await alreadySubmitted(decision.ticker, clientOrderId)) {
       totals[decision.service].skippedOrders++;
-      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, clientOrderId, reason: "exchange_duplicate_exists" });
-      return;
+      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, clientOrderId, reason: "exchange_duplicate_exists", retryable: false });
+      return "terminal";
     }
 
     const raw = await authJson("POST", "/portfolio/events/orders",
@@ -165,10 +167,12 @@ async function executeDecision(decision, market) {
       status: raw?.order?.status ?? raw?.status ?? "accepted",
     };
     json({ event: "btc_live_order_submitted", ...lastOrderEvent });
+    return "submitted";
   } catch (error) {
     totals[decision.service].skippedOrders++;
     json({ event: "btc_live_order_error", service: decision.service, ticker: decision.ticker, side: decision.side,
-      error: error instanceof Error ? error.message : "order_failed" });
+      error: error instanceof Error ? error.message : "order_failed", retryable: true });
+    return "retry";
   } finally {
     activeOrders.delete(key);
   }
@@ -215,9 +219,14 @@ async function tick() {
       history = [...map.values()].filter((f) => f.openTimeMs >= now - HISTORY_MS - 2 * WINDOW_MS);
       lastHistoryMs = now;
     }
-    const open = await publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=open&limit=20`);
-    if (!Array.isArray(open.markets)) throw new Error("invalid_open_catalog");
-    const market = selectCurrent(open.markets, Date.now());
+    let open = null;
+    let market = null;
+    for (let attempt = 0; attempt < 3 && !market; attempt++) {
+      open = await publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=open&limit=20`);
+      if (!Array.isArray(open.markets)) throw new Error("invalid_open_catalog");
+      market = selectCurrent(open.markets, Date.now());
+      if (!market && attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
     if (!market) throw new Error("current_btc_market_unavailable");
     if (now - lastCandleMs > 60_000) {
       try { candles = parseCandles(await publicJson("https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=15"), Date.now()); candleError = null; }
@@ -230,12 +239,16 @@ async function tick() {
       totals[e.service].evaluations++;
       const key = `${e.service}:${e.ticker}`;
       if (e.fires && !seenSignals.has(key)) {
-        seenSignals.add(key);
-        totals[e.service].qualifyingWindows++;
-        await executeDecision(e, market);
+        if (!countedSignals.has(key)) {
+          countedSignals.add(key);
+          totals[e.service].qualifyingWindows++;
+        }
+        const result = await executeDecision(e, market);
+        if (!RETRYABLE_ORDER_RESULTS.has(result)) seenSignals.add(key);
       }
     }
     if (seenSignals.size > 10_000) seenSignals.clear();
+    if (countedSignals.size > 10_000) countedSignals.clear();
     initializing = false; lastError = null; lastSuccessMs = Date.now(); currentTicker = market.ticker;
     json({ event: "btc_runtime_evaluation", timestamp: new Date(lastSuccessMs).toISOString(), ticker: currentTicker,
       stakeCents: STAKE_CENTS, historyCount: history.length, candleCount: candles.length,
