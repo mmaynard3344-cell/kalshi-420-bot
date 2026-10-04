@@ -4,6 +4,7 @@ import { evaluatePortfolio, SERVICES, WINDOW_MS, HISTORY_MS } from "./signals.mj
 import { bootstrapHistory, parseFact, selectCurrent, parseCandles, publicJson, PUBLIC_BASE } from "./client.mjs";
 
 const LIVE_ENABLED = process.env.BTC_LIVE_ENABLED === "true" && process.env.TRADING_ENABLED === "true";
+const ORDER_EXECUTION_ENABLED = false; // review branch safety gate: quote verification only
 const STAKE_CENTS = 500;
 const TRADE_BASE = "https://external-api.kalshi.com/trade-api/v2";
 
@@ -123,7 +124,9 @@ async function executeDecision(decision, market) {
 
   try {
     const limitPriceCents = Number(decision.limitPriceCents ?? 50);
-    const askCents = quoteCents(market, decision.side);
+    const fresh = await publicJson(`${PUBLIC_BASE}/markets/${encodeURIComponent(decision.ticker)}`);
+    const quoteMarket = fresh?.market ?? fresh;
+    const askCents = quoteCents(quoteMarket, decision.side);
     if (!Number.isInteger(askCents) || askCents < 1 || askCents > 99) {
       totals[decision.service].skippedOrders++;
       json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, reason: "executable_ask_unavailable", retryable: true });
@@ -154,6 +157,17 @@ async function executeDecision(decision, market) {
     if (await alreadySubmitted(decision.ticker, clientOrderId)) {
       totals[decision.service].skippedOrders++;
       json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, clientOrderId, reason: "exchange_duplicate_exists", retryable: false });
+      return "terminal";
+    }
+
+    if (!ORDER_EXECUTION_ENABLED) {
+      totals[decision.service].skippedOrders++;
+      lastOrderEvent = {
+        at: new Date().toISOString(), service: decision.service, ticker: decision.ticker, side: decision.side,
+        askCents, contracts, principalCents: required, clientOrderId,
+        status: "verification_only",
+      };
+      json({ event: "btc_live_order_would_submit", ...lastOrderEvent, reason: "review_branch_execution_disabled" });
       return "terminal";
     }
 
