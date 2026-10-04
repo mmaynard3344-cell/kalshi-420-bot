@@ -16,6 +16,7 @@ const POLL_MS = 10_000;
 const DATA_DIR = process.env.DATA_DIR ?? "/data";
 const STATE_PATH = path.join(DATA_DIR, "btc-perp-shadow-state.json");
 const KRAKEN_OHLC_BASE = "https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1";
+const COINBASE_CANDLES_BASE = "https://api.exchange.coinbase.com/products/BTC-USD/candles";
 const KRAKEN_OHLC = KRAKEN_OHLC_BASE;
 const BACKFILL_DAYS = Number(process.env.PERP_BACKFILL_DAYS ?? 7);
 const BACKFILL_STATE_PATH = path.join(DATA_DIR, "btc-perp-backfill-v1.json");
@@ -232,26 +233,34 @@ function parseKrakenPage(body) {
 
 async function fetchMinuteCandlesRange(startMs, endMs) {
   const map = new Map();
-  let since = Math.floor(startMs/1000)-60;
-  let stagnant = 0;
-  for (let page=0; page<80; page++) {
-    const url = KRAKEN_OHLC_BASE + "&since=" + encodeURIComponent(String(since));
-    const parsed = parseKrakenPage(await getJson(url));
-    let added = 0;
-    for (const candle of parsed.candles) {
-      if (candle.openTimeMs >= startMs-60000 && candle.openTimeMs <= endMs+60000 && !map.has(candle.openTimeMs)) {
-        map.set(candle.openTimeMs,candle); added++;
+  const chunkMs = 300 * 60_000;
+  for (let chunkStart = startMs; chunkStart < endMs; chunkStart += chunkMs) {
+    const chunkEnd = Math.min(endMs, chunkStart + chunkMs);
+    const url = new URL(COINBASE_CANDLES_BASE);
+    url.searchParams.set("granularity", "60");
+    url.searchParams.set("start", new Date(chunkStart).toISOString());
+    url.searchParams.set("end", new Date(chunkEnd).toISOString());
+    const body = await getJson(url.toString());
+    if (!Array.isArray(body)) throw new Error("invalid_coinbase_backfill");
+    for (const r of body) {
+      const candle = {
+        openTimeMs: Number(r[0]) * 1000,
+        low: Number(r[1]),
+        high: Number(r[2]),
+        open: Number(r[3]),
+        close: Number(r[4]),
+        closeTimeMs: Number(r[0]) * 1000 + 60_000,
+      };
+      if (candle.openTimeMs >= startMs - 60_000 && candle.openTimeMs <= endMs + 60_000
+        && [candle.open,candle.high,candle.low,candle.close].every(Number.isFinite)) {
+        map.set(candle.openTimeMs, candle);
       }
     }
-    const maxTs = parsed.candles.length ? Math.max(...parsed.candles.map((x)=>x.openTimeMs)) : 0;
-    if (maxTs >= endMs || !parsed.candles.length) break;
-    const nextSince = parsed.last || Math.floor(maxTs/1000)+60;
-    if (nextSince <= since || added === 0) stagnant++; else stagnant=0;
-    if (stagnant >= 2) break;
-    since = nextSince;
-    await new Promise((resolve)=>setTimeout(resolve,350));
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  return [...map.values()].sort((a,b)=>a.openTimeMs-b.openTimeMs);
+  const candles = [...map.values()].sort((a,b)=>a.openTimeMs-b.openTimeMs);
+  if (!candles.length) throw new Error("coinbase_backfill_empty");
+  return candles;
 }
 
 function scoreHistoricalPath({signal,tp,sl,holdMin,candles}) {
@@ -374,7 +383,7 @@ function status() {
     experiment: "BTC Perp B/G/H/I Shadow",
     mode: "shadow_only",
     ordersEnabled: false,
-    source: "BTC KXBTC15M signals + Kraken XBTUSD 1m spot proxy",
+    source: "BTC KXBTC15M signals + Kraken live 1m proxy + Coinbase BTC-USD historical 1m backfill",
     currentTicker, latestPrice, lastSuccessMs, lastError,
     notionalUsd: NOTIONAL_USD, leverage: LEVERAGE, takerFeeBpsPerSide: FEE_BPS_PER_SIDE,
     signalCount: state.signals.length, openVirtualTrades: open, closedVirtualTrades: closed,
