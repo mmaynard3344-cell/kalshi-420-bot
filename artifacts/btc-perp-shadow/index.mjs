@@ -320,15 +320,22 @@ async function runHistoricalBackfill() {
     const minuteCandles=await fetchMinuteCandlesRange(priceStart,priceEnd);
     const byMinute=new Map(minuteCandles.map((x)=>[x.openTimeMs,x]));
     const signals=[];
+    const diagnostics={evaluationFacts:evaluationFacts.length,minuteCandles:minuteCandles.length,missingEntryCandle:0,invalidPortfolio:0,serviceCounts:{B:0,G:0,H:0,I:0},reasonCounts:{}};
     for(const fact of evaluationFacts){
       const entryCandle=byMinute.get(fact.openTimeMs);
-      if(!entryCandle) continue;
+      if(!entryCandle){ diagnostics.missingEntryCandle++; continue; }
       const market={ticker:fact.ticker,floorStrike:fact.floorStrike,openTimeMs:fact.openTimeMs,observedAtMs:fact.openTimeMs+1};
-      const evals=evaluatePortfolio({market,history:facts,candles:[]}).filter((x)=>SERVICES.has(x.service)&&x.fires&&direction(x.side));
-      for(const e of evals) signals.push({
-        id:"hist:"+e.service+":"+e.ticker,service:e.service,ticker:e.ticker,side:e.side,direction:direction(e.side),
-        entryMs:fact.openTimeMs,entryPrice:entryCandle.open,reason:e.reason
-      });
+      const allEvals=evaluatePortfolio({market,history:facts,candles:[]}).filter((x)=>SERVICES.has(x.service));
+      if(allEvals.some((x)=>String(x.reason||"").startsWith("invalid_"))){ diagnostics.invalidPortfolio++; }
+      for(const e of allEvals){
+        diagnostics.reasonCounts[e.service+":"+e.reason]=(diagnostics.reasonCounts[e.service+":"+e.reason]??0)+1;
+        if(!e.fires||!direction(e.side)) continue;
+        diagnostics.serviceCounts[e.service]=(diagnostics.serviceCounts[e.service]??0)+1;
+        signals.push({
+          id:"hist:"+e.service+":"+e.ticker,service:e.service,ticker:e.ticker,side:e.side,direction:direction(e.side),
+          entryMs:fact.openTimeMs,entryPrice:entryCandle.open,reason:e.reason
+        });
+      }
     }
     const trades=[];
     for(const signal of signals){
@@ -339,10 +346,10 @@ async function runHistoricalBackfill() {
       }
     }
     const leaderboard=aggregateBackfillTrades(trades);
-    backfill={...backfill,status:"complete",completedAt:new Date().toISOString(),signalCount:signals.length,tradeCount:trades.length,error:null,leaderboard};
+    backfill={...backfill,status:"complete",completedAt:new Date().toISOString(),signalCount:signals.length,tradeCount:trades.length,error:null,leaderboard,diagnostics};
     fs.mkdirSync(DATA_DIR,{recursive:true});
-    fs.writeFileSync(BACKFILL_STATE_PATH,JSON.stringify({backfill,signals:signals.slice(-1000),tradesCount:trades.length}));
-    console.log(JSON.stringify({event:"btc_perp_backfill_complete",signalCount:signals.length,tradeCount:trades.length,windowDays:BACKFILL_DAYS,ordersEnabled:false}));
+    fs.writeFileSync(BACKFILL_STATE_PATH,JSON.stringify({backfill,signals:signals.slice(-1000),tradesCount:trades.length,diagnostics}));
+    console.log(JSON.stringify({event:"btc_perp_backfill_complete",signalCount:signals.length,tradeCount:trades.length,windowDays:BACKFILL_DAYS,diagnostics,ordersEnabled:false}));
   } catch(e) {
     backfill={...backfill,status:"error",completedAt:new Date().toISOString(),error:e instanceof Error?e.message:"backfill_failed"};
     console.log(JSON.stringify({event:"btc_perp_backfill_error",error:backfill.error,ordersEnabled:false}));
