@@ -63,6 +63,43 @@ type CandidateHistory = {
   };
 };
 
+type BtcBlOrder = {
+  at: string;
+  service: string;
+  ticker: string;
+  side: 'yes' | 'no';
+  requestedPrincipalCents: number;
+  requestedContracts: number;
+  filledContracts: number | null;
+  remainingContracts?: number | null;
+  avgFillCents: number | null;
+  feeUsd: number | null;
+  pnlUsd: number | null;
+  clientOrderId: string;
+  orderId: string | null;
+  status: string;
+};
+
+type BtcBlStatus = {
+  service: string;
+  mode: 'live' | 'shadow';
+  ordersEnabled: boolean;
+  stakeCents: number;
+  healthy: boolean;
+  currentTicker: string | null;
+  lastSuccessMs: number | null;
+  lastError: string | null;
+  lastOrderEvent: Record<string, unknown> | null;
+  services: Array<{
+    service: string;
+    fires: boolean;
+    side: 'yes' | 'no' | null;
+    reason: string | null;
+    totals?: { evaluations: number; qualifyingWindows: number; orderAttempts: number; acceptedOrders: number; skippedOrders: number };
+  }>;
+  recentOrders: BtcBlOrder[];
+};
+
 type LiveMarket = {
   availability: { status: 'fresh' | 'stale' | 'unavailable'; reason: string | null; quoteAgeMs?: number | null };
   market: { ticker: string; exchangeIndex: number | null; openTime: string | null; closeTime: string | null; quoteUpdatedAtMs: number | null } | null;
@@ -222,9 +259,11 @@ export default function Operator() {
   const [history, setHistory] = useState<CandidateHistory | null>(null);
   const [market, setMarket] = useState<LiveMarket | null>(null);
   const [shadow, setShadow] = useState<ShadowPerformance | null>(null);
+  const [btc, setBtc] = useState<BtcBlStatus | null>(null);
   const [historyFresh, setHistoryFresh] = useState(false);
   const [marketFresh, setMarketFresh] = useState(false);
   const [shadowFresh, setShadowFresh] = useState(false);
+  const [btcFresh, setBtcFresh] = useState(false);
   const [now, setNow] = useState(Date.now());
   const inFlight = useRef<AbortController | null>(null);
 
@@ -234,15 +273,17 @@ export default function Operator() {
       inFlight.current?.abort();
       const controller = new AbortController();
       inFlight.current = controller;
-      const [h, m, s] = await Promise.allSettled([
+      const [h, m, s, b] = await Promise.allSettled([
         getJson<CandidateHistory>('/api/trade/analytics/eth420-candidate-history?limit=500', controller.signal),
         getJson<LiveMarket>('/api/trade/analytics/eth420-live-market', controller.signal),
         getJson<ShadowPerformance>('/api/diagnostics/shadow-performance', controller.signal),
+        getJson<BtcBlStatus>('/api/diagnostics/btc-bl-status', controller.signal),
       ]);
       if (!active) return;
       if (h.status === 'fulfilled') { setHistory(h.value); setHistoryFresh(true); } else { setHistoryFresh(false); }
       if (m.status === 'fulfilled') { setMarket(m.value); setMarketFresh(true); } else { setMarketFresh(false); }
       if (s.status === 'fulfilled') { setShadow(s.value); setShadowFresh(true); } else { setShadowFresh(false); }
+      if (b.status === 'fulfilled') { setBtc(b.value); setBtcFresh(true); } else { setBtcFresh(false); }
     };
     void load();
     const dataTimer = window.setInterval(() => void load(), 10_000);
@@ -289,6 +330,50 @@ export default function Operator() {
           <Metric label="Today realized P&L" value={moneyFromCents(today?.netRealizedPnlCents, true)} detail={today ? `${today.settledOrderCount} settled · ${today.winningOrderCount} wins / ${today.losingOrderCount} losses` : 'Candidate daily ledger unavailable'} tone={(today?.netRealizedPnlCents ?? 0) > 0 ? 'good' : (today?.netRealizedPnlCents ?? 0) < 0 ? 'bad' : 'normal'} />
           <Metric label="Next normal wager" value={moneyFromCents(history?.operationalStatus.nextNormalWagerCents)} detail={history?.state ? `${history.state.side.toUpperCase()} · Step ${history.state.step}` : 'Candidate state unavailable'} />
           <Metric label="Lifecycle" value={String(history?.operationalStatus.unresolvedLifecycleCount ?? 'Unavailable')} detail={history?.operationalStatus.unresolvedLifecycleCount === 0 ? 'No unresolved candidate orders' : 'Unresolved candidate order(s) require reconciliation'} tone={(history?.operationalStatus.unresolvedLifecycleCount ?? 0) > 0 ? 'warn' : 'good'} />
+        </section>
+
+        <section className="border border-border bg-card">
+          <div className="p-4 sm:p-5 border-b border-border flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">BTC B–L</div>
+              <h2 className="mt-1 font-semibold">BTC live strategy log</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Read-only view of the BTC runtime. ETH ledgers remain separate.</p>
+            </div>
+            <span className={cn('font-mono text-[10px] uppercase px-2 py-1', btcFresh && btc?.healthy ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/10 text-amber-700 dark:text-amber-300')}>
+              {btcFresh ? `${btc?.mode ?? 'unknown'} · orders ${btc?.ordersEnabled ? 'enabled' : 'disabled'}` : 'Unavailable / stale'}
+            </span>
+          </div>
+          <div className="grid gap-px bg-border md:grid-cols-3">
+            <div className="bg-card p-4"><div className="font-mono text-[10px] uppercase text-muted-foreground">Current BTC market</div><div className="mt-2 font-mono text-sm break-all">{btc?.currentTicker ?? 'Unavailable'}</div><div className="mt-1 text-xs text-muted-foreground">{btc?.lastSuccessMs ? `Updated ${etClock(btc.lastSuccessMs)}` : 'No fresh evaluation timestamp'}</div></div>
+            <div className="bg-card p-4"><div className="font-mono text-[10px] uppercase text-muted-foreground">Runtime</div><div className="mt-2 font-mono text-sm uppercase">{btc?.mode ?? 'Unavailable'}</div><div className="mt-1 text-xs text-muted-foreground">{btc?.healthy ? 'Healthy' : btc?.lastError?.replaceAll('_', ' ') ?? 'Health unavailable'} · stake {moneyFromCents(btc?.stakeCents)}</div></div>
+            <div className="bg-card p-4"><div className="font-mono text-[10px] uppercase text-muted-foreground">Recorded BTC orders</div><div className="mt-2 font-mono text-2xl font-semibold">{btc?.recentOrders?.length ?? 0}</div><div className="mt-1 text-xs text-muted-foreground">In-memory runtime log since the current BTC deployment started.</div></div>
+          </div>
+          <div className="border-t border-border overflow-x-auto">
+            <table className="w-full min-w-[980px] font-mono text-xs">
+              <thead className="bg-muted/30 text-[10px] uppercase text-muted-foreground"><tr><th className="p-3 text-left">ET time</th><th className="p-3 text-left">Service</th><th className="p-3 text-left">Ticker</th><th className="p-3 text-left">Side</th><th className="p-3 text-right">Requested</th><th className="p-3 text-right">Filled</th><th className="p-3 text-right">Avg fill</th><th className="p-3 text-left">Status</th><th className="p-3 text-right">Fee</th><th className="p-3 text-right">P&amp;L</th></tr></thead>
+              <tbody className="divide-y divide-border">{(btc?.recentOrders ?? []).slice(0, 50).map((order) => <tr key={order.clientOrderId || order.orderId || order.ticker + order.at}>
+                <td className="p-3 whitespace-nowrap">{Number.isFinite(Date.parse(order.at)) ? etClock(Date.parse(order.at)) : '—'}</td>
+                <td className="p-3 font-semibold">{order.service}</td>
+                <td className="p-3 max-w-56 truncate" title={order.ticker}>{order.ticker}</td>
+                <td className="p-3 uppercase">{order.side}</td>
+                <td className="p-3 text-right">{moneyFromCents(order.requestedPrincipalCents)}</td>
+                <td className="p-3 text-right">{order.filledContracts ?? 0} / {order.requestedContracts}</td>
+                <td className="p-3 text-right">{order.avgFillCents == null ? '—' : `${Number(order.avgFillCents).toFixed(1)}¢`}</td>
+                <td className="p-3 uppercase">{String(order.status ?? 'unknown').replaceAll('_', ' ')}</td>
+                <td className="p-3 text-right">{order.feeUsd == null ? '—' : `${Number(order.feeUsd).toFixed(2)}`}</td>
+                <td className={cn('p-3 text-right', (order.pnlUsd ?? 0) > 0 && 'text-emerald-600', (order.pnlUsd ?? 0) < 0 && 'text-destructive')}>{order.pnlUsd == null ? 'Pending' : `${order.pnlUsd >= 0 ? '+' : '-'}${Math.abs(order.pnlUsd).toFixed(2)}`}</td>
+              </tr>)}</tbody>
+            </table>
+            {(btc?.recentOrders?.length ?? 0) === 0 && <div className="p-8 text-center text-sm text-muted-foreground">No BTC order has been recorded by this runtime yet. Signal monitoring can still be active.</div>}
+          </div>
+          <div className="border-t border-border p-4">
+            <div className="font-semibold">Current B–L signal states</div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{(btc?.services ?? []).map((svc) => <div key={svc.service} className="border border-border p-3">
+              <div className="flex justify-between gap-3"><span className="font-mono font-semibold">{svc.service}</span><span className={cn('font-mono text-[10px] uppercase', svc.fires ? 'text-emerald-600' : 'text-muted-foreground')}>{svc.fires ? 'QUALIFIES' : 'WAITING'}</span></div>
+              <div className="mt-1 text-xs text-muted-foreground">{svc.side ? svc.side.toUpperCase() + ' · ' : ''}{svc.reason?.replaceAll('_', ' ') ?? '—'}</div>
+              <div className="mt-2 font-mono text-[10px] text-muted-foreground">eval {svc.totals?.evaluations ?? 0} · qualify {svc.totals?.qualifyingWindows ?? 0} · attempts {svc.totals?.orderAttempts ?? 0} · accepted {svc.totals?.acceptedOrders ?? 0}</div>
+            </div>)}</div>
+          </div>
         </section>
 
         <section className="border border-border bg-card">
@@ -444,6 +529,7 @@ export default function Operator() {
           <span>Account reads: {isStale ? 'stale' : 'current'}</span>
           <span>Trade status: {status ? 'received' : 'unavailable'}</span>
           <span>A2/L shadow: {shadowFresh ? 'fresh' : 'unavailable/stale'}</span>
+          <span>BTC B–L log: {btcFresh ? 'fresh' : 'unavailable/stale'}</span>
           {stateDay && <span>ET ledger day: {etDay(stateDay)}</span>}
           <span className="font-medium text-foreground">No submit, cancel, reset, reconcile, or configuration controls are present on this page.</span>
         </section>
