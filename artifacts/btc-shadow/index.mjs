@@ -21,6 +21,7 @@ let lastOrderEvent = null;
 const recentOrders = [];
 let lastReconcileMs = 0;
 let historyHydrated = false;
+let lastBalanceProbeMs = 0;
 
 const json = (event) => console.log(JSON.stringify({ ...event, ordersEnabled: LIVE_ENABLED, mode: LIVE_ENABLED ? "live" : "shadow" }));
 
@@ -115,6 +116,25 @@ async function freshBalanceCents() {
   const n = Number(raw.balance ?? raw.available_balance ?? raw.available_balance_cents);
   if (!Number.isFinite(n)) throw new Error("kalshi_balance_unavailable");
   return Math.floor(n);
+}
+
+async function logExchangeBalanceSnapshot() {
+  const rows = [];
+  try {
+    const aggregate = await authJson("GET", "/portfolio/balance");
+    rows.push({ exchangeIndex: null, balanceCents: firstFinite(aggregate.balance, aggregate.available_balance, aggregate.available_balance_cents) });
+  } catch (error) {
+    rows.push({ exchangeIndex: null, error: error instanceof Error ? error.message : "aggregate_balance_failed" });
+  }
+  for (const exchangeIndex of [0, 1, 2, 3]) {
+    try {
+      const raw = await authJson("GET", "/portfolio/balance?exchange_index=" + exchangeIndex);
+      rows.push({ exchangeIndex, balanceCents: firstFinite(raw.balance, raw.available_balance, raw.available_balance_cents) });
+    } catch (error) {
+      rows.push({ exchangeIndex, error: error instanceof Error ? error.message : "exchange_balance_failed" });
+    }
+  }
+  json({ event: "btc_exchange_balance_snapshot", balances: rows });
 }
 
 async function executeDecision(decision, market) {
@@ -427,6 +447,14 @@ async function tick() {
       } catch (error) {
         json({ event: "btc_order_reconciliation_error", error: error instanceof Error ? error.message : "order_reconciliation_failed" });
       }
+    }
+    if (now - lastBalanceProbeMs >= 30_000) {
+      try {
+        await logExchangeBalanceSnapshot();
+      } catch (error) {
+        json({ event: "btc_exchange_balance_probe_error", error: error instanceof Error ? error.message : "balance_probe_failed" });
+      }
+      lastBalanceProbeMs = now;
     }
     if (now - lastHistoryMs > 30_000) {
       const settled = await publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=settled&limit=32`);
