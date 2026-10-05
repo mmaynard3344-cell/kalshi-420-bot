@@ -37,6 +37,19 @@
     .bars{display:grid;gap:10px}
     .barrow{display:grid;grid-template-columns:140px 1fr 90px;align-items:center;gap:10px;font-size:13px}
     .track{height:10px;border-radius:999px;background:#edf1f4;overflow:hidden}.fill{height:100%;background:var(--blue);border-radius:999px}
+    .comp-chart{display:grid;gap:12px}
+    .comp-row{display:grid;grid-template-columns:190px 1fr 125px;align-items:center;gap:12px;font-size:13px}
+    .comp-name{font-weight:650}.comp-builder{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
+    .range-track{position:relative;height:18px;background:#edf1f4;border-radius:999px}
+    .range-bar{position:absolute;top:3px;height:12px;border-radius:999px;background:var(--blue)}
+    .range-bar.subject{background:var(--green)}
+    .range-value{text-align:right;font-variant-numeric:tabular-nums;font-size:12px}
+    .axis{display:grid;grid-template-columns:190px 1fr 125px;gap:12px;align-items:center;margin-bottom:6px}
+    .axis-line{position:relative;height:22px;border-top:1px solid var(--line)}
+    .axis-line span{position:absolute;top:4px;transform:translateX(-50%);font-size:10px;color:var(--muted)}
+    .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--muted)}
+    .legend i{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px;background:var(--blue)}
+    .legend i.subject{background:var(--green)}
     .callout{background:#f8fbfd;border-left:4px solid var(--blue);padding:14px 16px;border-radius:10px;color:#314353;font-size:14px}
     .note{font-size:12px;color:var(--muted);margin-top:12px}
     .status{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}.dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
@@ -106,6 +119,13 @@
       </div>
     </section>
 
+    <section class="card full">
+      <h2>Competitive pricing graph</h2>
+      <div class="note" style="margin-top:-6px;margin-bottom:16px">Observed asking-price ranges from the Chandler Run CMA. Direct competitors should carry more weight than upper-end benchmark communities.</div>
+      <div id="competitionChart"></div>
+      <div class="legend"><span><i class="subject"></i>Chandler Run</span><span><i></i>Competition</span></div>
+    </section>
+
     <section class="card section">
       <h2>Price position</h2>
       <div class="bars" id="bars"></div>
@@ -137,6 +157,23 @@ fetch("/api/dashboard",{cache:"no-store"}).then(r=>r.json()).then(d=>{
   document.getElementById("actives").innerHTML = d.trackedActives.map(x=>`<tr><td><span class="chip">${x.plan}</span></td><td>${x.position}</td><td class="money">${fmt(x.price)}</td></tr>`).join("");
   document.getElementById("sales").innerHTML = d.documentedSales.map(x=>`<tr><td>${x.plan}</td><td class="money">${fmt(x.price)}</td></tr>`).join("");
   document.getElementById("pricing").innerHTML = d.pricingTests.map(x=>`<tr><td>${x.segment}</td><td class="money">${fmt(x.current)}</td><td class="money">${fmt(x.test)}</td><td>${x.action}</td></tr>`).join("");
+
+  const compMin = Math.floor(Math.min(...d.competition.map(x=>x.low))/50000)*50000;
+  const compMax = Math.ceil(Math.max(...d.competition.map(x=>x.high))/50000)*50000;
+  const pct = v => ((v-compMin)/(compMax-compMin))*100;
+  const ticks = [];
+  for(let v=compMin; v<=compMax; v+=100000) ticks.push(v);
+  const axis = `<div class="axis"><div></div><div class="axis-line">${ticks.map(v=>`<span style="left:${pct(v)}%">${Math.round(v/1000)}K</span>`).join("")}</div><div></div></div>`;
+  const compRows = d.competition.map(x=>{
+    const left = Math.max(0,pct(x.low));
+    const width = Math.max(1,pct(x.high)-pct(x.low));
+    return `<div class="comp-row">
+      <div class="comp-name">${x.community}<span class="comp-builder">${x.builder} · ${x.tier}</span></div>
+      <div class="range-track"><div class="range-bar ${x.community==="Chandler Run"?"subject":""}" style="left:${left}%;width:${width}%"></div></div>
+      <div class="range-value">${fmt(x.low)}${x.high!==x.low?" – "+fmt(x.high):""}</div>
+    </div>`;
+  }).join("");
+  document.getElementById("competitionChart").innerHTML = axis + `<div class="comp-chart">${compRows}</div>`;
 
   const rows = d.trackedActives.map((x,i)=>({label:x.plan+" "+(i+1),price:x.price}));
   const max = Math.max(...rows.map(x=>x.price));
