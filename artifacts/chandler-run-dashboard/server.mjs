@@ -35,6 +35,16 @@ const dashboardData = {
     { plan: "Reynolds", price: 435000 },
     { plan: "Reynolds", price: 450000 }
   ],
+  competition: [
+    { community: "Chandler Run", builder: "Taylor Morrison", low: 409990, high: 463990, tier: "Subject" },
+    { community: "Fern Parc", builder: "Richardson Housing Group", low: 409950, high: 439950, tier: "Direct" },
+    { community: "Walton Townes", builder: "Crawford Creek", low: 460000, high: 479550, tier: "Direct" },
+    { community: "Trinity Park", builder: "Lennar-built resale", low: 449900, high: 449900, tier: "Secondary" },
+    { community: "Rosewood Farm", builder: "Taylor Morrison", low: 349990, high: 437990, tier: "Secondary" },
+    { community: "Towns at Creekside", builder: "Lennar", low: 450900, high: 473900, tier: "Benchmark" },
+    { community: "Waterside", builder: "The Providence Group", low: 625900, high: 625900, tier: "Upper benchmark" },
+    { community: "The Views from Browning", builder: "JW Collection", low: 700000, high: 700000, tier: "Upper benchmark" }
+  ],
   pricingTests: [
     { segment: "Oconee interior", current: 409990, test: 399990, action: "Lead price / traffic generator" },
     { segment: "Forsyth standard", current: 429990, test: 409990, action: "Core October test" },
