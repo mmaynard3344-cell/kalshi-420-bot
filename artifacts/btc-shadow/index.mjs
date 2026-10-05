@@ -19,6 +19,8 @@ const activeOrders = new Set();
 const RETRYABLE_ORDER_RESULTS = new Set(["retry"]);
 let lastOrderEvent = null;
 const recentOrders = [];
+let lastReconcileMs = 0;
+let historyHydrated = false;
 
 const json = (event) => console.log(JSON.stringify({ ...event, ordersEnabled: LIVE_ENABLED, mode: LIVE_ENABLED ? "live" : "shadow" }));
 
@@ -216,18 +218,444 @@ function firstFinite(...values) {
 }
 
 function addRecentOrder(row) {
+  const key = String(row.orderId ?? row.clientOrderId ?? "");
+  if (key) {
+    const existing = recentOrders.findIndex((candidate) =>
+      String(candidate.orderId ?? candidate.clientOrderId ?? "") === key);
+    if (existing >= 0) recentOrders.splice(existing, 1);
+  }
   recentOrders.unshift(row);
+  recentOrders.sort((a, b) => Date.parse(b.at ?? 0) - Date.parse(a.at ?? 0));
   if (recentOrders.length > 100) recentOrders.length = 100;
 }
 
+function centsFromOrderPrice(order, side) {
+  const dollars = firstFinite(
+    side === "yes" ? order?.yes_price_dollars : order?.no_price_dollars,
+  );
+  if (dollars != null) return dollars <= 1 ? Math.round(dollars * 100) : Math.round(dollars);
+  const legacy = firstFinite(side === "yes" ? order?.yes_price : order?.no_price);
+  if (legacy == null) return null;
+  return legacy <= 1 ? Math.round(legacy * 100) : Math.round(legacy);
+}
+
+function dollarsFromFillPrice(fill, side) {
+  const dollars = firstFinite(
+    side === "yes" ? fill?.yes_price_dollars : fill?.no_price_dollars,
+  );
+  if (dollars != null) return dollars <= 1 ? dollars : dollars / 100;
+  const legacy = firstFinite(side === "yes" ? fill?.yes_price : fill?.no_price);
+  if (legacy == null) return null;
+  return legacy <= 1 ? legacy : legacy / 100;
+}
+
+function serviceForExchangeOrder(order) {
+  const ticker = String(order?.ticker ?? order?.market_ticker ?? "");
+  const clientOrderId = String(order?.client_order_id ?? order?.clientOrderId ?? "");
+  if (!/^KXBTC15M-[A-Z0-9-]+$/.test(ticker) || !clientOrderId) return null;
+  for (const service of SERVICES) {
+    if (service === "J" || service === "K") continue;
+    if (deterministicUuid(service, ticker) === clientOrderId) return service;
+  }
+  return null;
+}
+
+async function hydrateRecentOrdersFromExchange() {
+  if (historyHydrated) return;
+  const raw = await authJson("GET", "/portfolio/orders?limit=100");
+  const orders = Array.isArray(raw?.orders) ? raw.orders : [];
+  for (const order of orders) {
+    const service = serviceForExchangeOrder(order);
+    if (!service) continue;
+    const ticker = String(order?.ticker ?? order?.market_ticker ?? "");
+    const sideValue = String(order?.side ?? "").toLowerCase();
+    const action = String(order?.action ?? "buy").toLowerCase();
+    let economicSide = sideValue;
+    if (sideValue === "bid") economicSide = "yes";
+    else if (sideValue === "ask") economicSide = "no";
+    else if (action === "sell" && sideValue === "yes") economicSide = "no";
+    else if (action === "sell" && sideValue === "no") economicSide = "yes";
+    if (economicSide !== "yes" && economicSide !== "no") continue;
+    const requestedContracts = firstFinite(order?.initial_count_fp, order?.initial_count, order?.count_fp, order?.count) ?? 0;
+    const filledContracts = firstFinite(order?.fill_count_fp, order?.fill_count, order?.filled_count_fp, order?.filled_count) ?? 0;
+    const outcomePriceCents = centsFromOrderPrice(order, economicSide);
+    const created = order?.created_time ?? order?.created_at ?? order?.createdAt ?? new Date().toISOString();
+    addRecentOrder({
+      at: created,
+      service,
+      ticker,
+      side: economicSide,
+      requestedPrincipalCents: outcomePriceCents == null ? null : Math.round(requestedContracts * outcomePriceCents),
+      requestedContracts,
+      filledContracts,
+      remainingContracts: firstFinite(order?.remaining_count_fp, order?.remaining_count),
+      avgFillCents: null,
+      feeUsd: null,
+      pnlUsd: null,
+      marketResult: null,
+      outcome: filledContracts > 0 ? "PENDING" : "NO FILL",
+      clientOrderId: order?.client_order_id ?? order?.clientOrderId ?? null,
+      orderId: order?.order_id ?? order?.orderId ?? null,
+      status: order?.status ?? "accepted",
+    });
+  }
+  historyHydrated = true;
+}
+
+async function reconcileRecentOrders() {
+  if (!recentOrders.length) return;
+  const [fillRaw, marketRaw] = await Promise.all([
+    authJson("GET", "/portfolio/fills?limit=200"),
+    publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=settled&limit=100`),
+  ]);
+  const fills = Array.isArray(fillRaw?.fills) ? fillRaw.fills : [];
+  const settledMarkets = Array.isArray(marketRaw?.markets) ? marketRaw.markets : [];
+  const resultByTicker = new Map(
+    settledMarkets
+      .filter((market) => ["yes", "no"].includes(String(market?.result ?? "").toLowerCase()))
+      .map((market) => [String(market.ticker), String(market.result).toLowerCase()]),
+  );
+  const fillsByOrder = new Map();
+  for (const fill of fills) {
+    const id = String(fill?.order_id ?? fill?.orderId ?? "");
+    if (!id) continue;
+    const rows = fillsByOrder.get(id) ?? [];
+    rows.push(fill);
+    fillsByOrder.set(id, rows);
+  }
+
+  for (const row of recentOrders) {
+    const orderFills = fillsByOrder.get(String(row.orderId ?? "")) ?? [];
+    let filledContracts = 0;
+    let principalUsd = 0;
+    let feesUsd = 0;
+    let weightedCents = 0;
+    for (const fill of orderFills) {
+      const contracts = firstFinite(fill?.count_fp, fill?.count) ?? 0;
+      const priceUsd = dollarsFromFillPrice(fill, row.side);
+      if (!(contracts > 0) || priceUsd == null) continue;
+      const fillFee = firstFinite(fill?.fee_cost_dollars, fill?.fee_cost, 0) ?? 0;
+      filledContracts += contracts;
+      principalUsd += contracts * priceUsd;
+      feesUsd += fillFee;
+      weightedCents += contracts * priceUsd * 100;
+    }
+    if (filledContracts > 0) {
+      row.filledContracts = filledContracts;
+      row.avgFillCents = weightedCents / filledContracts;
+      row.feeUsd = feesUsd;
+      row.status = filledContracts >= Number(row.requestedContracts ?? 0) ? "EXECUTED" : "PARTIAL FILL";
+    } else if (row.filledContracts == null) {
+      row.filledContracts = 0;
+    }
+
+    const result = resultByTicker.get(String(row.ticker)) ?? null;
+    row.marketResult = result;
+    if (!result) {
+      row.outcome = filledContracts > 0 ? "PENDING" : "NO FILL";
+      row.pnlUsd = null;
+      continue;
+    }
+    if (filledContracts <= 0) {
+      row.outcome = result.toUpperCase() + " · NO FILL";
+      row.pnlUsd = 0;
+      row.feeUsd = row.feeUsd ?? 0;
+      row.status = "NO FILL";
+      continue;
+    }
+    const won = row.side === result;
+    row.outcome = result.toUpperCase() + (won ? " · WIN" : " · LOSS");
+    row.pnlUsd = won
+      ? filledContracts - principalUsd - feesUsd
+      : -principalUsd - feesUsd;
+  }
+}
+
 function renderRecentOrders(rows) {
-  if (!rows.length) return '<tr><td colspan="10">No BTC orders recorded since this deployment.</td></tr>';
+  if (!rows.length) return '<tr><td colspan="11">No BTC orders found in recent exchange history.</td></tr>';
   return rows.map((o) => {
     const when = o.at ? new Date(o.at).toLocaleString('en-US', { timeZone: 'America/New_York' }) : '—';
     const avg = o.avgFillCents == null ? '—' : Number(o.avgFillCents).toFixed(1) + '¢';
     const fee = o.feeUsd == null ? '—' : '$' + Number(o.feeUsd).toFixed(2);
-    const pnl = o.pnlUsd == null ? 'Pending' : '$' + Number(o.pnlUsd).toFixed(2);
-    return '<tr><td>' + esc(when) + '</td><td>' + esc(o.service) + '</td><td>' + esc(o.ticker) + '</td><td>' + esc(o.side?.toUpperCase()) + '</td><td>$' + ((o.requestedPrincipalCents ?? 0) / 100).toFixed(2) + '</td><td>' + esc(o.filledContracts ?? 0) + '/' + esc(o.requestedContracts ?? '—') + '</td><td>' + avg + '</td><td>' + esc(o.status) + '</td><td>' + fee + '</td><td>' + pnl + '</td></tr>';
+    const pnl = o.pnlUsd == null ? 'Pending' : (Number(o.pnlUsd) >= 0 ? '+
+  }).join('');
+}
+
+const status = () => ({
+  service: "BTC B-L",
+  version: process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.COMMIT_SHA ?? "unknown",
+  mode: LIVE_ENABLED ? "live" : "shadow",
+  ordersEnabled: LIVE_ENABLED,
+  stakeCents: STAKE_CENTS,
+  initializing, lastSuccessMs, currentTicker, lastError, candleError, lastOrderEvent,
+  countersSinceMs: startedAtMs, historyCount: history.length, candleCount: candles.length,
+  healthy: !initializing && lastSuccessMs != null && Date.now() - lastSuccessMs < 60_000,
+  services: evaluations.map((e) => ({ ...e, totals: totals[e.service] })),
+  recentOrders: recentOrders.slice(0,50),
+  exclusions: { A: "not_requested", J: "requires BTC A order; no BTC A is running", K: "weather_only" },
+});
+
+const esc = (s) => String(s ?? "—").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const server = http.createServer((req, res) => {
+  const s = status();
+  if (req.method !== "GET") { res.writeHead(405); res.end("read only"); return; }
+  if (req.url === "/health" || req.url === "/status") {
+    res.writeHead(req.url === "/health" && !s.healthy ? 503 : 200, { "content-type": "application/json", "cache-control": "no-store" });
+    res.end(JSON.stringify(s)); return;
+  }
+  if (req.url !== "/") { res.writeHead(404); res.end("not found"); return; }
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="15"><title>BTC B–L</title><style>body{background:#101722;color:#e7eef7;font:16px system-ui;max-width:1080px;margin:32px auto;padding:0 16px}h1{font-size:26px}p{color:#a9b9cd}.badge{color:#8adbc1}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;border-bottom:1px solid #2c3949;padding:12px 8px}.wrap{overflow:auto}.yes{color:#8adbc1}.quiet{color:#a9b9cd}footer{margin-top:24px;color:#a9b9cd;font-size:13px}</style></head><body><h1>BTC B–L</h1><p class="badge">${LIVE_ENABLED ? "LIVE · Real-money IOC orders enabled" : "SHADOW · Real-money orders disabled"} · $5 principal cap per signal</p><p>${esc(currentTicker)} · Updated ${esc(lastSuccessMs ? new Date(lastSuccessMs).toISOString() : "initializing")}</p><h2>Recent BTC Orders</h2><div class="wrap"><table><thead><tr><th>Time ET</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Avg Fill</th><th>Status</th><th>Outcome</th><th>Fee</th><th>P&amp;L</th></tr></thead><tbody>${renderRecentOrders(s.recentOrders)}</tbody></table></div><h2>Signal Status</h2><div class="wrap"><table><thead><tr><th>Service</th><th>Signal</th><th>Side</th><th>Stake</th><th>Reason</th><th>Orders</th></tr></thead><tbody>${s.services.map((e) => `<tr><td>${esc(e.service)}</td><td class="${e.fires ? "yes" : "quiet"}">${e.fires ? "QUALIFIES" : "WAITING"}</td><td>${esc(e.side?.toUpperCase())}</td><td>${e.service === "K" ? "—" : "$5.00"}</td><td>${esc(e.reason)}</td><td>${e.totals.acceptedOrders}</td></tr>`).join("")}</tbody></table></div><footer>B always YES. Live signals use executable ask ≤ strategy limit, IOC, and a maximum $5 principal. J remains inactive without BTC A. K remains weather-only. ETH services are separate.</footer></body></html>`);
+});
+server.listen(Number(process.env.PORT ?? 8080), "0.0.0.0", () => json({ event: "btc_runtime_http_started", port: Number(process.env.PORT ?? 8080) }));
+
+async function tick() {
+  if (busy) return;
+  busy = true;
+  try {
+    const now = Date.now();
+    if (!history.length) history = await bootstrapHistory(now);
+    if (!historyHydrated) {
+      try { await hydrateRecentOrdersFromExchange(); }
+      catch (error) { json({ event: "btc_order_history_hydration_error", error: error instanceof Error ? error.message : "history_hydration_failed" }); }
+    }
+    if (now - lastReconcileMs >= 30_000) {
+      try {
+        await reconcileRecentOrders();
+        lastReconcileMs = now;
+      } catch (error) {
+        json({ event: "btc_order_reconciliation_error", error: error instanceof Error ? error.message : "order_reconciliation_failed" });
+      }
+    }
+    if (now - lastHistoryMs > 30_000) {
+      const settled = await publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=settled&limit=32`);
+      if (!Array.isArray(settled.markets)) throw new Error("invalid_settled_catalog");
+      const map = new Map(history.map((f) => [f.ticker, f]));
+      for (const row of settled.markets) { const fact = parseFact(row); if (fact) map.set(fact.ticker, fact); }
+      history = [...map.values()].filter((f) => f.openTimeMs >= now - HISTORY_MS - 2 * WINDOW_MS);
+      lastHistoryMs = now;
+    }
+    let open = null;
+    let market = null;
+    for (let attempt = 0; attempt < 3 && !market; attempt++) {
+      open = await publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=open&limit=20`);
+      if (!Array.isArray(open.markets)) throw new Error("invalid_open_catalog");
+      market = selectCurrent(open.markets, Date.now());
+      if (!market && attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    if (!market) throw new Error("current_btc_market_unavailable");
+    if (now - lastCandleMs > 60_000) {
+      try { candles = parseCandles(await publicJson("https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=15"), Date.now()); candleError = null; }
+      catch { candles = []; candleError = "kraken_completed_btc_candles_unavailable"; }
+      lastCandleMs = now;
+    }
+    evaluations = evaluatePortfolio({ market, history, candles });
+    if (candleError) evaluations = evaluations.map((e) => e.service === "L" ? { ...e, reason: candleError } : e);
+    for (const e of evaluations) {
+      totals[e.service].evaluations++;
+      const key = `${e.service}:${e.ticker}`;
+      if (e.fires && !seenSignals.has(key)) {
+        if (!countedSignals.has(key)) {
+          countedSignals.add(key);
+          totals[e.service].qualifyingWindows++;
+        }
+        const result = await executeDecision(e, market);
+        if (!RETRYABLE_ORDER_RESULTS.has(result)) seenSignals.add(key);
+      }
+    }
+    if (seenSignals.size > 10_000) seenSignals.clear();
+    if (countedSignals.size > 10_000) countedSignals.clear();
+    initializing = false; lastError = null; lastSuccessMs = Date.now(); currentTicker = market.ticker;
+    json({ event: "btc_runtime_evaluation", timestamp: new Date(lastSuccessMs).toISOString(), ticker: currentTicker,
+      stakeCents: STAKE_CENTS, historyCount: history.length, candleCount: candles.length,
+      services: evaluations.map(({ service, fires, side, reason }) => ({ service, fires, side, reason })) });
+  } catch (error) {
+    lastError = error instanceof Error ? error.message : "evaluation_failed";
+    json({ event: "btc_runtime_error", error: lastError });
+  } finally { busy = false; }
+}
+void tick();
+const timer = setInterval(() => void tick(), 10_000);
+for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => { clearInterval(timer); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); });
+ : '-
+  }).join('');
+}
+
+const status = () => ({
+  service: "BTC B-L",
+  version: process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.COMMIT_SHA ?? "unknown",
+  mode: LIVE_ENABLED ? "live" : "shadow",
+  ordersEnabled: LIVE_ENABLED,
+  stakeCents: STAKE_CENTS,
+  initializing, lastSuccessMs, currentTicker, lastError, candleError, lastOrderEvent,
+  countersSinceMs: startedAtMs, historyCount: history.length, candleCount: candles.length,
+  healthy: !initializing && lastSuccessMs != null && Date.now() - lastSuccessMs < 60_000,
+  services: evaluations.map((e) => ({ ...e, totals: totals[e.service] })),
+  recentOrders: recentOrders.slice(0,50),
+  exclusions: { A: "not_requested", J: "requires BTC A order; no BTC A is running", K: "weather_only" },
+});
+
+const esc = (s) => String(s ?? "—").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const server = http.createServer((req, res) => {
+  const s = status();
+  if (req.method !== "GET") { res.writeHead(405); res.end("read only"); return; }
+  if (req.url === "/health" || req.url === "/status") {
+    res.writeHead(req.url === "/health" && !s.healthy ? 503 : 200, { "content-type": "application/json", "cache-control": "no-store" });
+    res.end(JSON.stringify(s)); return;
+  }
+  if (req.url !== "/") { res.writeHead(404); res.end("not found"); return; }
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="15"><title>BTC B–L</title><style>body{background:#101722;color:#e7eef7;font:16px system-ui;max-width:1080px;margin:32px auto;padding:0 16px}h1{font-size:26px}p{color:#a9b9cd}.badge{color:#8adbc1}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;border-bottom:1px solid #2c3949;padding:12px 8px}.wrap{overflow:auto}.yes{color:#8adbc1}.quiet{color:#a9b9cd}footer{margin-top:24px;color:#a9b9cd;font-size:13px}</style></head><body><h1>BTC B–L</h1><p class="badge">${LIVE_ENABLED ? "LIVE · Real-money IOC orders enabled" : "SHADOW · Real-money orders disabled"} · $5 principal cap per signal</p><p>${esc(currentTicker)} · Updated ${esc(lastSuccessMs ? new Date(lastSuccessMs).toISOString() : "initializing")}</p><h2>Recent BTC Orders</h2><div class="wrap"><table><thead><tr><th>Time ET</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Avg Fill</th><th>Status</th><th>Fee</th><th>P&amp;L</th></tr></thead><tbody>${renderRecentOrders(s.recentOrders)}</tbody></table></div><h2>Signal Status</h2><div class="wrap"><table><thead><tr><th>Service</th><th>Signal</th><th>Side</th><th>Stake</th><th>Reason</th><th>Orders</th></tr></thead><tbody>${s.services.map((e) => `<tr><td>${esc(e.service)}</td><td class="${e.fires ? "yes" : "quiet"}">${e.fires ? "QUALIFIES" : "WAITING"}</td><td>${esc(e.side?.toUpperCase())}</td><td>${e.service === "K" ? "—" : "$5.00"}</td><td>${esc(e.reason)}</td><td>${e.totals.acceptedOrders}</td></tr>`).join("")}</tbody></table></div><footer>B always YES. Live signals use executable ask ≤ strategy limit, IOC, and a maximum $5 principal. J remains inactive without BTC A. K remains weather-only. ETH services are separate.</footer></body></html>`);
+});
+server.listen(Number(process.env.PORT ?? 8080), "0.0.0.0", () => json({ event: "btc_runtime_http_started", port: Number(process.env.PORT ?? 8080) }));
+
+async function tick() {
+  if (busy) return;
+  busy = true;
+  try {
+    const now = Date.now();
+    if (!history.length) history = await bootstrapHistory(now);
+    if (now - lastHistoryMs > 30_000) {
+      const settled = await publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=settled&limit=32`);
+      if (!Array.isArray(settled.markets)) throw new Error("invalid_settled_catalog");
+      const map = new Map(history.map((f) => [f.ticker, f]));
+      for (const row of settled.markets) { const fact = parseFact(row); if (fact) map.set(fact.ticker, fact); }
+      history = [...map.values()].filter((f) => f.openTimeMs >= now - HISTORY_MS - 2 * WINDOW_MS);
+      lastHistoryMs = now;
+    }
+    let open = null;
+    let market = null;
+    for (let attempt = 0; attempt < 3 && !market; attempt++) {
+      open = await publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=open&limit=20`);
+      if (!Array.isArray(open.markets)) throw new Error("invalid_open_catalog");
+      market = selectCurrent(open.markets, Date.now());
+      if (!market && attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    if (!market) throw new Error("current_btc_market_unavailable");
+    if (now - lastCandleMs > 60_000) {
+      try { candles = parseCandles(await publicJson("https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=15"), Date.now()); candleError = null; }
+      catch { candles = []; candleError = "kraken_completed_btc_candles_unavailable"; }
+      lastCandleMs = now;
+    }
+    evaluations = evaluatePortfolio({ market, history, candles });
+    if (candleError) evaluations = evaluations.map((e) => e.service === "L" ? { ...e, reason: candleError } : e);
+    for (const e of evaluations) {
+      totals[e.service].evaluations++;
+      const key = `${e.service}:${e.ticker}`;
+      if (e.fires && !seenSignals.has(key)) {
+        if (!countedSignals.has(key)) {
+          countedSignals.add(key);
+          totals[e.service].qualifyingWindows++;
+        }
+        const result = await executeDecision(e, market);
+        if (!RETRYABLE_ORDER_RESULTS.has(result)) seenSignals.add(key);
+      }
+    }
+    if (seenSignals.size > 10_000) seenSignals.clear();
+    if (countedSignals.size > 10_000) countedSignals.clear();
+    initializing = false; lastError = null; lastSuccessMs = Date.now(); currentTicker = market.ticker;
+    json({ event: "btc_runtime_evaluation", timestamp: new Date(lastSuccessMs).toISOString(), ticker: currentTicker,
+      stakeCents: STAKE_CENTS, historyCount: history.length, candleCount: candles.length,
+      services: evaluations.map(({ service, fires, side, reason }) => ({ service, fires, side, reason })) });
+  } catch (error) {
+    lastError = error instanceof Error ? error.message : "evaluation_failed";
+    json({ event: "btc_runtime_error", error: lastError });
+  } finally { busy = false; }
+}
+void tick();
+const timer = setInterval(() => void tick(), 10_000);
+for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => { clearInterval(timer); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); });
+) + Math.abs(Number(o.pnlUsd)).toFixed(2);
+    const requested = o.requestedPrincipalCents == null ? '—' : '
+  }).join('');
+}
+
+const status = () => ({
+  service: "BTC B-L",
+  version: process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.COMMIT_SHA ?? "unknown",
+  mode: LIVE_ENABLED ? "live" : "shadow",
+  ordersEnabled: LIVE_ENABLED,
+  stakeCents: STAKE_CENTS,
+  initializing, lastSuccessMs, currentTicker, lastError, candleError, lastOrderEvent,
+  countersSinceMs: startedAtMs, historyCount: history.length, candleCount: candles.length,
+  healthy: !initializing && lastSuccessMs != null && Date.now() - lastSuccessMs < 60_000,
+  services: evaluations.map((e) => ({ ...e, totals: totals[e.service] })),
+  recentOrders: recentOrders.slice(0,50),
+  exclusions: { A: "not_requested", J: "requires BTC A order; no BTC A is running", K: "weather_only" },
+});
+
+const esc = (s) => String(s ?? "—").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const server = http.createServer((req, res) => {
+  const s = status();
+  if (req.method !== "GET") { res.writeHead(405); res.end("read only"); return; }
+  if (req.url === "/health" || req.url === "/status") {
+    res.writeHead(req.url === "/health" && !s.healthy ? 503 : 200, { "content-type": "application/json", "cache-control": "no-store" });
+    res.end(JSON.stringify(s)); return;
+  }
+  if (req.url !== "/") { res.writeHead(404); res.end("not found"); return; }
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="15"><title>BTC B–L</title><style>body{background:#101722;color:#e7eef7;font:16px system-ui;max-width:1080px;margin:32px auto;padding:0 16px}h1{font-size:26px}p{color:#a9b9cd}.badge{color:#8adbc1}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;border-bottom:1px solid #2c3949;padding:12px 8px}.wrap{overflow:auto}.yes{color:#8adbc1}.quiet{color:#a9b9cd}footer{margin-top:24px;color:#a9b9cd;font-size:13px}</style></head><body><h1>BTC B–L</h1><p class="badge">${LIVE_ENABLED ? "LIVE · Real-money IOC orders enabled" : "SHADOW · Real-money orders disabled"} · $5 principal cap per signal</p><p>${esc(currentTicker)} · Updated ${esc(lastSuccessMs ? new Date(lastSuccessMs).toISOString() : "initializing")}</p><h2>Recent BTC Orders</h2><div class="wrap"><table><thead><tr><th>Time ET</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Avg Fill</th><th>Status</th><th>Fee</th><th>P&amp;L</th></tr></thead><tbody>${renderRecentOrders(s.recentOrders)}</tbody></table></div><h2>Signal Status</h2><div class="wrap"><table><thead><tr><th>Service</th><th>Signal</th><th>Side</th><th>Stake</th><th>Reason</th><th>Orders</th></tr></thead><tbody>${s.services.map((e) => `<tr><td>${esc(e.service)}</td><td class="${e.fires ? "yes" : "quiet"}">${e.fires ? "QUALIFIES" : "WAITING"}</td><td>${esc(e.side?.toUpperCase())}</td><td>${e.service === "K" ? "—" : "$5.00"}</td><td>${esc(e.reason)}</td><td>${e.totals.acceptedOrders}</td></tr>`).join("")}</tbody></table></div><footer>B always YES. Live signals use executable ask ≤ strategy limit, IOC, and a maximum $5 principal. J remains inactive without BTC A. K remains weather-only. ETH services are separate.</footer></body></html>`);
+});
+server.listen(Number(process.env.PORT ?? 8080), "0.0.0.0", () => json({ event: "btc_runtime_http_started", port: Number(process.env.PORT ?? 8080) }));
+
+async function tick() {
+  if (busy) return;
+  busy = true;
+  try {
+    const now = Date.now();
+    if (!history.length) history = await bootstrapHistory(now);
+    if (now - lastHistoryMs > 30_000) {
+      const settled = await publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=settled&limit=32`);
+      if (!Array.isArray(settled.markets)) throw new Error("invalid_settled_catalog");
+      const map = new Map(history.map((f) => [f.ticker, f]));
+      for (const row of settled.markets) { const fact = parseFact(row); if (fact) map.set(fact.ticker, fact); }
+      history = [...map.values()].filter((f) => f.openTimeMs >= now - HISTORY_MS - 2 * WINDOW_MS);
+      lastHistoryMs = now;
+    }
+    let open = null;
+    let market = null;
+    for (let attempt = 0; attempt < 3 && !market; attempt++) {
+      open = await publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=open&limit=20`);
+      if (!Array.isArray(open.markets)) throw new Error("invalid_open_catalog");
+      market = selectCurrent(open.markets, Date.now());
+      if (!market && attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    if (!market) throw new Error("current_btc_market_unavailable");
+    if (now - lastCandleMs > 60_000) {
+      try { candles = parseCandles(await publicJson("https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=15"), Date.now()); candleError = null; }
+      catch { candles = []; candleError = "kraken_completed_btc_candles_unavailable"; }
+      lastCandleMs = now;
+    }
+    evaluations = evaluatePortfolio({ market, history, candles });
+    if (candleError) evaluations = evaluations.map((e) => e.service === "L" ? { ...e, reason: candleError } : e);
+    for (const e of evaluations) {
+      totals[e.service].evaluations++;
+      const key = `${e.service}:${e.ticker}`;
+      if (e.fires && !seenSignals.has(key)) {
+        if (!countedSignals.has(key)) {
+          countedSignals.add(key);
+          totals[e.service].qualifyingWindows++;
+        }
+        const result = await executeDecision(e, market);
+        if (!RETRYABLE_ORDER_RESULTS.has(result)) seenSignals.add(key);
+      }
+    }
+    if (seenSignals.size > 10_000) seenSignals.clear();
+    if (countedSignals.size > 10_000) countedSignals.clear();
+    initializing = false; lastError = null; lastSuccessMs = Date.now(); currentTicker = market.ticker;
+    json({ event: "btc_runtime_evaluation", timestamp: new Date(lastSuccessMs).toISOString(), ticker: currentTicker,
+      stakeCents: STAKE_CENTS, historyCount: history.length, candleCount: candles.length,
+      services: evaluations.map(({ service, fires, side, reason }) => ({ service, fires, side, reason })) });
+  } catch (error) {
+    lastError = error instanceof Error ? error.message : "evaluation_failed";
+    json({ event: "btc_runtime_error", error: lastError });
+  } finally { busy = false; }
+}
+void tick();
+const timer = setInterval(() => void tick(), 10_000);
+for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => { clearInterval(timer); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); });
+ + (Number(o.requestedPrincipalCents) / 100).toFixed(2);
+    return '<tr><td>' + esc(when) + '</td><td>' + esc(o.service) + '</td><td>' + esc(o.ticker) + '</td><td>' + esc(o.side?.toUpperCase()) + '</td><td>' + requested + '</td><td>' + esc(o.filledContracts ?? 0) + '/' + esc(o.requestedContracts ?? '—') + '</td><td>' + avg + '</td><td>' + esc(o.status) + '</td><td>' + esc(o.outcome ?? 'Pending') + '</td><td>' + fee + '</td><td>' + pnl + '</td></tr>';
   }).join('');
 }
 
