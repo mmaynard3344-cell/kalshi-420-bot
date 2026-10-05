@@ -20,6 +20,13 @@ export interface MartingaleBalance {
     available_balance_dollars: string | null;
     stale: boolean;
   } | null;
+  shard_2_balance?: {
+    exchange_index: number;
+    available_balance_cents: number | null;
+    available_balance_dollars: string | null;
+    stale: boolean;
+    read_only?: boolean;
+  } | null;
   balance_breakdown?: Array<{
     exchange_index?: number;
     balance?: string | number;
@@ -146,6 +153,13 @@ export function useMartingaleData() {
     retry: false,
   });
 
+  const shard2BalanceQuery = useQuery({
+    queryKey: ['martingale', 'balance', 'exchange', 2],
+    queryFn: () => fetchWithToken('/api/trade/balance/exchange/2') as Promise<NonNullable<MartingaleBalance['shard_2_balance']>>,
+    refetchInterval: 10000,
+    retry: false,
+  });
+
   const statusQuery = useQuery({
     queryKey: ['martingale', 'status'],
     queryFn: () => fetchWithToken('/api/trade/status') as Promise<MartingaleStatus>,
@@ -182,7 +196,9 @@ export function useMartingaleData() {
     ledgerQuery.isError;
 
   return {
-    balance: balanceQuery.data,
+    balance: balanceQuery.data == null
+      ? undefined
+      : { ...balanceQuery.data, shard_2_balance: shard2BalanceQuery.data ?? null },
     status: statusQuery.data,
     positions: positionsQuery.data,
     ledger: ledgerQuery.data,
@@ -194,6 +210,7 @@ export function useMartingaleData() {
     isStale,
     refetchAll: () => Promise.all([
       balanceQuery.refetch(),
+      shard2BalanceQuery.refetch(),
       statusQuery.refetch(),
       positionsQuery.refetch(),
       ledgerQuery.refetch(),
