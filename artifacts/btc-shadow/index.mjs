@@ -22,6 +22,7 @@ const recentOrders = [];
 let lastReconcileMs = 0;
 let historyHydrated = false;
 let lastBalanceProbeMs = 0;
+let lastShardFundingStatus = { exchangeIndex: null, availableBalanceCents: null, requiredBalanceCents: null, shortfallCents: null, status: "unknown", updatedAt: null };
 
 const json = (event) => console.log(JSON.stringify({ ...event, ordersEnabled: LIVE_ENABLED, mode: LIVE_ENABLED ? "live" : "shadow" }));
 
@@ -111,10 +112,11 @@ async function alreadySubmitted(ticker, clientOrderId) {
   return Array.isArray(raw.orders) && raw.orders.some((o) => o?.ticker === ticker && o?.client_order_id === clientOrderId);
 }
 
-async function freshBalanceCents() {
-  const raw = await authJson("GET", "/portfolio/balance");
+async function freshBalanceCents(exchangeIndex) {
+  if (!Number.isInteger(exchangeIndex) || exchangeIndex < 0) throw new Error("btc_exchange_index_unavailable");
+  const raw = await authJson("GET", "/portfolio/balance?exchange_index=" + exchangeIndex);
   const n = Number(raw.balance ?? raw.available_balance ?? raw.available_balance_cents);
-  if (!Number.isFinite(n)) throw new Error("kalshi_balance_unavailable");
+  if (!Number.isFinite(n)) throw new Error("kalshi_exchange_balance_unavailable");
   return Math.floor(n);
 }
 
@@ -150,6 +152,19 @@ async function executeDecision(decision, market) {
     const limitPriceCents = Number(decision.limitPriceCents ?? 50);
     const fresh = await publicJson(`${PUBLIC_BASE}/markets/${encodeURIComponent(decision.ticker)}`);
     const quoteMarket = fresh?.market ?? fresh;
+    const exchangeIndex = Number.isInteger(quoteMarket?.exchange_index) && quoteMarket.exchange_index >= 0
+      ? quoteMarket.exchange_index
+      : (Number.isInteger(market?.exchangeIndex) && market.exchangeIndex >= 0 ? market.exchangeIndex : null);
+    if (exchangeIndex == null) {
+      totals[decision.service].skippedOrders++;
+      lastShardFundingStatus = {
+        exchangeIndex: null, availableBalanceCents: null, requiredBalanceCents: null,
+        shortfallCents: null, status: "exchange_index_unavailable", updatedAt: new Date().toISOString(),
+      };
+      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side,
+        reason: "exchange_index_unavailable", retryable: true });
+      return "retry";
+    }
     const askCents = quoteCents(quoteMarket, decision.side);
     if (!Number.isInteger(askCents) || askCents < 1 || askCents > 99) {
       totals[decision.service].skippedOrders++;
@@ -169,11 +184,22 @@ async function executeDecision(decision, market) {
       return "terminal";
     }
 
-    const balance = await freshBalanceCents();
     const required = contracts * askCents;
+    const balance = await freshBalanceCents(exchangeIndex);
+    const shortfall = Math.max(0, required - balance);
+    lastShardFundingStatus = {
+      exchangeIndex,
+      availableBalanceCents: balance,
+      requiredBalanceCents: required,
+      shortfallCents: shortfall,
+      status: shortfall > 0 ? "operator_transfer_required" : "funded",
+      updatedAt: new Date().toISOString(),
+    };
     if (balance < required) {
       totals[decision.service].skippedOrders++;
-      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, balanceCents: balance, requiredCents: required, reason: "insufficient_fresh_balance", retryable: true });
+      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side,
+        exchangeIndex, balanceCents: balance, requiredCents: required, shortfallCents: shortfall,
+        reason: "insufficient_exchange_balance", retryable: true });
       return "retry";
     }
 
@@ -408,7 +434,7 @@ const status = () => ({
   mode: LIVE_ENABLED ? "live" : "shadow",
   ordersEnabled: LIVE_ENABLED,
   stakeCents: STAKE_CENTS,
-  initializing, lastSuccessMs, currentTicker, lastError, candleError, lastOrderEvent,
+  initializing, lastSuccessMs, currentTicker, lastError, candleError, lastOrderEvent, lastShardFundingStatus,
   countersSinceMs: startedAtMs, historyCount: history.length, candleCount: candles.length,
   healthy: !initializing && lastSuccessMs != null && Date.now() - lastSuccessMs < 60_000,
   services: evaluations.map((e) => ({ ...e, totals: totals[e.service] })),
@@ -426,7 +452,7 @@ const server = http.createServer((req, res) => {
   }
   if (req.url !== "/") { res.writeHead(404); res.end("not found"); return; }
   res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="15"><title>BTC B–L</title><style>body{background:#101722;color:#e7eef7;font:16px system-ui;max-width:1080px;margin:32px auto;padding:0 16px}h1{font-size:26px}p{color:#a9b9cd}.badge{color:#8adbc1}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;border-bottom:1px solid #2c3949;padding:12px 8px}.wrap{overflow:auto}.yes{color:#8adbc1}.quiet{color:#a9b9cd}footer{margin-top:24px;color:#a9b9cd;font-size:13px}</style></head><body><h1>BTC B–L</h1><p class="badge">${LIVE_ENABLED ? "LIVE · Real-money IOC orders enabled" : "SHADOW · Real-money orders disabled"} · $5 principal cap per signal</p><p>${esc(currentTicker)} · Updated ${esc(lastSuccessMs ? new Date(lastSuccessMs).toISOString() : "initializing")}</p><h2>Recent BTC Orders</h2><div class="wrap"><table><thead><tr><th>Time ET</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Avg Fill</th><th>Status</th><th>Outcome</th><th>Fee</th><th>P&amp;L</th></tr></thead><tbody>${renderRecentOrders(s.recentOrders)}</tbody></table></div><h2>Signal Status</h2><div class="wrap"><table><thead><tr><th>Service</th><th>Signal</th><th>Side</th><th>Stake</th><th>Reason</th><th>Orders</th></tr></thead><tbody>${s.services.map((e) => `<tr><td>${esc(e.service)}</td><td class="${e.fires ? "yes" : "quiet"}">${e.fires ? "QUALIFIES" : "WAITING"}</td><td>${esc(e.side?.toUpperCase())}</td><td>${e.service === "K" ? "—" : "$5.00"}</td><td>${esc(e.reason)}</td><td>${e.totals.acceptedOrders}</td></tr>`).join("")}</tbody></table></div><footer>B always YES. Live signals use executable ask ≤ strategy limit, IOC, and a maximum $5 principal. J remains inactive without BTC A. K remains weather-only. ETH services are separate.</footer></body></html>`);
+  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="15"><title>BTC B–L</title><style>body{background:#101722;color:#e7eef7;font:16px system-ui;max-width:1080px;margin:32px auto;padding:0 16px}h1{font-size:26px}p{color:#a9b9cd}.badge{color:#8adbc1}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;border-bottom:1px solid #2c3949;padding:12px 8px}.wrap{overflow:auto}.yes{color:#8adbc1}.quiet{color:#a9b9cd}footer{margin-top:24px;color:#a9b9cd;font-size:13px}</style></head><body><h1>BTC B–L</h1><p class="badge">${LIVE_ENABLED ? "LIVE · Real-money IOC orders enabled" : "SHADOW · Real-money orders disabled"} · $5 principal cap per signal</p><p>${esc(currentTicker)} · Updated ${esc(lastSuccessMs ? new Date(lastSuccessMs).toISOString() : "initializing")}</p><p>Funding: exchange ${esc(s.lastShardFundingStatus?.exchangeIndex ?? "—")} · available ${s.lastShardFundingStatus?.availableBalanceCents == null ? "—" : "$" + (s.lastShardFundingStatus.availableBalanceCents / 100).toFixed(2)} · required ${s.lastShardFundingStatus?.requiredBalanceCents == null ? "—" : "$" + (s.lastShardFundingStatus.requiredBalanceCents / 100).toFixed(2)} · shortfall ${s.lastShardFundingStatus?.shortfallCents == null ? "—" : "$" + (s.lastShardFundingStatus.shortfallCents / 100).toFixed(2)} · ${esc(s.lastShardFundingStatus?.status ?? "unknown")}</p><h2>Recent BTC Orders</h2><div class="wrap"><table><thead><tr><th>Time ET</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Avg Fill</th><th>Status</th><th>Outcome</th><th>Fee</th><th>P&amp;L</th></tr></thead><tbody>${renderRecentOrders(s.recentOrders)}</tbody></table></div><h2>Signal Status</h2><div class="wrap"><table><thead><tr><th>Service</th><th>Signal</th><th>Side</th><th>Stake</th><th>Reason</th><th>Orders</th></tr></thead><tbody>${s.services.map((e) => `<tr><td>${esc(e.service)}</td><td class="${e.fires ? "yes" : "quiet"}">${e.fires ? "QUALIFIES" : "WAITING"}</td><td>${esc(e.side?.toUpperCase())}</td><td>${e.service === "K" ? "—" : "$5.00"}</td><td>${esc(e.reason)}</td><td>${e.totals.acceptedOrders}</td></tr>`).join("")}</tbody></table></div><footer>B always YES. Live signals use executable ask ≤ strategy limit, IOC, and a maximum $5 principal. J remains inactive without BTC A. K remains weather-only. ETH services are separate.</footer></body></html>`);
 });
 server.listen(Number(process.env.PORT ?? 8080), "0.0.0.0", () => json({ event: "btc_runtime_http_started", port: Number(process.env.PORT ?? 8080) }));
 
