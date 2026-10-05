@@ -1454,6 +1454,40 @@ router.get("/trade/balance", requireTradeAuth, async (_req, res) => {
   }
 });
 
+/** GET /trade/balance/exchange/:exchangeIndex — read-only balance for one Kalshi exchange shard. */
+router.get("/trade/balance/exchange/:exchangeIndex", requireTradeAuth, async (req, res) => {
+  const exchangeIndex = Number(req.params["exchangeIndex"]);
+  if (!Number.isInteger(exchangeIndex) || exchangeIndex < 0) {
+    res.status(400).json({ error: "exchangeIndex must be a non-negative integer" });
+    return;
+  }
+  try {
+    const read = await fetchKalshiBalanceForExchangeRead(exchangeIndex);
+    const rawBalance = (read.value as Record<string, unknown>)["balance"];
+    const availableBalanceCents = typeof rawBalance === "number" && Number.isSafeInteger(rawBalance) && rawBalance >= 0
+      ? rawBalance
+      : null;
+    res.json({
+      exchange_index: exchangeIndex,
+      available_balance_cents: availableBalanceCents,
+      available_balance_dollars: availableBalanceCents == null ? null : (availableBalanceCents / 100).toFixed(2),
+      stale: read.stale,
+      read_only: true,
+    });
+  } catch (err: unknown) {
+    const e = err as { status?: number; body?: unknown; message?: string };
+    const httpStatus = typeof e.status === "number" ? e.status : 502;
+    logger.warn({ err: e, exchangeIndex }, "Exchange-scoped Kalshi balance fetch failed");
+    res.status(httpStatus).json({
+      error: "Kalshi exchange balance request failed",
+      details: e.message ?? String(err),
+      status: httpStatus,
+      exchange_index: exchangeIndex,
+      kalshi: e.body ?? null,
+    });
+  }
+});
+
 /**
  * GET /trade/active-runtime-verification — token-protected, read-only proof
  * that the active API process uses one configured Kalshi credential source for
