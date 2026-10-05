@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Chandler Run CMA Dashboard</title>
+  <style>
+    :root{
+      --bg:#f4f6f8;--panel:#fff;--ink:#17212b;--muted:#6b7785;--line:#dfe5eb;
+      --navy:#0f2740;--blue:#2f6fad;--green:#1d7f5f;--amber:#b87916;--red:#b64b4b;
+      --shadow:0 10px 30px rgba(16,35,54,.08);--radius:18px
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
+    header{background:linear-gradient(135deg,#0d2238,#173f62);color:#fff;padding:28px 24px}
+    .wrap{max-width:1240px;margin:0 auto}
+    .top{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;flex-wrap:wrap}
+    h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em}.sub{opacity:.8}
+    .stamp{font-size:13px;padding:8px 12px;border:1px solid rgba(255,255,255,.22);border-radius:999px}
+    main{padding:26px 24px 48px}
+    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px}
+    .metric{grid-column:span 3;min-height:128px}
+    .metric .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+    .metric .value{font-size:34px;font-weight:750;margin-top:12px}
+    .metric .detail{font-size:13px;color:var(--muted);margin-top:4px}
+    .goal{border-top:4px solid var(--green)}.pressure{border-top:4px solid var(--red)}.inventory{border-top:4px solid var(--blue)}.incentive{border-top:4px solid var(--amber)}
+    .section{grid-column:span 6}.full{grid-column:1/-1}
+    h2{font-size:18px;margin:0 0 14px}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{text-align:left;padding:11px 8px;border-bottom:1px solid var(--line)}
+    th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+    tr:last-child td{border-bottom:none}
+    .money{font-variant-numeric:tabular-nums;font-weight:650}
+    .chip{display:inline-flex;padding:4px 8px;border-radius:999px;background:#eef4fa;color:#244b72;font-size:12px}
+    .delta.bad{color:var(--red);font-weight:700}.delta.good{color:var(--green);font-weight:700}
+    .bars{display:grid;gap:10px}
+    .barrow{display:grid;grid-template-columns:140px 1fr 90px;align-items:center;gap:10px;font-size:13px}
+    .track{height:10px;border-radius:999px;background:#edf1f4;overflow:hidden}.fill{height:100%;background:var(--blue);border-radius:999px}
+    .callout{background:#f8fbfd;border-left:4px solid var(--blue);padding:14px 16px;border-radius:10px;color:#314353;font-size:14px}
+    .note{font-size:12px;color:var(--muted);margin-top:12px}
+    .status{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}.dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+    @media(max-width:900px){.metric{grid-column:span 6}.section{grid-column:1/-1}}
+    @media(max-width:560px){header,main{padding-left:14px;padding-right:14px}.metric{grid-column:1/-1}.barrow{grid-template-columns:100px 1fr 70px}table{font-size:12px}.card{padding:16px}}
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap top">
+    <div>
+      <h1>Chandler Run CMA Dashboard</h1>
+      <div class="sub">Gwinnett County · Taylor Morrison · Pricing & absorption view</div>
+    </div>
+    <div class="stamp" id="asOf">Loading…</div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="grid">
+    <section class="card metric goal">
+      <div class="label">October net contract goal</div>
+      <div class="value" id="goal">—</div>
+      <div class="detail" id="weekly">—</div>
+    </section>
+    <section class="card metric inventory">
+      <div class="label">Tracked public MLS actives</div>
+      <div class="value" id="activeCount">—</div>
+      <div class="detail">Tracked set, not full builder inventory</div>
+    </section>
+    <section class="card metric pressure">
+      <div class="label">Gwinnett contracts YoY</div>
+      <div class="value delta bad" id="contractsYoy">—</div>
+      <div class="detail" id="activeYoy">—</div>
+    </section>
+    <section class="card metric incentive">
+      <div class="label">Incentive budget</div>
+      <div class="value" id="incentive">—</div>
+      <div class="detail">Closing-cost / rate assistance</div>
+    </section>
+
+    <section class="card section">
+      <h2>Tracked active listings</h2>
+      <table>
+        <thead><tr><th>Plan</th><th>Position</th><th>Price</th></tr></thead>
+        <tbody id="actives"></tbody>
+      </table>
+    </section>
+
+    <section class="card section">
+      <h2>Documented same-community sales</h2>
+      <table>
+        <thead><tr><th>Plan</th><th>Recorded sale</th></tr></thead>
+        <tbody id="sales"></tbody>
+      </table>
+      <div class="note">Recorded gross sales; seller concessions were not available in the source set.</div>
+    </section>
+
+    <section class="card full">
+      <h2>October pricing action board</h2>
+      <table>
+        <thead><tr><th>Segment</th><th>Current / observed</th><th>Test price</th><th>Role</th></tr></thead>
+        <tbody id="pricing"></tbody>
+      </table>
+      <div class="callout" style="margin-top:16px">
+        These are aggressive CMA test positions intended to improve conversion toward the 10-net-contract objective. They are not approved price changes or guaranteed outcomes.
+      </div>
+    </section>
+
+    <section class="card section">
+      <h2>Price position</h2>
+      <div class="bars" id="bars"></div>
+    </section>
+
+    <section class="card section">
+      <h2>Decision summary</h2>
+      <div class="callout">
+        Lead with a sub-$400K Oconee interior, put standard Forsyth near $410K, and use premium inventory around $420K as the conversion test. Preserve room for up to $10K in financing or closing-cost support where it produces a better net result than an equivalent base-price cut.
+      </div>
+      <div class="note" id="caution"></div>
+      <div class="status" style="margin-top:18px"><span class="dot"></span><span>Dashboard service live data endpoint: <code>/api/dashboard</code></span></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const fmt = n => n == null ? "—" : new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(n);
+fetch("/api/dashboard",{cache:"no-store"}).then(r=>r.json()).then(d=>{
+  document.getElementById("asOf").textContent = "CMA as of " + d.asOf;
+  document.getElementById("goal").textContent = d.objective.target;
+  document.getElementById("weekly").textContent = "Target pace: " + d.objective.weeklyTarget + " net contracts / week";
+  document.getElementById("activeCount").textContent = d.trackedActives.length;
+  document.getElementById("contractsYoy").textContent = d.market.contractsYoY + "%";
+  document.getElementById("activeYoy").textContent = "Active listings " + (d.market.activeListingsYoY>0?"+":"") + d.market.activeListingsYoY + "% YoY";
+  document.getElementById("incentive").textContent = fmt(d.incentive.budgetPerHome);
+  document.getElementById("caution").textContent = d.caution;
+
+  document.getElementById("actives").innerHTML = d.trackedActives.map(x=>`<tr><td><span class="chip">${x.plan}</span></td><td>${x.position}</td><td class="money">${fmt(x.price)}</td></tr>`).join("");
+  document.getElementById("sales").innerHTML = d.documentedSales.map(x=>`<tr><td>${x.plan}</td><td class="money">${fmt(x.price)}</td></tr>`).join("");
+  document.getElementById("pricing").innerHTML = d.pricingTests.map(x=>`<tr><td>${x.segment}</td><td class="money">${fmt(x.current)}</td><td class="money">${fmt(x.test)}</td><td>${x.action}</td></tr>`).join("");
+
+  const rows = d.trackedActives.map((x,i)=>({label:x.plan+" "+(i+1),price:x.price}));
+  const max = Math.max(...rows.map(x=>x.price));
+  document.getElementById("bars").innerHTML = rows.map(x=>`<div class="barrow"><div>${x.label}</div><div class="track"><div class="fill" style="width:${Math.round(x.price/max*100)}%"></div></div><div class="money">${fmt(x.price)}</div></div>`).join("");
+}).catch(()=>{
+  document.getElementById("asOf").textContent = "Dashboard data unavailable";
+});
+</script>
+</body>
+</html>
