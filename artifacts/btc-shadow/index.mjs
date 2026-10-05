@@ -10,7 +10,7 @@ const STAKE_CENTS = 500;
 const TRADE_BASE = "https://external-api.kalshi.com/trade-api/v2";
 
 let history = [], candles = [], lastHistoryMs = 0, lastCandleMs = 0, busy = false;
-let initializing = true, lastError = null, candleError = null, lastSuccessMs = null, currentTicker = null, evaluations = [];
+let initializing = true, lastError = null, candleError = null, lastSuccessMs = null, currentTicker = null, currentExchangeIndex = null, evaluations = [];
 const startedAtMs = Date.now();
 const totals = Object.fromEntries(SERVICES.map((service) => [service, { evaluations: 0, qualifyingWindows: 0, orderAttempts: 0, acceptedOrders: 0, skippedOrders: 0 }]));
 const seenSignals = new Set();
@@ -118,6 +118,47 @@ async function freshBalanceCents(exchangeIndex) {
   const n = Number(raw.balance ?? raw.available_balance ?? raw.available_balance_cents);
   if (!Number.isFinite(n)) throw new Error("kalshi_exchange_balance_unavailable");
   return Math.floor(n);
+}
+
+async function currentShardFundingSnapshot(market) {
+  const exchangeIndex = Number.isInteger(market?.exchangeIndex) && market.exchangeIndex >= 0
+    ? market.exchangeIndex
+    : null;
+  if (exchangeIndex == null) {
+    return {
+      exchangeIndex: null,
+      availableBalanceCents: null,
+      principalCapCents: STAKE_CENTS,
+      principalCapShortfallCents: null,
+      canSupportPrincipalCap: false,
+      status: "exchange_index_unavailable",
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  try {
+    const availableBalanceCents = await freshBalanceCents(exchangeIndex);
+    const principalCapShortfallCents = Math.max(0, STAKE_CENTS - availableBalanceCents);
+    return {
+      exchangeIndex,
+      availableBalanceCents,
+      principalCapCents: STAKE_CENTS,
+      principalCapShortfallCents,
+      canSupportPrincipalCap: principalCapShortfallCents === 0,
+      status: principalCapShortfallCents === 0 ? "funded_for_5_dollar_cap" : "operator_transfer_required",
+      updatedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      exchangeIndex,
+      availableBalanceCents: null,
+      principalCapCents: STAKE_CENTS,
+      principalCapShortfallCents: null,
+      canSupportPrincipalCap: false,
+      status: "exchange_balance_unavailable",
+      error: error instanceof Error ? error.message : "exchange_balance_failed",
+      updatedAt: new Date().toISOString(),
+    };
+  }
 }
 
 async function logExchangeBalanceSnapshot() {
@@ -434,7 +475,7 @@ const status = () => ({
   mode: LIVE_ENABLED ? "live" : "shadow",
   ordersEnabled: LIVE_ENABLED,
   stakeCents: STAKE_CENTS,
-  initializing, lastSuccessMs, currentTicker, lastError, candleError, lastOrderEvent, lastShardFundingStatus,
+  initializing, lastSuccessMs, currentTicker, currentExchangeIndex, lastError, candleError, lastOrderEvent, lastShardFundingStatus,
   countersSinceMs: startedAtMs, historyCount: history.length, candleCount: candles.length,
   healthy: !initializing && lastSuccessMs != null && Date.now() - lastSuccessMs < 60_000,
   services: evaluations.map((e) => ({ ...e, totals: totals[e.service] })),
@@ -452,7 +493,7 @@ const server = http.createServer((req, res) => {
   }
   if (req.url !== "/") { res.writeHead(404); res.end("not found"); return; }
   res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="15"><title>BTC B–L</title><style>body{background:#101722;color:#e7eef7;font:16px system-ui;max-width:1080px;margin:32px auto;padding:0 16px}h1{font-size:26px}p{color:#a9b9cd}.badge{color:#8adbc1}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;border-bottom:1px solid #2c3949;padding:12px 8px}.wrap{overflow:auto}.yes{color:#8adbc1}.quiet{color:#a9b9cd}footer{margin-top:24px;color:#a9b9cd;font-size:13px}</style></head><body><h1>BTC B–L</h1><p class="badge">${LIVE_ENABLED ? "LIVE · Real-money IOC orders enabled" : "SHADOW · Real-money orders disabled"} · $5 principal cap per signal</p><p>${esc(currentTicker)} · Updated ${esc(lastSuccessMs ? new Date(lastSuccessMs).toISOString() : "initializing")}</p><p>Funding: exchange ${esc(s.lastShardFundingStatus?.exchangeIndex ?? "—")} · available ${s.lastShardFundingStatus?.availableBalanceCents == null ? "—" : "$" + (s.lastShardFundingStatus.availableBalanceCents / 100).toFixed(2)} · required ${s.lastShardFundingStatus?.requiredBalanceCents == null ? "—" : "$" + (s.lastShardFundingStatus.requiredBalanceCents / 100).toFixed(2)} · shortfall ${s.lastShardFundingStatus?.shortfallCents == null ? "—" : "$" + (s.lastShardFundingStatus.shortfallCents / 100).toFixed(2)} · ${esc(s.lastShardFundingStatus?.status ?? "unknown")}</p><h2>Recent BTC Orders</h2><div class="wrap"><table><thead><tr><th>Time ET</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Avg Fill</th><th>Status</th><th>Outcome</th><th>Fee</th><th>P&amp;L</th></tr></thead><tbody>${renderRecentOrders(s.recentOrders)}</tbody></table></div><h2>Signal Status</h2><div class="wrap"><table><thead><tr><th>Service</th><th>Signal</th><th>Side</th><th>Stake</th><th>Reason</th><th>Orders</th></tr></thead><tbody>${s.services.map((e) => `<tr><td>${esc(e.service)}</td><td class="${e.fires ? "yes" : "quiet"}">${e.fires ? "QUALIFIES" : "WAITING"}</td><td>${esc(e.side?.toUpperCase())}</td><td>${e.service === "K" ? "—" : "$5.00"}</td><td>${esc(e.reason)}</td><td>${e.totals.acceptedOrders}</td></tr>`).join("")}</tbody></table></div><footer>B always YES. Live signals use executable ask ≤ strategy limit, IOC, and a maximum $5 principal. J remains inactive without BTC A. K remains weather-only. ETH services are separate.</footer></body></html>`);
+  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="15"><title>BTC B–L</title><style>body{background:#101722;color:#e7eef7;font:16px system-ui;max-width:1080px;margin:32px auto;padding:0 16px}h1{font-size:26px}p{color:#a9b9cd}.badge{color:#8adbc1}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;border-bottom:1px solid #2c3949;padding:12px 8px}.wrap{overflow:auto}.yes{color:#8adbc1}.quiet{color:#a9b9cd}footer{margin-top:24px;color:#a9b9cd;font-size:13px}</style></head><body><h1>BTC B–L</h1><p class="badge">${LIVE_ENABLED ? "LIVE · Real-money IOC orders enabled" : "SHADOW · Real-money orders disabled"} · $5 principal cap per signal</p><p>${esc(currentTicker)} · exchange ${esc(s.currentExchangeIndex ?? "—")} · Updated ${esc(lastSuccessMs ? new Date(lastSuccessMs).toISOString() : "initializing")}</p><p>Funding: exchange ${esc(s.lastShardFundingStatus?.exchangeIndex ?? "—")} · available ${s.lastShardFundingStatus?.availableBalanceCents == null ? "—" : "$" + (s.lastShardFundingStatus.availableBalanceCents / 100).toFixed(2)} · $5 cap shortfall ${s.lastShardFundingStatus?.shortfallCents == null ? "—" : "$" + (s.lastShardFundingStatus.shortfallCents / 100).toFixed(2)} · ${esc(s.lastShardFundingStatus?.status ?? "unknown")}</p><h2>Recent BTC Orders</h2><div class="wrap"><table><thead><tr><th>Time ET</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Avg Fill</th><th>Status</th><th>Outcome</th><th>Fee</th><th>P&amp;L</th></tr></thead><tbody>${renderRecentOrders(s.recentOrders)}</tbody></table></div><h2>Signal Status</h2><div class="wrap"><table><thead><tr><th>Service</th><th>Signal</th><th>Side</th><th>Stake</th><th>Reason</th><th>Orders</th></tr></thead><tbody>${s.services.map((e) => `<tr><td>${esc(e.service)}</td><td class="${e.fires ? "yes" : "quiet"}">${e.fires ? "QUALIFIES" : "WAITING"}</td><td>${esc(e.side?.toUpperCase())}</td><td>${e.service === "K" ? "—" : "$5.00"}</td><td>${esc(e.reason)}</td><td>${e.totals.acceptedOrders}</td></tr>`).join("")}</tbody></table></div><footer>B always YES. Live signals use executable ask ≤ strategy limit, IOC, and a maximum $5 principal. J remains inactive without BTC A. K remains weather-only. ETH services are separate.</footer></body></html>`);
 });
 server.listen(Number(process.env.PORT ?? 8080), "0.0.0.0", () => json({ event: "btc_runtime_http_started", port: Number(process.env.PORT ?? 8080) }));
 
@@ -499,6 +540,19 @@ async function tick() {
       if (!market && attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1500));
     }
     if (!market) throw new Error("current_btc_market_unavailable");
+    currentExchangeIndex = Number.isInteger(market.exchangeIndex) ? market.exchangeIndex : null;
+    if (now - lastBalanceProbeMs >= 30_000) {
+      const funding = await currentShardFundingSnapshot(market);
+      lastShardFundingStatus = {
+        exchangeIndex: funding.exchangeIndex,
+        availableBalanceCents: funding.availableBalanceCents,
+        requiredBalanceCents: funding.principalCapCents,
+        shortfallCents: funding.principalCapShortfallCents,
+        status: funding.status,
+        updatedAt: funding.updatedAt,
+      };
+      json({ event: "btc_current_shard_funding", ticker: market.ticker, ...funding });
+    }
     if (now - lastCandleMs > 60_000) {
       try { candles = parseCandles(await publicJson("https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=15"), Date.now()); candleError = null; }
       catch { candles = []; candleError = "kraken_completed_btc_candles_unavailable"; }
