@@ -21,12 +21,17 @@ const dashboardData = {
     activeListingsYoY: 14.9,
     note: "Gwinnett September market pressure"
   },
+  plans: [
+    { plan: "Oconee", sqft: 1893 },
+    { plan: "Forsyth", sqft: 1967 },
+    { plan: "Reynolds", sqft: 2375 }
+  ],
   trackedActives: [
-    { plan: "Oconee", price: 409990, position: "Interior" },
-    { plan: "Oconee", price: 409990, position: "Interior" },
-    { plan: "Forsyth", price: 429990, position: "Standard" },
-    { plan: "Forsyth", price: 460430, position: "Premium" },
-    { plan: "Oconee", price: 463990, position: "End unit / premium" }
+    { plan: "Oconee", sqft: 1893, price: 409990, position: "Interior" },
+    { plan: "Oconee", sqft: 1893, price: 409990, position: "Interior" },
+    { plan: "Forsyth", sqft: 1967, price: 429990, position: "Standard" },
+    { plan: "Forsyth", sqft: 1967, price: 460430, position: "Premium" },
+    { plan: "Oconee", sqft: 1893, price: 463990, position: "End unit / premium" }
   ],
   documentedSales: [
     { plan: "Oconee", price: 399990 },
@@ -36,15 +41,27 @@ const dashboardData = {
     { plan: "Reynolds", price: 450000 }
   ],
   competition: [
-    { community: "Chandler Run", builder: "Taylor Morrison", low: 409990, high: 463990, tier: "Subject" },
-    { community: "Fern Parc", builder: "Richardson Housing Group", low: 409950, high: 439950, tier: "Direct" },
-    { community: "Walton Townes", builder: "Crawford Creek", low: 460000, high: 479550, tier: "Direct" },
-    { community: "Trinity Park", builder: "Lennar-built resale", low: 449900, high: 449900, tier: "Secondary" },
-    { community: "Rosewood Farm", builder: "Taylor Morrison", low: 349990, high: 437990, tier: "Secondary" },
-    { community: "Towns at Creekside", builder: "Lennar", low: 450900, high: 473900, tier: "Benchmark" },
-    { community: "Waterside", builder: "The Providence Group", low: 625900, high: 625900, tier: "Upper benchmark" },
-    { community: "The Views from Browning", builder: "JW Collection", low: 700000, high: 700000, tier: "Upper benchmark" }
+    { community: "Chandler Run", builder: "Taylor Morrison", low: 409990, high: 463990, sqftLow: 1893, sqftHigh: 2375, tier: "Subject" },
+    { community: "Fern Parc", builder: "Richardson Housing Group", low: 409950, high: 439950, sqftLow: 1909, sqftHigh: 1918, tier: "Direct" },
+    { community: "Walton Townes", builder: "Crawford Creek", low: 460000, high: 479550, sqftLow: 1696, sqftHigh: 1726, tier: "Direct" },
+    { community: "Trinity Park", builder: "Lennar-built resale", low: 449900, high: 449900, sqftLow: 2001, sqftHigh: 2194, tier: "Secondary" },
+    { community: "Rosewood Farm", builder: "Taylor Morrison", low: 349990, high: 437990, sqftLow: 1967, sqftHigh: 2375, tier: "Secondary" },
+    { community: "Towns at Creekside", builder: "Lennar", low: 450900, high: 473900, sqftLow: null, sqftHigh: null, tier: "Benchmark" },
+    { community: "Waterside", builder: "The Providence Group", low: 625900, high: 625900, sqftLow: 2162, sqftHigh: 2162, tier: "Upper benchmark" },
+    { community: "The Views from Browning", builder: "JW Collection", low: 700000, high: 700000, sqftLow: 3400, sqftHigh: 3600, tier: "Upper benchmark" }
   ],
+  absorption: {
+    county: [
+      { period: "Aug 2026", active: 3550, closings: 759, monthsSupplyProxy: 4.68 },
+      { period: "Sep 2026", active: 3597, closings: 640, monthsSupplyProxy: 5.62 }
+    ],
+    trackedInventoryClearance: [
+      { horizonDays: 30, requiredMonthlySales: 5.0 },
+      { horizonDays: 60, requiredMonthlySales: 2.5 },
+      { horizonDays: 90, requiredMonthlySales: 1.67 }
+    ],
+    note: "County figures are a rough active-listings / monthly-closings proxy, not townhome-only months of supply. Chandler Run community absorption cannot be measured reliably until total contractable inventory and recent net sales are verified."
+  },
   pricingTests: [
     { segment: "Oconee interior", current: 409990, test: 399990, action: "Lead price / traffic generator" },
     { segment: "Forsyth standard", current: 429990, test: 409990, action: "Core October test" },
