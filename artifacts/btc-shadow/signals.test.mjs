@@ -94,10 +94,12 @@ test("BTC evidence excludes ETH, current, future-known, unfinished and nonadjace
   input.history.splice(100, 1);
   assert.equal(buildEvidence(input.market, input.history).historyCount, 248);
 });
-test("current market discovery rejects future and ambiguous windows", () => {
+test("current market discovery preserves exchange index and rejects future and ambiguous windows", () => {
   const row = { ticker: "KXBTC15M-CURRENT", status: "active", open_time: new Date(start).toISOString(),
-    close_time: new Date(start + WINDOW_MS).toISOString(), floor_strike: 60000 };
-  assert.ok(selectCurrent([row], start + 1));
+    close_time: new Date(start + WINDOW_MS).toISOString(), floor_strike: 60000, exchange_index: 2 };
+  const current = selectCurrent([row], start + 1);
+  assert.ok(current);
+  assert.equal(current.exchangeIndex, 2);
   assert.equal(selectCurrent([row, row], start + 1), null);
   assert.equal(selectCurrent([row], start - 1), null);
   assert.equal(selectCurrent([row], start + WINDOW_MS), null);
