@@ -377,10 +377,11 @@ function renderRecentOrders(rows) {
     const when = o.at ? new Date(o.at).toLocaleString('en-US', { timeZone: 'America/New_York' }) : '—';
     const avg = o.avgFillCents == null ? '—' : Number(o.avgFillCents).toFixed(1) + '¢';
     const fee = o.feeUsd == null ? '—' : '$' + Number(o.feeUsd).toFixed(2);
-    const pnl = o.pnlUsd == null ? 'Pending' : (Number(o.pnlUsd) >= 0 ? '+
+    const pnl = o.pnlUsd == null ? 'Pending' : (Number(o.pnlUsd) >= 0 ? '+$' : '-$') + Math.abs(Number(o.pnlUsd)).toFixed(2);
+    const requested = o.requestedPrincipalCents == null ? '—' : '$' + (Number(o.requestedPrincipalCents) / 100).toFixed(2);
+    return '<tr><td>' + esc(when) + '</td><td>' + esc(o.service) + '</td><td>' + esc(o.ticker) + '</td><td>' + esc(o.side?.toUpperCase()) + '</td><td>' + requested + '</td><td>' + esc(o.filledContracts ?? 0) + '/' + esc(o.requestedContracts ?? '—') + '</td><td>' + avg + '</td><td>' + esc(o.status) + '</td><td>' + esc(o.outcome ?? 'Pending') + '</td><td>' + fee + '</td><td>' + pnl + '</td></tr>';
   }).join('');
 }
-
 const status = () => ({
   service: "BTC B-L",
   version: process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.COMMIT_SHA ?? "unknown",
