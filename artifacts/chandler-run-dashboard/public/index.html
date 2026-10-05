@@ -50,6 +50,20 @@
     .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--muted)}
     .legend i{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px;background:var(--blue)}
     .legend i.subject{background:var(--green)}
+    .mini-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .mini{padding:14px;border:1px solid var(--line);border-radius:12px;background:#fbfcfd}
+    .mini .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+    .mini .v{font-size:24px;font-weight:750;margin-top:6px}
+    .mini .s{font-size:12px;color:var(--muted);margin-top:4px}
+    .sf-chart{display:grid;gap:10px;margin-top:12px}
+    .sf-row{display:grid;grid-template-columns:190px 1fr 120px;gap:12px;align-items:center;font-size:13px}
+    .sf-track{height:14px;border-radius:999px;background:#edf1f4;position:relative}
+    .sf-bar{height:10px;position:absolute;top:2px;border-radius:999px;background:var(--blue)}
+    .sf-bar.subject{background:var(--green)}
+    .abs-bars{display:grid;gap:12px;margin-top:12px}
+    .abs-row{display:grid;grid-template-columns:90px 1fr 110px;gap:12px;align-items:center;font-size:13px}
+    .abs-fill{height:12px;border-radius:999px;background:var(--amber)}
+    @media(max-width:700px){.mini-grid{grid-template-columns:1fr}.sf-row{grid-template-columns:120px 1fr 90px}.comp-row{grid-template-columns:130px 1fr 100px}.axis{grid-template-columns:130px 1fr 100px}}
     .callout{background:#f8fbfd;border-left:4px solid var(--blue);padding:14px 16px;border-radius:10px;color:#314353;font-size:14px}
     .note{font-size:12px;color:var(--muted);margin-top:12px}
     .status{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}.dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
@@ -126,9 +140,23 @@
       <div class="legend"><span><i class="subject"></i>Chandler Run</span><span><i></i>Competition</span></div>
     </section>
 
+    <section class="card full">
+      <h2>Square footage & price per square foot</h2>
+      <div class="mini-grid" id="planMetrics"></div>
+      <div class="sf-chart" id="sqftChart"></div>
+      <div class="note">Square-footage ranges reflect the plans and comp records captured in the CMA. Towns at Creekside is omitted from the square-footage graph because the source set did not include a verified size.</div>
+    </section>
+
     <section class="card section">
       <h2>Price position</h2>
       <div class="bars" id="bars"></div>
+    </section>
+
+    <section class="card section">
+      <h2>Absorption / supply proxy</h2>
+      <div class="mini-grid" id="absMetrics"></div>
+      <div class="abs-bars" id="absChart"></div>
+      <div class="note" id="absNote"></div>
     </section>
 
     <section class="card section">
@@ -174,6 +202,33 @@ fetch("/api/dashboard",{cache:"no-store"}).then(r=>r.json()).then(d=>{
     </div>`;
   }).join("");
   document.getElementById("competitionChart").innerHTML = axis + `<div class="comp-chart">${compRows}</div>`;
+
+  const planRows = d.plans.map(p=>{
+    const matching = d.trackedActives.filter(x=>x.plan===p.plan);
+    const low = matching.length ? Math.min(...matching.map(x=>x.price/x.sqft)) : null;
+    const high = matching.length ? Math.max(...matching.map(x=>x.price/x.sqft)) : null;
+    return { ...p, ppsfLow:low, ppsfHigh:high };
+  });
+  document.getElementById("planMetrics").innerHTML = planRows.map(p=>`<div class="mini"><div class="k">${p.plan}</div><div class="v">${p.sqft.toLocaleString()} sf</div><div class="s">${p.ppsfLow==null?"No active price":("$"+p.ppsfLow.toFixed(0)+(p.ppsfHigh!==p.ppsfLow?"–$"+p.ppsfHigh.toFixed(0):"")+"/sf")}</div></div>`).join("");
+
+  const sfData = d.competition.filter(x=>x.sqftLow!=null);
+  const sfMin = Math.floor(Math.min(...sfData.map(x=>x.sqftLow))/250)*250;
+  const sfMax = Math.ceil(Math.max(...sfData.map(x=>x.sqftHigh))/250)*250;
+  const sfPct = v => ((v-sfMin)/(sfMax-sfMin))*100;
+  document.getElementById("sqftChart").innerHTML = sfData.map(x=>`<div class="sf-row">
+    <div class="comp-name">${x.community}<span class="comp-builder">${x.tier}</span></div>
+    <div class="sf-track"><div class="sf-bar ${x.community==="Chandler Run"?"subject":""}" style="left:${sfPct(x.sqftLow)}%;width:${Math.max(1,sfPct(x.sqftHigh)-sfPct(x.sqftLow))}%"></div></div>
+    <div class="range-value">${x.sqftLow.toLocaleString()}${x.sqftHigh!==x.sqftLow?"–"+x.sqftHigh.toLocaleString():""} sf</div>
+  </div>`).join("");
+
+  const aug = d.absorption.county[0], sep = d.absorption.county[1];
+  document.getElementById("absMetrics").innerHTML = `
+    <div class="mini"><div class="k">Aug supply proxy</div><div class="v">${aug.monthsSupplyProxy.toFixed(2)} mo</div><div class="s">${aug.active.toLocaleString()} active / ${aug.closings.toLocaleString()} closings</div></div>
+    <div class="mini"><div class="k">Sep supply proxy</div><div class="v">${sep.monthsSupplyProxy.toFixed(2)} mo</div><div class="s">${sep.active.toLocaleString()} active / ${sep.closings.toLocaleString()} closings</div></div>
+    <div class="mini"><div class="k">Change</div><div class="v">+${(sep.monthsSupplyProxy-aug.monthsSupplyProxy).toFixed(2)} mo</div><div class="s">Slower countywide absorption proxy</div></div>`;
+  const maxReq = Math.max(...d.absorption.trackedInventoryClearance.map(x=>x.requiredMonthlySales));
+  document.getElementById("absChart").innerHTML = d.absorption.trackedInventoryClearance.map(x=>`<div class="abs-row"><div>${x.horizonDays} days</div><div class="track"><div class="abs-fill" style="width:${x.requiredMonthlySales/maxReq*100}%"></div></div><div class="range-value">${x.requiredMonthlySales.toFixed(2)} sales/mo</div></div>`).join("");
+  document.getElementById("absNote").textContent = d.absorption.note;
 
   const rows = d.trackedActives.map((x,i)=>({label:x.plan+" "+(i+1),price:x.price}));
   const max = Math.max(...rows.map(x=>x.price));
