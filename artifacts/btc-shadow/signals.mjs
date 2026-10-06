@@ -1,5 +1,5 @@
 import { evaluateBtcJump, BTC_B_WINDOW_MS, BTC_B_HISTORY_MS } from "./btcJumpSignal.mjs";
-export const STAKE_CENTS = 500;
+export const STAKE_CENTS = 100;
 export const SERVICES = ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
 export const ORDER_EXECUTION_ENABLED = false;
 export const WINDOW_MS = BTC_B_WINDOW_MS;

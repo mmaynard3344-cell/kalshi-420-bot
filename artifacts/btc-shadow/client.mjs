@@ -47,7 +47,8 @@ export function selectCurrent(rows, nowMs) {
   const row = matches[0];
   const floorStrike = Number(row.floor_strike), openTimeMs = Date.parse(row.open_time), closeTimeMs = Date.parse(row.close_time);
   if (!Number.isFinite(floorStrike) || floorStrike <= 0 || closeTimeMs - openTimeMs !== WINDOW_MS || openTimeMs % WINDOW_MS !== 0) return null;
-  return { ticker: row.ticker, floorStrike, openTimeMs, observedAtMs: nowMs };
+  const exchangeIndex = Number.isInteger(row.exchange_index) && row.exchange_index >= 0 ? row.exchange_index : null;
+  return { ticker: row.ticker, floorStrike, openTimeMs, observedAtMs: nowMs, exchangeIndex };
 }
 export function parseCandles(body, nowMs) {
   if (Array.isArray(body.error) && body.error.length) throw new Error("kraken_candle_error");

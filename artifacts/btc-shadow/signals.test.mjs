@@ -19,13 +19,13 @@ function fixture() {
   return { history, market: { ticker: "KXBTC15M-CURRENT", openTimeMs: prior.openTimeMs + WINDOW_MS,
     observedAtMs: prior.openTimeMs + WINDOW_MS + 10_000, floorStrike: prior.floorStrike * 1.00242 } };
 }
-test("all BTC strategies evaluate at $5 with orders hard-disabled; B stays YES", () => {
+test("all BTC strategies evaluate at $1 with orders hard-disabled; B stays YES", () => {
   for (const sign of [1, -1]) {
     const input = fixture(); input.market.floorStrike = input.history.at(-1).floorStrike * (1 + sign * .00242);
     const rows = evaluatePortfolio(input);
     assert.equal(rows.length, 11);
     assert.deepEqual(rows.map((r) => r.service), ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]);
-    assert.ok(rows.every((r) => r.stakeCents === 500 && r.ordersEnabled === false && r.mode === "shadow"));
+    assert.ok(rows.every((r) => r.stakeCents === 100 && r.ordersEnabled === false && r.mode === "shadow"));
     assert.equal(rows.find((r) => r.service === "B").side, "yes");
     assert.equal(rows.find((r) => r.service === "J").reason, "no_btc_a_order");
     assert.equal(rows.find((r) => r.service === "K").reason, "weather_service_excluded_from_btc");
@@ -94,10 +94,12 @@ test("BTC evidence excludes ETH, current, future-known, unfinished and nonadjace
   input.history.splice(100, 1);
   assert.equal(buildEvidence(input.market, input.history).historyCount, 248);
 });
-test("current market discovery rejects future and ambiguous windows", () => {
+test("current market discovery preserves exchange index and rejects future and ambiguous windows", () => {
   const row = { ticker: "KXBTC15M-CURRENT", status: "active", open_time: new Date(start).toISOString(),
-    close_time: new Date(start + WINDOW_MS).toISOString(), floor_strike: 60000 };
-  assert.ok(selectCurrent([row], start + 1));
+    close_time: new Date(start + WINDOW_MS).toISOString(), floor_strike: 60000, exchange_index: 2 };
+  const current = selectCurrent([row], start + 1);
+  assert.ok(current);
+  assert.equal(current.exchangeIndex, 2);
   assert.equal(selectCurrent([row, row], start + 1), null);
   assert.equal(selectCurrent([row], start - 1), null);
   assert.equal(selectCurrent([row], start + WINDOW_MS), null);
