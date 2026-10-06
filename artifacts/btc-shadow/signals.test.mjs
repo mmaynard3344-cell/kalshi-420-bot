@@ -19,13 +19,13 @@ function fixture() {
   return { history, market: { ticker: "KXBTC15M-CURRENT", openTimeMs: prior.openTimeMs + WINDOW_MS,
     observedAtMs: prior.openTimeMs + WINDOW_MS + 10_000, floorStrike: prior.floorStrike * 1.00242 } };
 }
-test("all BTC strategies evaluate at $5 with orders hard-disabled; B stays YES", () => {
+test("all BTC strategies evaluate at $1 with orders hard-disabled; B stays YES", () => {
   for (const sign of [1, -1]) {
     const input = fixture(); input.market.floorStrike = input.history.at(-1).floorStrike * (1 + sign * .00242);
     const rows = evaluatePortfolio(input);
     assert.equal(rows.length, 11);
     assert.deepEqual(rows.map((r) => r.service), ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]);
-    assert.ok(rows.every((r) => r.stakeCents === 500 && r.ordersEnabled === false && r.mode === "shadow"));
+    assert.ok(rows.every((r) => r.stakeCents === 100 && r.ordersEnabled === false && r.mode === "shadow"));
     assert.equal(rows.find((r) => r.service === "B").side, "yes");
     assert.equal(rows.find((r) => r.service === "J").reason, "no_btc_a_order");
     assert.equal(rows.find((r) => r.service === "K").reason, "weather_service_excluded_from_btc");
