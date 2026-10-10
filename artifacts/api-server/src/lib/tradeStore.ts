@@ -1629,7 +1629,17 @@ export async function initTradeStore(
   } catch (err) {
     // Non-fatal: columns may already exist or DB may lack ALTER privileges.
     // Trading is permitted — degraded migration is preferable to a startup crash.
-    logger.warn({ err }, "tradeStore: schema migration warning — won/settlement_result columns may be missing");
+    const failure = err as { message?: string; cause?: { message?: string; code?: string; detail?: string; constraint?: string; table?: string; column?: string } };
+    const cause = failure.cause;
+    logger.warn({
+      errorName: err instanceof Error ? err.name : typeof err,
+      sqlState: cause?.code ?? null,
+      causeMessage: cause?.message?.slice(0, 600) ?? null,
+      detail: cause?.detail?.slice(0, 400) ?? null,
+      constraint: cause?.constraint ?? null,
+      table: cause?.table ?? null,
+      column: cause?.column ?? null,
+    }, "tradeStore: schema migration failed (compact diagnostic; no SQL dump)");
   }
 
   await hydrateEth420CandidateEmergencyFence();
