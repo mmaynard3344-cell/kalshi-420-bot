@@ -1,0 +1,632 @@
+{
+  "asOf": "2026-10-10",
+  "community": "Chandler Run",
+  "location": "Gwinnett County, Georgia",
+  "builder": "Taylor Morrison",
+  "objective": {
+    "label": "October net contract goal",
+    "target": 10,
+    "weeklyTarget": 2.26,
+    "remainingWeeklyTarget": 3.33
+  },
+  "market": {
+    "contractsYoY": -27.3,
+    "activeListingsYoY": 14.9,
+    "note": "Gwinnett September market pressure",
+    "period": "September 2026",
+    "closings": 658,
+    "contracts": 523,
+    "active": 3597,
+    "median": 409000,
+    "newListings": 1288
+  },
+  "plans": [
+    {
+      "plan": "Oconee",
+      "sqft": 1893
+    },
+    {
+      "plan": "Forsyth",
+      "sqft": 1967
+    },
+    {
+      "plan": "Reynolds",
+      "sqft": 2375
+    }
+  ],
+  "trackedActives": [
+    {
+      "address": "100 Epperly Way",
+      "plan": "Oconee",
+      "sqft": 1893,
+      "price": 409990,
+      "delivery": "Ready now",
+      "position": "Interior",
+      "test": 399990
+    },
+    {
+      "address": "102 Epperly Way",
+      "plan": "Oconee",
+      "sqft": 1893,
+      "price": 409990,
+      "delivery": "Ready now",
+      "position": "Interior",
+      "test": 399990
+    },
+    {
+      "address": "106 Epperly Way",
+      "plan": "Oconee",
+      "sqft": 1893,
+      "price": 463990,
+      "delivery": "Ready now; end unit",
+      "position": "End unit",
+      "test": 419990
+    },
+    {
+      "address": "6122 Wayburn Street",
+      "plan": "Forsyth",
+      "sqft": 1967,
+      "price": 429990,
+      "delivery": "October completion (MLS)",
+      "position": "Standard",
+      "test": 409990
+    },
+    {
+      "address": "6120 Wayburn Street",
+      "plan": "Forsyth",
+      "sqft": 1967,
+      "price": 459990,
+      "delivery": "October completion (MLS)",
+      "position": "Premium",
+      "test": 419990
+    }
+  ],
+  "documentedSales": [
+    {
+      "address": "218 Maycrest Path",
+      "plan": "Oconee resale",
+      "date": "Sep. 25, 2026",
+      "sqft": 1893,
+      "price": 390000,
+      "kind": "Resale",
+      "source": "[38]"
+    },
+    {
+      "address": "6138 Wayburn Street",
+      "plan": "Reynolds",
+      "date": "Sep. 28, 2026",
+      "sqft": 2375,
+      "price": 435000,
+      "kind": "Builder-era",
+      "source": "[14]"
+    },
+    {
+      "address": "6137 Wayburn Street",
+      "plan": "Forsyth",
+      "date": "Feb. 9, 2026",
+      "sqft": 1967,
+      "price": 399990,
+      "kind": "Builder-era",
+      "source": "[4]"
+    },
+    {
+      "address": "98 Epperly Way",
+      "plan": "Oconee",
+      "date": "May 8, 2026",
+      "sqft": 1893,
+      "price": 399990,
+      "kind": "Builder-era",
+      "source": "[5]"
+    },
+    {
+      "address": "6121 Wayburn Street",
+      "plan": "Reynolds",
+      "date": "May 14, 2026",
+      "sqft": 2375,
+      "price": 450000,
+      "kind": "Builder-era",
+      "source": "[6]"
+    },
+    {
+      "address": "6133 Wayburn Street",
+      "plan": "Forsyth",
+      "date": "May 15, 2026",
+      "sqft": 1967,
+      "price": 399990,
+      "kind": "Builder-era",
+      "source": "[7]"
+    }
+  ],
+  "competition": [
+    {
+      "community": "Chandler Run",
+      "builder": "Taylor Morrison",
+      "low": 409990,
+      "high": 463990,
+      "sqftLow": 1893,
+      "sqftHigh": 1967,
+      "tier": "Subject",
+      "basis": "Five tracked address asks"
+    },
+    {
+      "community": "Fern Parc",
+      "builder": "Richardson Housing Group",
+      "low": 409950,
+      "high": 439950,
+      "sqftLow": 1909,
+      "sqftHigh": 1918,
+      "tier": "Direct",
+      "basis": "Sampled address asking prices"
+    },
+    {
+      "community": "Walton Townes",
+      "builder": "Crawford Creek",
+      "low": 460000,
+      "high": 479550,
+      "sqftLow": 1696,
+      "sqftHigh": 1726,
+      "tier": "Direct",
+      "basis": "Sampled address asking prices"
+    },
+    {
+      "community": "Trinity Park",
+      "builder": "Lennar-built resale",
+      "low": null,
+      "high": null,
+      "sqftLow": null,
+      "sqftHigh": null,
+      "tier": "Secondary",
+      "basis": "No active resale displayed; prior asks removed"
+    },
+    {
+      "community": "Rosewood Farm",
+      "builder": "Taylor Morrison",
+      "low": 349990,
+      "high": 406490,
+      "sqftLow": 1967,
+      "sqftHigh": 1967,
+      "tier": "Secondary",
+      "basis": "Three address asks; plan start $437,990 excluded"
+    },
+    {
+      "community": "Towns at Creekside",
+      "builder": "Lennar",
+      "low": 449900,
+      "high": 455695,
+      "sqftLow": 1810,
+      "sqftHigh": 1830,
+      "tier": "Benchmark",
+      "basis": "Two address asks; collection counts conflict"
+    },
+    {
+      "community": "Waterside",
+      "builder": "The Providence Group",
+      "low": 625900,
+      "high": 625900,
+      "sqftLow": 2162,
+      "sqftHigh": 2162,
+      "tier": "Upper benchmark",
+      "basis": "Advertised starting price $625,900+; upper benchmark"
+    },
+    {
+      "community": "The Views from Browning",
+      "builder": "JW Collection",
+      "low": 700000,
+      "high": 799999,
+      "sqftLow": 3400,
+      "sqftHigh": 3600,
+      "tier": "Upper benchmark",
+      "basis": "Coming soon; advertised $700,000s tier, not an address ask"
+    }
+  ],
+  "absorption": {
+    "county": [
+      {
+        "period": "Sep 2026",
+        "active": 3597,
+        "closings": 658,
+        "monthsSupplyProxy": 5.466565349544073
+      }
+    ],
+    "trackedInventoryClearance": [
+      {
+        "horizonDays": 30,
+        "requiredMonthlySales": 5
+      },
+      {
+        "horizonDays": 60,
+        "requiredMonthlySales": 2.5
+      },
+      {
+        "horizonDays": 90,
+        "requiredMonthlySales": 1.67
+      }
+    ],
+    "note": "Calculated county ratio: 3,597 active / 658 September closings = 5.47 months. This is not published months of supply or townhome/community absorption. Clearance bars are planning scenarios for five tracked homes, assuming no additions or cancellations."
+  },
+  "pricingTests": [
+    {
+      "segment": "100 Epperly Way / Oconee",
+      "current": 409990,
+      "test": 399990,
+      "action": "Interior"
+    },
+    {
+      "segment": "102 Epperly Way / Oconee",
+      "current": 409990,
+      "test": 399990,
+      "action": "Interior"
+    },
+    {
+      "segment": "106 Epperly Way / Oconee",
+      "current": 463990,
+      "test": 419990,
+      "action": "End unit"
+    },
+    {
+      "segment": "6122 Wayburn Street / Forsyth",
+      "current": 429990,
+      "test": 409990,
+      "action": "Standard"
+    },
+    {
+      "segment": "6120 Wayburn Street / Forsyth",
+      "current": 459990,
+      "test": 419990,
+      "action": "Premium"
+    },
+    {
+      "segment": "Future Tifton / Reynolds",
+      "current": null,
+      "test": 439990,
+      "action": "Address-dependent; premium ceiling test $449,990"
+    }
+  ],
+  "incentive": {
+    "budgetPerHome": 10000,
+    "description": "Analyst budget only. Current builder rate, APR, credits, expiration and stacking terms are unavailable."
+  },
+  "caution": "Tracked public-MLS inventory only. Builder and portal totals have conflicted, so this is not a complete inventory count.",
+  "competitorHomes": [
+    {
+      "address": "4349 Fern River Bend #31",
+      "community": "Fern Parc",
+      "sqft": 1909,
+      "price": 409950
+    },
+    {
+      "address": "4355 Fern River Bend #34",
+      "community": "Fern Parc",
+      "sqft": 1909,
+      "price": 414950
+    },
+    {
+      "address": "4353 Fern River Bend #33",
+      "community": "Fern Parc",
+      "sqft": 1909,
+      "price": 419950
+    },
+    {
+      "address": "4253 Fern River Trail #12",
+      "community": "Fern Parc",
+      "sqft": 1909,
+      "price": 434950
+    },
+    {
+      "address": "4357 Fern River Bend #35",
+      "community": "Fern Parc",
+      "sqft": 1918,
+      "price": 439950
+    },
+    {
+      "address": "1963 Walton Court",
+      "community": "Walton Townes",
+      "sqft": 1726,
+      "price": 460000
+    },
+    {
+      "address": "1975 Walton Court",
+      "community": "Walton Townes",
+      "sqft": 1726,
+      "price": 462500
+    },
+    {
+      "address": "1977 Walton Court",
+      "community": "Walton Townes",
+      "sqft": 1726,
+      "price": 475000
+    },
+    {
+      "address": "1961 Walton Court",
+      "community": "Walton Townes",
+      "sqft": 1696,
+      "price": 478200
+    },
+    {
+      "address": "1969 Walton Court",
+      "community": "Walton Townes",
+      "sqft": 1726,
+      "price": 479550
+    },
+    {
+      "address": "2564 States Avenue",
+      "community": "Towns at Creekside",
+      "sqft": 1810,
+      "price": 449900
+    },
+    {
+      "address": "2562 States Avenue",
+      "community": "Towns at Creekside",
+      "sqft": 1830,
+      "price": 455695
+    },
+    {
+      "address": "102 Wilder Ridge Way",
+      "community": "Rosewood Farm",
+      "sqft": 1967,
+      "price": 349990
+    },
+    {
+      "address": "96 Wilder Ridge Way",
+      "community": "Rosewood Farm",
+      "sqft": 1967,
+      "price": 349990
+    },
+    {
+      "address": "611 Rosehill Lane",
+      "community": "Rosewood Farm",
+      "sqft": 1967,
+      "price": 406490
+    }
+  ],
+  "financing": {
+    "date": "2026-10-08",
+    "rate30": 7.4,
+    "rate15": 6.73,
+    "previous30": 7.28,
+    "previous15": 6.6,
+    "price": 429990,
+    "downPercent": 20,
+    "payment": 2382,
+    "illustrativeRate": 5.99,
+    "illustrativePayment": 2060
+  },
+  "changeLog": [
+    "6120 Wayburn reduced $440 to $459,990; other four tracked asks unchanged.",
+    "218 Maycrest resale verified: $390,000 closed September 25; portal list-price/sold-date conflict corrected.",
+    "Forsyth closings correctly identified at 6137 and 6133 Wayburn; six gross closings now shown.",
+    "September county statistics revised: 658 closings and $409,000 median; ratio recalculated to 5.47.",
+    "Trinity has no visible active resale. Creekside address asks now $449,900\u2013$455,695.",
+    "Freddie Mac October 8 benchmark: 7.40% / 6.73%; no change from October 8 report."
+  ],
+  "sources": [
+    {
+      "id": "1",
+      "title": "Taylor Morrison - Chandler Run; September 30 baseline; Oct. 10 full page unavailable",
+      "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run",
+      "status": "Unavailable Oct. 10; carried baseline only"
+    },
+    {
+      "id": "2",
+      "title": "Georgia MLS - 100 Epperly; active $409,990, 1,893 sf, HOA and schools",
+      "url": "https://www.georgiamls.com/100-epperly-way-tucker-ga-30084/10768578",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "3",
+      "title": "Georgia MLS - 106 Epperly; active $463,990, end unit",
+      "url": "https://www.georgiamls.com/106-epperly-way-tucker-ga-30084/10830902",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "4",
+      "title": "Georgia MLS - 6137 Wayburn; sale $399,990, February 9, 2026",
+      "url": "https://www.georgiamls.com/6137-wayburn-street-tucker-ga-30084/10665045",
+      "status": "Carried; historical sale"
+    },
+    {
+      "id": "5",
+      "title": "Zillow - 98 Epperly; historical price timeline and $399,990 May 8 closing",
+      "url": "https://www.zillow.com/homedetails/98-Epperly-Way-Tucker-GA-30084/460997176_zpid/",
+      "status": "Carried; historical sale"
+    },
+    {
+      "id": "6",
+      "title": "Redfin - 6121 Wayburn; $450,000, May 14, 2026; price history",
+      "url": "https://www.redfin.com/GA/Tucker/6121-Wayburn-St-30084/home/196178461",
+      "status": "Carried historical sale"
+    },
+    {
+      "id": "7",
+      "title": "Georgia MLS - 6133 Wayburn; $399,990, May 15, 2026",
+      "url": "https://www.georgiamls.com/6133-wayburn-street-tucker-ga-30084/10665044",
+      "status": "Carried; historical sale"
+    },
+    {
+      "id": "8",
+      "title": "Rains Team - 6120 Wayburn; initiation fee and HOA description",
+      "url": "https://www.gwinnettnewhomes.com/gwinnett-county/tucker/chandler-run/wayburn-street/6120-wayburn-street-10848345/",
+      "status": "Carried Sep. 30; fee/scope not newly verified"
+    },
+    {
+      "id": "9",
+      "title": "Homes.com - 102 Epperly; conflicting community total 208 / 212",
+      "url": "https://www.homes.com/property/102-epperly-way-tucker-ga/h5n0h5fk2xysb/",
+      "status": "Carried Sep. 30; conflicting totals unresolved"
+    },
+    {
+      "id": "10",
+      "title": "Taylor Morrison - Forsyth; address and plan pricing context",
+      "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run/floor-plans/forsyth",
+      "status": "Unavailable Oct. 10; asks verified via [31,32]"
+    },
+    {
+      "id": "11",
+      "title": "Redfin - 6133 Wayburn; original asking-price history",
+      "url": "https://www.redfin.com/GA/Tucker/6133-Wayburn-St-30084/home/196158711",
+      "status": "Carried historical price timeline"
+    },
+    {
+      "id": "12",
+      "title": "Homes.com - 6123 Wayburn; supplemental portal sold label only",
+      "url": "https://www.homes.com/property/6123-wayburn-st-tucker-ga/12em1r8sj5nwl/",
+      "status": "Carried unverified sold label; excluded"
+    },
+    {
+      "id": "13",
+      "title": "Homes.com - 6105 Wayburn; supplemental portal sold label only",
+      "url": "https://www.homes.com/property/6105-wayburn-st-tucker-ga/6mrwmxzx3j753/",
+      "status": "Carried unverified sold label; excluded"
+    },
+    {
+      "id": "14",
+      "title": "Georgia MLS - 6138 Wayburn; $435,000 closed September 28",
+      "url": "https://www.georgiamls.com/6138-wayburn-street-tucker-ga-30084/10769188",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "15",
+      "title": "Richardson Housing Group - Fern Parc product and amenities",
+      "url": "https://rhghomes.com/find-a-home/fern-parc/",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "16",
+      "title": "Momentum Realty - Norcross listings; page data explicitly September 14, 2026 (stale)",
+      "url": "https://movewithmomentum.com/new-construction-homes-norcross-ga",
+      "status": "Carried; underlying data dated Sep. 14"
+    },
+    {
+      "id": "17",
+      "title": "Crawford Creek - Walton Townes price, size, county and plans",
+      "url": "https://www.crawfordcreekcommunities.com/new-homes/tucker/walton-townes/",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "18",
+      "title": "Momentum Realty - 3512 Mount Blue; $449,900 / 2,194 sf",
+      "url": "https://movewithmomentum.com/listings/idx-gamls/3512-mount-blue-avenue-tucker",
+      "status": "Carried; prior Trinity listing no longer active"
+    },
+    {
+      "id": "19",
+      "title": "Atlanta Townhomes - Trinity Park; no active resale displayed",
+      "url": "https://www.atlantatownhomes.com/project/trinity-park/",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "20",
+      "title": "Homes.com - Rosewood Farm; updated October 10, 2026",
+      "url": "https://www.homes.com/new-homes/community/rosewood-farm/wzh962e8q1vte/",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "21",
+      "title": "Lennar - Towns at Creekside; pricing and conflicting availability displays",
+      "url": "https://www.lennar.com/new-homes/georgia/atlanta/doraville/towns-at-creekside",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "22",
+      "title": "Redfin - Towns at Creekside 20-foot collection asking price",
+      "url": "https://www.redfin.com/GA/Doraville/Towns-at-Creekside-Towns-at-Creekside-20/community/28429923",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "23",
+      "title": "Redfin - Towns at Creekside 24-foot collection asking price",
+      "url": "https://www.redfin.com/GA/Doraville/Towns-at-Creekside-Towns-at-Creekside-24/community/21518204",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "24",
+      "title": "Providence Group - Waterside Townhomes",
+      "url": "https://theprovidencegroup.com/new-homes/ga/peachtree-corners/waterside-townhomes/13809/",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "25",
+      "title": "JW Collection - Views from Browning; coming-soon product",
+      "url": "https://www.jwcollectionhomes.com/home/the-views-from-browning",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "26",
+      "title": "JW Collection - directory; Views from Browning price tier",
+      "url": "https://www.jwcollectionhomes.com/our-neighborhoods",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "27",
+      "title": "Georgia MLS - Gwinnett September 2026 county snapshot",
+      "url": "https://www.gamls.com/statistics/marketsnapshot/county/Gwinnett",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "28",
+      "title": "Freddie Mac PMMS - October 8, 2026, 7.40% benchmark",
+      "url": "https://www.freddiemac.com/pmms",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "29",
+      "title": "NewHomeSource - Chandler Run; no detailed rate/offer terms exposed; prior Sep. 30 deadline expired",
+      "url": "https://www.newhomesource.com/community/ga/tucker/chandler-run-by-taylor-morrison/199549",
+      "status": "Rechecked Oct. 10; no detailed current terms"
+    },
+    {
+      "id": "30",
+      "title": "Homes.com - Walton Townes Briarwood; advertised incentive lead",
+      "url": "https://www.homes.com/property/briarwood-plan-walton-townes/jhetrjr619m2m/",
+      "status": "Carried advertised lead; current eligibility unavailable"
+    },
+    {
+      "id": "31",
+      "title": "Georgia MLS - 6120 Wayburn; reduced to $459,990, October completion",
+      "url": "https://www.georgiamls.com/6120-wayburn-street-tucker-ga-30084/10848345",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "32",
+      "title": "Georgia MLS - 6122 Wayburn; active $429,990, October completion",
+      "url": "https://www.georgiamls.com/6122-wayburn-street-tucker-ga-30084/10847779",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "33",
+      "title": "Georgia MLS - 102 Epperly; active $409,990",
+      "url": "https://www.georgiamls.com/102-epperly-way-tucker-ga-30084/10768558",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "34",
+      "title": "Redfin - 102 Epperly; September 21 asking reduction history",
+      "url": "https://www.redfin.com/GA/Tucker/102-Epperly-Way-30084/home/201889077",
+      "status": "Carried historical reduction timeline"
+    },
+    {
+      "id": "35",
+      "title": "Homes.com - Chandler Run; updated Oct. 10; eight-home count but only three cards exposed",
+      "url": "https://www.homes.com/new-homes/community/chandler-run/c5z431cyxkmbm/",
+      "status": "Rechecked October 10, 2026"
+    },
+    {
+      "id": "36",
+      "title": "ByOwner / Georgia MLS - 4349 Fern River Bend #31; active $409,950",
+      "url": "https://www.byowner.com/townhouse/norcross/4349-fern-river-bend-ga-30093-10837358",
+      "status": "Rechecked Oct. 10; active example"
+    },
+    {
+      "id": "37",
+      "title": "Georgia MLS - 98 Epperly; confirms $399,990 closed May 8",
+      "url": "https://www.georgiamls.com/98-epperly-way-tucker-ga-30084/10708668",
+      "status": "Carried historical sale"
+    },
+    {
+      "id": "38",
+      "title": "Georgia MLS - 218 Maycrest; resale closed $390,000 September 25",
+      "url": "https://www.georgiamls.com/218-maycrest-path-tucker-ga-30084/10824116",
+      "status": "Newly verified Oct. 10; primary MLS closing"
+    }
+  ]
+}

@@ -69,16 +69,17 @@
     .status{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}.dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
     @media(max-width:900px){.metric{grid-column:span 6}.section{grid-column:1/-1}}
     @media(max-width:560px){header,main{padding-left:14px;padding-right:14px}.metric{grid-column:1/-1}.barrow{grid-template-columns:100px 1fr 70px}table{font-size:12px}.card{padding:16px}}
-  </style>
+  a{color:var(--blue)}.download,.refresh{display:inline-block;margin-top:12px;padding:10px 14px;border-radius:8px;background:white;color:var(--navy);font-size:13px;font-weight:650;text-decoration:none;border:0;cursor:pointer}.refresh{margin-left:8px;background:#dce9f3}.table-scroll{overflow-x:auto}.source-list{columns:2;column-gap:28px}.source-list p{break-inside:avoid;font-size:12px;line-height:1.5}.change-list{line-height:1.7;font-size:14px}.mini-grid{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}.comparison{display:flex;gap:12px;align-items:center;margin:14px 0}.comparison span{width:110px;font-size:13px}.comparison .track{flex:1;height:18px}.comparison b{min-width:80px;font-size:13px}.comparison .test{background:var(--green)}.range-bar.benchmark{background:var(--amber)}@media(max-width:560px){.source-list{columns:1}.comp-row{grid-template-columns:110px 1fr 100px}.range-value{font-size:11px}table{min-width:420px}}@media print{header{background:#fff;color:#17212b}.download,.refresh{display:none}.card{box-shadow:none;break-inside:avoid}.section{grid-column:1/-1}}
+</style>
 </head>
 <body>
 <header>
   <div class="wrap top">
     <div>
       <h1>Chandler Run CMA Dashboard</h1>
-      <div class="sub">Gwinnett County · Taylor Morrison · Pricing & absorption view</div>
+      <div class="sub">Gwinnett County · Taylor Morrison · Pricing, closed sales & competitive positioning</div>
     </div>
-    <div class="stamp" id="asOf">Loading…</div>
+    <div><div class="stamp" id="asOf">Loading…</div><a class="download" href="/report.pdf">Download visual PDF ↗</a><button class="refresh" onclick="location.reload()">Refresh view</button></div>
   </div>
 </header>
 
@@ -100,34 +101,34 @@
       <div class="detail" id="activeYoy">—</div>
     </section>
     <section class="card metric incentive">
-      <div class="label">Incentive budget</div>
+      <div class="label">Analyst support budget</div>
       <div class="value" id="incentive">—</div>
-      <div class="detail">Closing-cost / rate assistance</div>
+      <div class="detail">Scenario only; not a builder offer</div>
     </section>
 
     <section class="card section">
       <h2>Tracked active listings</h2>
-      <table>
-        <thead><tr><th>Plan</th><th>Position</th><th>Price</th></tr></thead>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Address / plan</th><th>Delivery</th><th>Ask</th></tr></thead>
         <tbody id="actives"></tbody>
-      </table>
+      </table></div>
     </section>
 
     <section class="card section">
       <h2>Documented same-community sales</h2>
-      <table>
-        <thead><tr><th>Plan</th><th>Recorded sale</th></tr></thead>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Address / plan</th><th>Closed</th><th>Gross sale</th></tr></thead>
         <tbody id="sales"></tbody>
-      </table>
+      </table></div>
       <div class="note">Recorded gross sales; seller concessions were not available in the source set.</div>
     </section>
 
     <section class="card full">
       <h2>October pricing action board</h2>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th>Segment</th><th>Current / observed</th><th>Test price</th><th>Role</th></tr></thead>
         <tbody id="pricing"></tbody>
-      </table>
+      </table></div>
       <div class="callout" style="margin-top:16px">
         These are aggressive CMA test positions intended to improve conversion toward the 10-net-contract objective. They are not approved price changes or guaranteed outcomes.
       </div>
@@ -135,16 +136,16 @@
 
     <section class="card full">
       <h2>Competitive pricing graph</h2>
-      <div class="note" style="margin-top:-6px;margin-bottom:16px">Observed asking-price ranges from the Chandler Run CMA. Direct competitors should carry more weight than upper-end benchmark communities.</div>
+      <div class="note" style="margin-top:-6px;margin-bottom:16px">Address asking prices are shown as solid ranges. Upper benchmarks are advertised starting prices or price tiers; these are not closed sales.</div>
       <div id="competitionChart"></div>
-      <div class="legend"><span><i class="subject"></i>Chandler Run</span><span><i></i>Competition</span></div>
+      <div class="legend"><span><i class="subject"></i>Chandler Run</span><span><i></i>Address asks</span><span><i style="background:var(--amber)"></i>Advertised upper benchmarks</span></div>
     </section>
 
     <section class="card full">
       <h2>Square footage & price per square foot</h2>
       <div class="mini-grid" id="planMetrics"></div>
       <div class="sf-chart" id="sqftChart"></div>
-      <div class="note">Square-footage ranges reflect the plans and comp records captured in the CMA. Towns at Creekside is omitted from the square-footage graph because the source set did not include a verified size.</div>
+      <div class="note">Square-footage ranges reflect the plans and comp records captured in the CMA. Subject sizes here reflect active homes; Reynolds 2,375 sf and Tifton 2,340 sf are plan options. Browning size displays conflict (3,400+ vs. 3,600).</div>
     </section>
 
     <section class="card section">
@@ -153,7 +154,7 @@
     </section>
 
     <section class="card section">
-      <h2>Absorption / supply proxy</h2>
+      <h2>County supply & clearance scenarios</h2>
       <div class="mini-grid" id="absMetrics"></div>
       <div class="abs-bars" id="absChart"></div>
       <div class="note" id="absNote"></div>
@@ -162,12 +163,18 @@
     <section class="card section">
       <h2>Decision summary</h2>
       <div class="callout">
-        Lead with a sub-$400K Oconee interior, put standard Forsyth near $410K, and use premium inventory around $420K as the conversion test. Preserve room for up to $10K in financing or closing-cost support where it produces a better net result than an equivalent base-price cut.
+        Lead with a sub-$400K Oconee interior, put standard Forsyth near $410K, and use premium inventory around $420K as the conversion test. Analyst scenario: reserve up to $10K in financing or closing-cost support where it produces a better net result than an equivalent base-price cut.
       </div>
       <div class="note" id="caution"></div>
-      <div class="status" style="margin-top:18px"><span class="dot"></span><span>Dashboard service live data endpoint: <code>/api/dashboard</code></span></div>
+      <div class="note">No community absorption is inferred from public inventory counts. Ten contractable homes and actual October net contracts still need verification.</div>
     </section>
-  </div>
+  <section class="card full"><h2>Observed asks → analyst price tests</h2><div id="priceTests"></div><div class="note">Five-home gross reduction: $124,000 (5.7%). Optional $10,000 support per home adds $50,000; combined scenario $174,000 before normal costs. No price changes have been made.</div></section>
+<section class="card section"><h2>Mortgage benchmark & payment scenario</h2><div id="financing"></div><div class="note">Freddie Mac PMMS, October 8. Payment calculation assumes 20% down and a 30-year loan; excludes tax, insurance, HOA, PMI and fees. The 5.99% comparison is illustrative, not an available offer.</div></section>
+<section class="card section"><h2>Capacity for 10 net contracts</h2><div class="mini-grid"><div class="mini"><div class="k">Gross contracts</div><div class="v">12</div><div class="s">Assumed 10% cancellation; rounded up</div></div><div class="mini"><div class="k">Qualified visits</div><div class="v">80</div><div class="s">Assumed 15% visit-to-contract conversion</div></div></div><div class="note">120 visits at 10% conversion or 60 at 20%. These are planning assumptions, not measured performance. If all 10 are still needed October 11–31, pace is 3.33 net contracts/week. Actual progress is unknown.</div></section>
+<section class="card full"><h2>Competitive address sample</h2><div class="table-scroll"><div class="table-scroll"><table><thead><tr><th>Community / address</th><th>Size</th><th>Ask</th><th>Calculated $/sf</th></tr></thead><tbody id="competitorHomes"></tbody></table></div></div></section>
+<section class="card full"><h2>Change log · October 10, 2026</h2><div class="note">Compared with the October 8 comprehensive report and the October 4 dashboard.</div><ul class="change-list" id="changes"></ul><div class="callout">HOA: $1,500/year ($125/month). Historical $1,500 initiation fee is not newly verified. Builder availability totals conflict with public cards. Current incentive eligibility and stacking terms remain unavailable.</div></section>
+<section class="card full"><h2>Evidence & source register</h2><div class="note">Source status distinguishes October 10 rechecks from carried or unavailable evidence. Asking prices, gross closings, calculations and analyst recommendations remain separate.</div><div class="source-list" id="sources"></div></section>
+</div>
 </main>
 
 <script>
@@ -175,30 +182,31 @@ const fmt = n => n == null ? "—" : new Intl.NumberFormat("en-US",{style:"curre
 fetch("/api/dashboard",{cache:"no-store"}).then(r=>r.json()).then(d=>{
   document.getElementById("asOf").textContent = "CMA as of " + d.asOf;
   document.getElementById("goal").textContent = d.objective.target;
-  document.getElementById("weekly").textContent = "Target pace: " + d.objective.weeklyTarget + " net contracts / week";
+  document.getElementById("weekly").textContent = "Full-month target: " + d.objective.weeklyTarget + " net contracts / week";
   document.getElementById("activeCount").textContent = d.trackedActives.length;
   document.getElementById("contractsYoy").textContent = d.market.contractsYoY + "%";
   document.getElementById("activeYoy").textContent = "Active listings " + (d.market.activeListingsYoY>0?"+":"") + d.market.activeListingsYoY + "% YoY";
   document.getElementById("incentive").textContent = fmt(d.incentive.budgetPerHome);
   document.getElementById("caution").textContent = d.caution;
 
-  document.getElementById("actives").innerHTML = d.trackedActives.map(x=>`<tr><td><span class="chip">${x.plan}</span></td><td>${x.position}</td><td class="money">${fmt(x.price)}</td></tr>`).join("");
-  document.getElementById("sales").innerHTML = d.documentedSales.map(x=>`<tr><td>${x.plan}</td><td class="money">${fmt(x.price)}</td></tr>`).join("");
+  document.getElementById("actives").innerHTML = d.trackedActives.map(x=>`<tr><td>${x.address}<br><span class="chip">${x.plan} · ${x.sqft} sf</span></td><td>${x.delivery}</td><td class="money">${fmt(x.price)}</td></tr>`).join("");
+  document.getElementById("sales").innerHTML = d.documentedSales.map(x=>`<tr><td>${x.address}<br><span class="chip">${x.plan} · ${x.kind}</span></td><td>${x.date}</td><td class="money">${fmt(x.price)}</td></tr>`).join("");
   document.getElementById("pricing").innerHTML = d.pricingTests.map(x=>`<tr><td>${x.segment}</td><td class="money">${fmt(x.current)}</td><td class="money">${fmt(x.test)}</td><td>${x.action}</td></tr>`).join("");
 
-  const compMin = Math.floor(Math.min(...d.competition.map(x=>x.low))/50000)*50000;
-  const compMax = Math.ceil(Math.max(...d.competition.map(x=>x.high))/50000)*50000;
+  const compMin = Math.floor(Math.min(...d.competition.filter(x=>x.low!=null).map(x=>x.low))/50000)*50000;
+  const compMax = Math.ceil(Math.max(...d.competition.filter(x=>x.high!=null).map(x=>x.high))/50000)*50000;
   const pct = v => ((v-compMin)/(compMax-compMin))*100;
   const ticks = [];
   for(let v=compMin; v<=compMax; v+=100000) ticks.push(v);
   const axis = `<div class="axis"><div></div><div class="axis-line">${ticks.map(v=>`<span style="left:${pct(v)}%">${Math.round(v/1000)}K</span>`).join("")}</div><div></div></div>`;
   const compRows = d.competition.map(x=>{
+    if(x.low==null)return `<div class="comp-row"><div class="comp-name">${x.community}</div><div class="note">${x.basis}</div><div>Unavailable</div></div>`;
     const left = Math.max(0,pct(x.low));
     const width = Math.max(1,pct(x.high)-pct(x.low));
     return `<div class="comp-row">
-      <div class="comp-name">${x.community}<span class="comp-builder">${x.builder} · ${x.tier}</span></div>
-      <div class="range-track"><div class="range-bar ${x.community==="Chandler Run"?"subject":""}" style="left:${left}%;width:${width}%"></div></div>
-      <div class="range-value">${fmt(x.low)}${x.high!==x.low?" – "+fmt(x.high):""}</div>
+      <div class="comp-name">${x.community}<span class="comp-builder">${x.builder} · ${x.tier}<br>${x.basis}</span></div>
+      <div class="range-track"><div class="range-bar ${x.community==="Chandler Run"?"subject":x.tier.includes("Upper")?"benchmark":""}" style="left:${left}%;width:${width}%"></div></div>
+      <div class="range-value">${x.community==="The Views from Browning"?"$700,000s":fmt(x.low)+(x.high!==x.low?" – "+fmt(x.high):x.community==="Waterside"?"+":"")}</div>
     </div>`;
   }).join("");
   document.getElementById("competitionChart").innerHTML = axis + `<div class="comp-chart">${compRows}</div>`;
@@ -221,18 +229,21 @@ fetch("/api/dashboard",{cache:"no-store"}).then(r=>r.json()).then(d=>{
     <div class="range-value">${x.sqftLow.toLocaleString()}${x.sqftHigh!==x.sqftLow?"–"+x.sqftHigh.toLocaleString():""} sf</div>
   </div>`).join("");
 
-  const aug = d.absorption.county[0], sep = d.absorption.county[1];
-  document.getElementById("absMetrics").innerHTML = `
-    <div class="mini"><div class="k">Aug supply proxy</div><div class="v">${aug.monthsSupplyProxy.toFixed(2)} mo</div><div class="s">${aug.active.toLocaleString()} active / ${aug.closings.toLocaleString()} closings</div></div>
-    <div class="mini"><div class="k">Sep supply proxy</div><div class="v">${sep.monthsSupplyProxy.toFixed(2)} mo</div><div class="s">${sep.active.toLocaleString()} active / ${sep.closings.toLocaleString()} closings</div></div>
-    <div class="mini"><div class="k">Change</div><div class="v">+${(sep.monthsSupplyProxy-aug.monthsSupplyProxy).toFixed(2)} mo</div><div class="s">Slower countywide absorption proxy</div></div>`;
+  const sep = d.absorption.county[0];
+  document.getElementById("absMetrics").innerHTML = `<div class="mini"><div class="k">September ratio</div><div class="v">${sep.monthsSupplyProxy.toFixed(2)} mo</div><div class="s">${sep.active.toLocaleString()} active / ${sep.closings} closings</div></div><div class="mini"><div class="k">September median</div><div class="v">${fmt(d.market.median)}</div><div class="s">County residential; −0.7% YoY</div></div>`;
   const maxReq = Math.max(...d.absorption.trackedInventoryClearance.map(x=>x.requiredMonthlySales));
   document.getElementById("absChart").innerHTML = d.absorption.trackedInventoryClearance.map(x=>`<div class="abs-row"><div>${x.horizonDays} days</div><div class="track"><div class="abs-fill" style="width:${x.requiredMonthlySales/maxReq*100}%"></div></div><div class="range-value">${x.requiredMonthlySales.toFixed(2)} sales/mo</div></div>`).join("");
   document.getElementById("absNote").textContent = d.absorption.note;
 
-  const rows = d.trackedActives.map((x,i)=>({label:x.plan+" "+(i+1),price:x.price}));
+  const rows = d.trackedActives.map((x,i)=>({label:x.address,price:x.price}));
   const max = Math.max(...rows.map(x=>x.price));
   document.getElementById("bars").innerHTML = rows.map(x=>`<div class="barrow"><div>${x.label}</div><div class="track"><div class="fill" style="width:${Math.round(x.price/max*100)}%"></div></div><div class="money">${fmt(x.price)}</div></div>`).join("");
+  document.getElementById("priceTests").innerHTML=d.trackedActives.map(x=>`<div class="note"><b>${x.address} · ${x.plan}</b></div><div class="comparison"><span>Observed ask</span><div class="track"><div class="fill" style="width:${x.price/500000*100}%"></div></div><b>${fmt(x.price)}</b></div><div class="comparison"><span>Analyst test</span><div class="track"><div class="fill test" style="width:${x.test/500000*100}%"></div></div><b>${fmt(x.test)}</b></div>`).join("");
+  const f=d.financing;
+  document.getElementById("financing").innerHTML=`<div class="mini-grid"><div class="mini"><div class="k">30-year fixed</div><div class="v">${f.rate30.toFixed(2)}%</div><div class="s">Oct 1: ${f.previous30.toFixed(2)}%</div></div><div class="mini"><div class="k">15-year fixed</div><div class="v">${f.rate15.toFixed(2)}%</div><div class="s">Oct 1: ${f.previous15.toFixed(2)}%</div></div></div><div class="comparison"><span>7.40% P&I</span><div class="track"><div class="fill" style="width:100%"></div></div><b>${fmt(f.payment)}/mo</b></div><div class="comparison"><span>5.99% illustration</span><div class="track"><div class="fill test" style="width:${f.illustrativePayment/f.payment*100}%"></div></div><b>${fmt(f.illustrativePayment)}/mo</b></div><div class="note">At $429,990, 20% down: $322/month difference. A $10,000 price cut saves about $55/month at 7.40%.</div>`;
+  document.getElementById("competitorHomes").innerHTML=d.competitorHomes.map(x=>`<tr><td>${x.community}<br>${x.address}</td><td>${x.sqft.toLocaleString()} sf</td><td class="money">${fmt(x.price)}</td><td>${fmt(x.price/x.sqft)}</td></tr>`).join("");
+  document.getElementById("changes").innerHTML=d.changeLog.map(x=>`<li>${x}</li>`).join("");
+  document.getElementById("sources").innerHTML=d.sources.map(x=>`<p><a href="${x.url}" target="_blank" rel="noopener">[${x.id}] ${x.title}</a><br>${x.status}</p>`).join("");
 }).catch(()=>{
   document.getElementById("asOf").textContent = "Dashboard data unavailable";
 });
