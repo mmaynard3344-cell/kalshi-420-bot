@@ -8,12 +8,24 @@ const port = Number(process.env.PORT || 3000);
 
 const dashboardData = JSON.parse(await readFile(join(__dirname, "dashboard-data.json"), "utf8"));
 
+const portfolioData = JSON.parse(await readFile(join(__dirname, "portfolio-data.json"), "utf8"));
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.url === "/health") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, service: "chandler-run-dashboard" }));
       return;
+    }
+    if (req.url === "/api/portfolio") {
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify(portfolioData)); return;
+    }
+    if (["/app.js", "/styles.css", "/chandler-detail.html"].includes(req.url)) {
+      const content = await readFile(join(__dirname, "public", req.url.slice(1)));
+      const mime = req.url.endsWith(".js") ? "application/javascript" : req.url.endsWith(".css") ? "text/css" : "text/html";
+      res.writeHead(200, { "content-type": mime + "; charset=utf-8", "cache-control": "no-cache" });
+      res.end(content); return;
     }
     if (req.url === "/api/dashboard") {
       res.writeHead(200, {
