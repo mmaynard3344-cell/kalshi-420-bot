@@ -21,7 +21,7 @@ function gEffectivePrincipalCents(nowMs = Date.now()): number {
   }).formatToParts(new Date(nowMs));
   const rawHour = Number(parts.find((p) => p.type === "hour")?.value ?? NaN);
   const hour = rawHour === 24 ? 0 : rawHour;
-  return Number.isFinite(hour) && hour >= 6 && hour < 12 ? 30_000 : 20_000;
+  return 500;
 }
 
 let busy = false;
@@ -100,10 +100,10 @@ if (!source.includes(tickReplacement)) {
   source = source.replace(tickAnchor, tickReplacement);
 }
 
-const startupAnchor = `    progression: "100-200-400_same_side_on_losses_reset_on_win_or_step3_loss",`;
-const startupReplacement = `    progression: "flat_200_base_300_morning_no_loss_progression",
+const startupAnchor = `    progression: "500-500-500_flat_same_side_on_losses_reset_on_win_or_step3_loss",`;
+const startupReplacement = `    progression: "flat_500_no_loss_progression",
     entrySchedule: "all_hours_all_days",
-    morningSizing: "1.5x_06:00-11:59_America/New_York",
+    morningSizing: "disabled",
     regimeGate: "disabled",`;
 if (!source.includes('progression: "flat_200_base_300_morning_no_loss_progression"')) {
   if (!source.includes(startupAnchor)) throw new Error("G startup anchor missing");
@@ -111,4 +111,4 @@ if (!source.includes('progression: "flat_200_base_300_morning_no_loss_progressio
 }
 
 fs.writeFileSync(file, source);
-console.log("Applied G all-hours/all-days eligibility with approved 1.5x 6am-noon ET sizing; weather gate disabled");
+console.log("Applied G all-hours/all-days eligibility with flat 500-cent sizing; weather gate disabled");
