@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#0c1220"><title>Shawshank — Balance & Trades</title>
+<style>
+:root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0c1220;color:#eff4fc}*{box-sizing:border-box}body{margin:0;padding:22px 14px 60px}.wrap{max-width:1050px;margin:auto}h1{font-size:26px;margin:0 0 6px}.muted{color:#9eaec3}.top{display:flex;justify-content:space-between;align-items:center;gap:8px}.card{background:#172233;border:1px solid #2d3b51;border-radius:18px;padding:20px;margin:18px 0}.amount{font-size:38px;font-weight:750;margin:12px 0 2px}.tiny{font-size:12px;color:#a9b8cb}.status{font-size:12px;min-height:20px;color:#b8c9db}button,select{background:#263650;color:#fff;border:1px solid #415571;border-radius:10px;padding:11px;font-size:14px}button:active{opacity:.7}.filters{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:#9eaec3;font-size:12px;font-weight:500}th,td{border-bottom:1px solid #2a3950;padding:12px 8px;white-space:nowrap}td:first-child{white-space:normal}.scroll{overflow-x:auto}.win{color:#5ce0a0}.loss{color:#ff8490}.pill{display:inline-block;background:#27384f;padding:4px 8px;border-radius:7px}footer{color:#a4b2c5;font-size:12px;line-height:1.5;margin:16px 3px}@media(max-width:550px){.amount{font-size:33px}h1{font-size:23px}.card{padding:16px}th,td{padding:10px 6px}}
+</style></head>
+<body><main class="wrap">
+<div class="top"><div><h1>Shawshank</h1><div class="muted">Balance & trade log · read-only</div></div><button id="refresh">Refresh</button></div>
+<section class="card"><div class="muted">Available cash balance</div><div id="balance" class="amount">—</div><div class="tiny">Kalshi balance · not total account equity</div><div id="status" class="status" aria-live="polite">Loading…</div></section>
+<section class="card"><div class="top"><div><strong>Trade log</strong><div class="tiny">BTC + ETH · latest exchange orders</div></div><span id="count" class="tiny"></span></div>
+<div class="filters"><select id="asset" aria-label="Market"><option value="all">BTC + ETH</option><option value="btc">BTC only</option><option value="eth">ETH only</option></select><select id="outcome" aria-label="Status"><option value="all">All statuses</option><option value="filled">Filled</option><option value="pending">Pending</option></select></div>
+<div class="scroll"><table><thead><tr><th>ET time</th><th>Market</th><th>Service</th><th>Side</th><th>Cost</th><th>Filled</th><th>Status</th><th>P&L</th></tr></thead><tbody id="log"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody></table></div>
+</section>
+<footer>Service names are shown only when verified by source records; otherwise “Unattributed.” Exchange order status is not settlement confirmation. P&L is deliberately “—” when authoritative realized P&L is unavailable. Data refreshes every 60 seconds. This page cannot place orders.</footer>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let orders=[], fills=[], ownership=new Map();
+function money(x){const n=Number(x);return Number.isFinite(n)?'$'+n.toFixed(2):'—'}
+function time(x){const d=new Date(x);return isNaN(d.getTime())?'—':new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(d)}
+function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function load(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw Error(path+' HTTP '+r.status);return r.json()}
+function serviceOf(o){let known=ownership.get(String(o.order_id));if(known)return known;const client=String(o.client_order_id||'');if(client.startsWith('g-streak-reversal-v1:'))return 'G · Streak Reversal';return 'Unattributed'}
+function render(){
+ const asset=$('asset').value,outcome=$('outcome').value;
+ let data=orders.filter(o=>/^(KXBTC|KXETH)15M-/.test(o.ticker||'')).filter(o=>asset==='all'||String(o.ticker).startsWith(asset==='btc'?'KXBTC':'KXETH')).filter(o=>outcome==='all'||(outcome==='filled'?Number(o.fill_count_fp||0)>0:Number(o.fill_count_fp||0)===0));
+ $('count').textContent=data.length+' orders';
+ $('log').innerHTML=data.length?data.map(o=>{
+  const f=Number(o.fill_count_fp||0),yes=o.side==='yes',unit=Number(yes?o.yes_price_dollars:o.no_price_dollars),cost=f>0&&Number.isFinite(unit)?f*unit:null;
+  const status=f>0?'Filled · settlement unverified':String(o.status||'Pending');
+  return '<tr><td>'+escapeHtml(time(o.created_time))+'</td><td>'+escapeHtml(o.ticker)+'</td><td><span class="pill">'+escapeHtml(serviceOf(o))+'</span></td><td>'+escapeHtml(String(o.side||'—').toUpperCase())+'</td><td>'+(cost===null?'—':money(cost))+'</td><td>'+escapeHtml(f)+'/'+escapeHtml(o.initial_count_fp??'—')+'</td><td>'+escapeHtml(status)+'</td><td>—</td></tr>';
+ }).join(''):'<tr><td colspan="8" class="muted">No matching orders in the available exchange history.</td></tr>';
+}
+async function refresh(){
+ $('refresh').disabled=true;$('status').textContent='Refreshing…';
+ const result=await Promise.allSettled([load('/api/trade/balance'),load('/api/trade/orders?limit=100'),load('/api/trade/fills?limit=1000'),load('/api/diagnostics/service-ownership')]);
+ let notes=[];
+ if(result[0].status==='fulfilled'){const b=result[0].value;const n=Number(b.balance_dollars);$('balance').textContent=Number.isFinite(n)?money(n):'—';if(b.stale)notes.push('Balance may be stale')}else notes.push('Balance unavailable');
+ if(result[1].status==='fulfilled'){orders=Array.isArray(result[1].value.orders)?result[1].value.orders:[];if(result[1].value.stale)notes.push('Orders may be stale')}else notes.push('Orders unavailable');
+ if(result[2].status==='fulfilled'){fills=Array.isArray(result[2].value.fills)?result[2].value.fills:[]}else notes.push('Fill details unavailable');
+ if(result[3].status==='fulfilled'){const p=result[3].value;const rows=Array.isArray(p)?p:(p.rows||p.ownership||p.matches||[]);ownership=new Map(rows.map(x=>[String(x.orderId??x.order_id),String(x.service)]))}else notes.push('Some service labels unavailable');
+ render();$('status').textContent='Updated '+time(new Date().toISOString())+(notes.length?' · '+notes.join(' · '):'');$('refresh').disabled=false;
+}
+$('refresh').addEventListener('click',refresh);$('asset').addEventListener('change',render);$('outcome').addEventListener('change',render);refresh();setInterval(refresh,60000);
+</script></body></html>
