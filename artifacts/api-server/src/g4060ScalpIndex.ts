@@ -9,8 +9,8 @@ import { currentEthServiceRole } from "./lib/strategies/ethServiceRole.js";
 
 const SERIES = "KXETH15M";
 const LIMIT_PRICE_CENTS = 50;
-const PRINCIPALS_CENTS = [100, 200, 200] as const;
-const CONTRACTS = [2, 4, 4] as const;
+const PRINCIPALS_CENTS = [500, 500, 500] as const;
+const CONTRACTS = [10, 10, 10] as const;
 const POLL_MS = 2_000;
 const ENTRY_WINDOW_MS = 15 * 60_000;
 const CANCEL_AFTER_CLOSE_MS = 1_000;
@@ -472,7 +472,7 @@ async function main(): Promise<void> {
     entryWindowMs: ENTRY_WINDOW_MS,
     entrySchedule: "all_hours_all_days",
     trigger: "exactly_two_same_side_settlements_then_opposite",
-    progression: "100-200-400_same_side_on_losses_reset_on_win_or_step3_loss",
+    progression: "500-500-500_flat_same_side_on_losses_reset_on_win_or_step3_loss",
   }, "Service G ETH streak reversal runner started");
 
   void tick();
