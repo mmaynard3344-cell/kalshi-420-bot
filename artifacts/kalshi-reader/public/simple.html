@@ -19,7 +19,21 @@ function money(x){const n=Number(x);return Number.isFinite(n)?'$'+n.toFixed(2):'
 function time(x){const d=new Date(x);return isNaN(d.getTime())?'—':new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(d)}
 function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 async function load(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw Error(path+' HTTP '+r.status);return r.json()}
-function serviceOf(o){let known=ownership.get(String(o.order_id));if(known)return known;const client=String(o.client_order_id||'');if(client.startsWith('g-streak-reversal-v1:'))return 'G · Streak Reversal';return 'Unattributed'}
+// Independently verified against the BTC B–L runtime's btc_live_order_submitted logs.
+// Exact exchange order IDs only: never infer service from market direction or ticker alone.
+const verifiedBtcOrders=new Map([
+ ['01a127c7-a5f0-7d03-bee4-5b9445804b2d','G · Streak Reversal'],
+ ['01a127e4-3288-7cc5-8462-b70d37038ad7','G · Streak Reversal']
+]);
+function serviceOf(o){
+ const id=String(o.order_id||o.orderId||'');
+ if(verifiedBtcOrders.has(id))return verifiedBtcOrders.get(id);
+ const known=ownership.get(id);
+ if(known && known!=='Unattributed')return known;
+ const client=String(o.client_order_id||o.clientOrderId||'');
+ if(client.startsWith('g-streak-reversal-v1:'))return 'G · Streak Reversal';
+ return 'Unattributed';
+}
 function render(){
  const asset=$('asset').value,outcome=$('outcome').value;
  let data=orders.filter(o=>/^(KXBTC|KXETH)15M-/.test(o.ticker||'')).filter(o=>asset==='all'||String(o.ticker).startsWith(asset==='btc'?'KXBTC':'KXETH')).filter(o=>outcome==='all'||(outcome==='filled'?Number(o.fill_count_fp||0)>0:Number(o.fill_count_fp||0)===0));
