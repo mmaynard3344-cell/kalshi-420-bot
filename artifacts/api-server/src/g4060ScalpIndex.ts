@@ -64,9 +64,6 @@ function isTerminal(status: string | null | undefined): boolean {
 }
 function opposite(side: OutcomeSide): OutcomeSide { return side === "yes" ? "no" : "yes"; }
 function wireSide(side: OutcomeSide): "bid" | "ask" { return side === "yes" ? "bid" : "ask"; }
-function feeCents(contracts: number): number {
-  return Math.ceil(0.07 * contracts * LIMIT_PRICE_CENTS * (100 - LIMIT_PRICE_CENTS) / 100);
-}
 
 function asOrder(row: Record<string, unknown>): GOrder {
   return {
@@ -149,21 +146,6 @@ async function loadState(): Promise<GState> {
     step: Math.max(0, Math.min(2, int(row["step"]))),
     lastTriggerKey: text(row["last_trigger_key"]),
   };
-}
-
-async function setState(side: OutcomeSide | null, step: number, triggerKey?: string | null): Promise<void> {
-  const d = await db();
-  if (triggerKey === undefined) {
-    await d.execute(sql`
-      UPDATE eth_g_streak_reversal_state
-      SET ladder_side=${side}, step=${step}, updated_at_ms=${Date.now()} WHERE id=1
-    `);
-  } else {
-    await d.execute(sql`
-      UPDATE eth_g_streak_reversal_state
-      SET ladder_side=${side}, step=${step}, last_trigger_key=${triggerKey}, updated_at_ms=${Date.now()} WHERE id=1
-    `);
-  }
 }
 
 async function listUnsettledOrders(): Promise<GOrder[]> {
