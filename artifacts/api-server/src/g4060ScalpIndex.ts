@@ -9,8 +9,7 @@ import { currentEthServiceRole } from "./lib/strategies/ethServiceRole.js";
 
 const SERIES = "KXETH15M";
 const LIMIT_PRICE_CENTS = 50;
-const PRINCIPALS_CENTS = [500, 500, 500] as const;
-const CONTRACTS = [10, 10, 10] as const;
+const STAKE_CENTS = 500; // BTC G: budget at most $5 principal at current executable ask
 const POLL_MS = 2_000;
 const ENTRY_WINDOW_MS = 15 * 60_000;
 const CANCEL_AFTER_CLOSE_MS = 1_000;
@@ -65,9 +64,6 @@ function isTerminal(status: string | null | undefined): boolean {
 }
 function opposite(side: OutcomeSide): OutcomeSide { return side === "yes" ? "no" : "yes"; }
 function wireSide(side: OutcomeSide): "bid" | "ask" { return side === "yes" ? "bid" : "ask"; }
-function feeCents(contracts: number): number {
-  return Math.ceil(0.07 * contracts * LIMIT_PRICE_CENTS * (100 - LIMIT_PRICE_CENTS) / 100);
-}
 
 function asOrder(row: Record<string, unknown>): GOrder {
   return {
@@ -150,21 +146,6 @@ async function loadState(): Promise<GState> {
     step: Math.max(0, Math.min(2, int(row["step"]))),
     lastTriggerKey: text(row["last_trigger_key"]),
   };
-}
-
-async function setState(side: OutcomeSide | null, step: number, triggerKey?: string | null): Promise<void> {
-  const d = await db();
-  if (triggerKey === undefined) {
-    await d.execute(sql`
-      UPDATE eth_g_streak_reversal_state
-      SET ladder_side=${side}, step=${step}, updated_at_ms=${Date.now()} WHERE id=1
-    `);
-  } else {
-    await d.execute(sql`
-      UPDATE eth_g_streak_reversal_state
-      SET ladder_side=${side}, step=${step}, last_trigger_key=${triggerKey}, updated_at_ms=${Date.now()} WHERE id=1
-    `);
-  }
 }
 
 async function listUnsettledOrders(): Promise<GOrder[]> {
@@ -274,25 +255,12 @@ async function settleOrder(order: GOrder, result: OutcomeSide): Promise<void> {
     `);
     if (rows(claim).length !== 1) return;
 
-    if (order.filledContracts <= 0) return;
-    if (won) {
-      await tx.execute(sql`
-        UPDATE eth_g_streak_reversal_state
-        SET ladder_side=NULL, step=0, updated_at_ms=${Date.now()} WHERE id=1
-      `);
-      return;
-    }
-    if (order.step < 2) {
-      await tx.execute(sql`
-        UPDATE eth_g_streak_reversal_state
-        SET ladder_side=${order.side}, step=${order.step + 1}, updated_at_ms=${Date.now()} WHERE id=1
-      `);
-    } else {
-      await tx.execute(sql`
-        UPDATE eth_g_streak_reversal_state
-        SET ladder_side=NULL, step=0, updated_at_ms=${Date.now()} WHERE id=1
-      `);
-    }
+    // BTC G parity: a settlement must never create a follow-up ladder trade.
+    // Historical state is cleared regardless of outcome, including unfilled orders.
+    await tx.execute(sql`
+      UPDATE eth_g_streak_reversal_state
+      SET ladder_side=NULL, step=0, updated_at_ms=${Date.now()} WHERE id=1
+    `);
   });
   logger.info({ ticker: order.ticker, side: order.side, step: order.step, filledContracts: order.filledContracts, result, won },
     "G streak reversal settlement applied");
@@ -363,9 +331,21 @@ async function exactTwoStreakTrigger(currentOpenMs: number): Promise<{
 async function submitOrder(market: { ticker: string; closeMs: number; exchangeIndex: number }, side: OutcomeSide, step: number): Promise<void> {
   const d = await db();
   if (await orderForTicker(market.ticker)) return;
-  const principalCents = PRINCIPALS_CENTS[step]!;
-  const contracts = CONTRACTS[step]!;
-  const requiredCents = principalCents + feeCents(contracts);
+  // A fresh ask is mandatory: do not leave 50c GTC resting orders.
+  const quote = await kalshiFetch<{market?: Record<string,unknown>}>("/markets/"+encodeURIComponent(market.ticker));
+  const fresh = quote.market ?? {};
+  const askRaw = side==="yes" ? (fresh["yes_ask_dollars"]??fresh["yes_ask"]) : (fresh["no_ask_dollars"]??fresh["no_ask"]);
+  const askNumber = Number(askRaw);
+  const askCents = Number.isFinite(askNumber) && askNumber>0
+    ? Math.round(askNumber<=1?askNumber*100:askNumber) : 0;
+  if(askCents<1||askCents>LIMIT_PRICE_CENTS){
+    logger.info({ticker:market.ticker,side,askCents},"ETH G skipped quote outside 1-50c limit");
+    return;
+  }
+  const contracts = Math.floor(STAKE_CENTS/askCents);
+  if(contracts<1)return;
+  const principalCents = contracts*askCents;
+  const requiredCents = principalCents + Math.ceil(0.07*contracts*askCents*(100-askCents)/100);
 
   let available: number | null = null;
   try {
@@ -399,8 +379,8 @@ async function submitOrder(market: { ticker: string; closeMs: number; exchangeIn
       client_order_id: clientOrderId,
       side: wireSide(side),
       count: `${contracts}.00`,
-      price: "0.5000",
-      time_in_force: "good_till_canceled",
+      price: ((side==="yes"?askCents:100-askCents)/100).toFixed(4),
+      time_in_force: "immediate_or_cancel",
       self_trade_prevention_type: "taker_at_cross",
       exchange_index: market.exchangeIndex,
     });
@@ -441,18 +421,12 @@ async function tick(): Promise<void> {
 
     const market = await discoverCurrentMarket();
     if (!market || Date.now() < market.openMs || Date.now() > market.openMs + ENTRY_WINDOW_MS) return;
-    let state = await loadState();
-
-    if (state.ladderSide == null) {
-      const trigger = await exactTwoStreakTrigger(market.openMs);
-      if (!trigger || trigger.key === state.lastTriggerKey) return;
-      await setState(trigger.side, 0, trigger.key);
-      state = { ladderSide: trigger.side, step: 0, lastTriggerKey: trigger.key };
-      logger.info({ ticker: market.ticker, priorResult: trigger.priorResult, side: trigger.side, triggerKey: trigger.key },
-        "G streak reversal two-consecutive-side trigger armed");
-    }
-
-    await submitOrder(market, state.ladderSide, state.step);
+    // BTC G parity: each trade requires a new exact-two-streak signal.
+    // Previous losing side and ladder steps do not carry into this market.
+    const trigger=await exactTwoStreakTrigger(market.openMs);
+    if(!trigger)return;
+    // ETH G continuation experiment: follow the preceding two-result streak.
+    await submitOrder(market,opposite(trigger.side),0);
   } catch (err) {
     logger.warn({ err }, "G streak reversal tick failed");
   } finally {
@@ -467,12 +441,12 @@ async function main(): Promise<void> {
     liveEnabled: process.env["ETH_G_STREAK_REVERSAL_LIVE_ENABLED"] === "true",
     series: SERIES,
     limitPriceCents: LIMIT_PRICE_CENTS,
-    principalsCents: PRINCIPALS_CENTS,
-    contracts: CONTRACTS,
+    stakeCents: STAKE_CENTS,
+    sizing: "floor(500/askCents)",
     entryWindowMs: ENTRY_WINDOW_MS,
     entrySchedule: "all_hours_all_days",
     trigger: "exactly_two_same_side_settlements_then_opposite",
-    progression: "500-500-500_flat_same_side_on_losses_reset_on_win_or_step3_loss",
+    progression: "independent_per_signal_no_ladder_IOC",
   }, "Service G ETH streak reversal runner started");
 
   void tick();
@@ -492,8 +466,8 @@ async function main(): Promise<void> {
         execution_enabled: newEntriesEnabled(),
         series: SERIES,
         limit_price_cents: LIMIT_PRICE_CENTS,
-        principals_cents: PRINCIPALS_CENTS,
-        contracts: CONTRACTS,
+        stake_cents: STAKE_CENTS,
+        order_time_in_force: "immediate_or_cancel",
         entry_window_ms: ENTRY_WINDOW_MS,
         entry_schedule: "all_hours_all_days",
         ladder_side: state.ladderSide,
