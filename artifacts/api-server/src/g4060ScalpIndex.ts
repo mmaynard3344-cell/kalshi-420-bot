@@ -425,7 +425,8 @@ async function tick(): Promise<void> {
     // Previous losing side and ladder steps do not carry into this market.
     const trigger=await exactTwoStreakTrigger(market.openMs);
     if(!trigger)return;
-    await submitOrder(market,trigger.side,0);
+    // ETH G continuation experiment: follow the preceding two-result streak.
+    await submitOrder(market,opposite(trigger.side),0);
   } catch (err) {
     logger.warn({ err }, "G streak reversal tick failed");
   } finally {
