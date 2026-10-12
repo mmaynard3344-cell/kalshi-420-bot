@@ -87,9 +87,10 @@
           "delivery": "Ready now",
           "position": "Interior",
           "test": 399990,
-          "basis": "Georgia MLS active asking price; October 12 source status in register",
+          "basis": "Primary MLS asking fields rechecked October 12",
           "url": "https://www.georgiamls.com/100-epperly-way-tucker-ga-30084/10768578",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-12"
         },
         {
           "address": "102 Epperly Way",
@@ -99,9 +100,10 @@
           "delivery": "Ready now",
           "position": "Interior",
           "test": 399990,
-          "basis": "Georgia MLS active asking price; October 12 source status in register",
+          "basis": "October 12 portal asking card; current primary detailed page unavailable",
           "url": "https://www.georgiamls.com/102-epperly-way-tucker-ga-30084/10768558",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-12 portal"
         },
         {
           "address": "106 Epperly Way",
@@ -111,9 +113,10 @@
           "delivery": "Ready now; end unit",
           "position": "End unit",
           "test": 419990,
-          "basis": "Georgia MLS active asking price; October 12 source status in register",
+          "basis": "Primary MLS asking fields rechecked October 12",
           "url": "https://www.georgiamls.com/106-epperly-way-tucker-ga-30084/10830902",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-12"
         },
         {
           "address": "6122 Wayburn Street",
@@ -123,9 +126,10 @@
           "delivery": "October completion (MLS)",
           "position": "Standard",
           "test": 409990,
-          "basis": "Georgia MLS active asking price; October 12 source status in register",
+          "basis": "Carried October 10 ask; older indexed primary evidence; current detailed page unavailable",
           "url": "https://www.georgiamls.com/6122-wayburn-street-tucker-ga-30084/10847779",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         },
         {
           "address": "6120 Wayburn Street",
@@ -135,9 +139,10 @@
           "delivery": "October completion (MLS)",
           "position": "Premium",
           "test": 419990,
-          "basis": "Georgia MLS active asking price; October 12 source status in register",
+          "basis": "Primary MLS asking fields rechecked October 12",
           "url": "https://www.georgiamls.com/6120-wayburn-street-tucker-ga-30084/10848345",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-12"
         }
       ],
       "sales": [
@@ -846,7 +851,8 @@
           ]
         }
       ],
-      "previousAsOf": "2026-10-10"
+      "previousAsOf": "2026-10-10",
+      "researchAttemptDate": "2026-10-12"
     },
     {
       "id": "rosewood-farm",
@@ -881,7 +887,8 @@
           "previous": null,
           "basis": "Builder-syndicated portal asking card; October 12 source status in register",
           "url": "https://www.homes.com/new-homes/community/rosewood-farm/wzh962e8q1vte/",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         },
         {
           "address": "102 Wilder Ridge Way",
@@ -893,7 +900,8 @@
           "previous": null,
           "basis": "Builder-syndicated portal asking card; October 12 source status in register",
           "url": "https://www.homes.com/new-homes/community/rosewood-farm/wzh962e8q1vte/",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         },
         {
           "address": "96 Wilder Ridge Way",
@@ -905,7 +913,8 @@
           "previous": null,
           "basis": "Georgia MLS active ask; portal delivery; October 12 source status in register",
           "url": "https://www.georgiamls.com/96-wilder-ridge-way-lawrenceville-ga-30044/10847360",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         }
       ],
       "sales": [
@@ -1057,7 +1066,8 @@
           ]
         }
       ],
-      "previousAsOf": "2026-10-10"
+      "previousAsOf": "2026-10-10",
+      "researchAttemptDate": "2026-10-12"
     },
     {
       "id": "dreycott-townhomes",
@@ -1093,7 +1103,8 @@
           "previous": 471990,
           "basis": "Georgia MLS active ask; October 12 source status in register",
           "url": "https://www.georgiamls.com/2707-dreycott-lane-lawrenceville-ga-30043/10796934",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         },
         {
           "address": "2703 Dreycott Lane",
@@ -1105,7 +1116,8 @@
           "previous": null,
           "basis": "Georgia MLS active asking price; October 12 source status in register",
           "url": "https://www.georgiamls.com/2703-dreycott-lane-lawrenceville-ga-30043/10818888",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         },
         {
           "address": "2711 Dreycott Lane",
@@ -1117,7 +1129,8 @@
           "previous": null,
           "basis": "Georgia MLS active asking price; October 12 source status in register",
           "url": "https://www.georgiamls.com/2711-dreycott-lane-lawrenceville-ga-30043/10819032",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         },
         {
           "address": "2704 Dreycott Lane",
@@ -1129,7 +1142,8 @@
           "previous": null,
           "basis": "Georgia MLS active asking price; October 12 source status in register",
           "url": "https://www.georgiamls.com/2704-dreycott-lane-lawrenceville-ga-30043/10796873",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         }
       ],
       "sales": [
@@ -1313,7 +1327,8 @@
           ]
         }
       ],
-      "previousAsOf": "2026-10-10"
+      "previousAsOf": "2026-10-10",
+      "researchAttemptDate": "2026-10-12"
     },
     {
       "id": "weatherfield-townhomes",
@@ -1348,7 +1363,8 @@
           "previous": 411780,
           "basis": "Georgia MLS active ask; portal reduction; October 12 source status in register",
           "url": "https://www.georgiamls.com/3695-sagecrest-drive-buford-ga-30519/10767379",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         },
         {
           "address": "3703 Sagecrest Drive",
@@ -1360,7 +1376,8 @@
           "previous": 412380,
           "basis": "Builder-syndicated portal asking card; October 12 source status in register",
           "url": "https://www.homes.com/new-homes/community/weatherfield-townhomes/yzy58xpr9gpec/",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         },
         {
           "address": "3632 Aveline Street",
@@ -1372,7 +1389,8 @@
           "previous": 369930,
           "basis": "Fresh portal ask; primary MLS snapshot still $369,930; October 12 source status in register",
           "url": "https://www.homes.com/new-homes/community/weatherfield-townhomes/yzy58xpr9gpec/",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         }
       ],
       "sales": [
@@ -1546,7 +1564,8 @@
           ]
         }
       ],
-      "previousAsOf": "2026-10-10"
+      "previousAsOf": "2026-10-10",
+      "researchAttemptDate": "2026-10-12"
     },
     {
       "id": "somerset",
@@ -1576,7 +1595,8 @@
           "previous": 397990,
           "basis": "Builder-syndicated portal asking card; October 12 source status in register",
           "url": "https://www.homes.com/new-homes/community/somerset-at-veterans-memorial/es6nt1zm54mym/",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         },
         {
           "address": "5760 Schelton Place SE",
@@ -1588,7 +1608,8 @@
           "previous": null,
           "basis": "Builder-syndicated portal asking card; October 12 source status in register",
           "url": "https://www.homes.com/new-homes/community/somerset-at-veterans-memorial/es6nt1zm54mym/",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         }
       ],
       "sales": [
@@ -1740,7 +1761,8 @@
           ]
         }
       ],
-      "previousAsOf": "2026-10-10"
+      "previousAsOf": "2026-10-10",
+      "researchAttemptDate": "2026-10-12"
     },
     {
       "id": "alder-creek",
@@ -1775,7 +1797,8 @@
           "previous": 527990,
           "basis": "NewHomeSource QMI asking card; read October 12 (index crawl six days old); availability not independently verified",
           "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "October 12 retrieval / six-day-old indexed NewHomeSource cards; status not independently confirmed"
         },
         {
           "address": "623 Oak Bluff Drive",
@@ -1787,7 +1810,8 @@
           "previous": 524990,
           "basis": "NewHomeSource QMI asking card; read October 12 (index crawl six days old); availability not independently verified",
           "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "October 12 retrieval / six-day-old indexed NewHomeSource cards; status not independently confirmed"
         },
         {
           "address": "608 Alder Creek Way",
@@ -1799,7 +1823,8 @@
           "previous": 510990,
           "basis": "NewHomeSource QMI asking card; read October 12 (index crawl six days old); availability not independently verified",
           "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "October 12 retrieval / six-day-old indexed NewHomeSource cards; status not independently confirmed"
         },
         {
           "address": "743 Meadow Ridge Lane",
@@ -1811,7 +1836,8 @@
           "previous": null,
           "basis": "NewHomeSource townhome QMI asking card; read October 12, six-day-old index",
           "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "October 12 retrieval / six-day-old indexed NewHomeSource cards; status not independently confirmed"
         },
         {
           "address": "747 Meadow Ridge Lane",
@@ -1823,7 +1849,8 @@
           "previous": null,
           "basis": "NewHomeSource townhome QMI asking card; read October 12, six-day-old index",
           "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "October 12 retrieval / six-day-old indexed NewHomeSource cards; status not independently confirmed"
         },
         {
           "address": "751 Meadow Ridge Lane",
@@ -1835,7 +1862,8 @@
           "previous": null,
           "basis": "NewHomeSource townhome QMI asking card; read October 12, six-day-old index",
           "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "October 12 retrieval / six-day-old indexed NewHomeSource cards; status not independently confirmed"
         }
       ],
       "sales": [],
@@ -1972,7 +2000,8 @@
           ]
         }
       ],
-      "previousAsOf": "2026-10-10"
+      "previousAsOf": "2026-10-10",
+      "researchAttemptDate": "2026-10-12"
     },
     {
       "id": "henson-square",
@@ -2002,7 +2031,8 @@
           "previous": null,
           "basis": "FMLS-syndicated active ask; September listing; October 12 source status in register",
           "url": "https://www.coldwellbankerhomes.com/ga/lawrenceville/320-cornett-way/pid_73845264/",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         },
         {
           "address": "315 Sammon Way",
@@ -2014,7 +2044,8 @@
           "previous": 450000,
           "basis": "Georgia MLS active resale ask; October 12 source status in register",
           "url": "https://www.georgiamls.com/315-sammon-way-lawrenceville-ga-30046/10734405",
-          "evidenceDate": "2026-10-12"
+          "researchAttemptDate": "2026-10-12",
+          "lastVerifiedDate": "2026-10-10 or older; see source register"
         }
       ],
       "sales": [],
@@ -2132,7 +2163,8 @@
           ]
         }
       ],
-      "previousAsOf": "2026-10-10"
+      "previousAsOf": "2026-10-10",
+      "researchAttemptDate": "2026-10-12"
     },
     {
       "id": "auburn-glen-towns",
@@ -2222,7 +2254,8 @@
           ]
         }
       ],
-      "previousAsOf": "2026-10-10"
+      "previousAsOf": "2026-10-10",
+      "researchAttemptDate": "2026-10-12"
     }
   ],
   "sources": [
