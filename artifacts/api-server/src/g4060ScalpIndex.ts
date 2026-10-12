@@ -63,7 +63,6 @@ function text(value: unknown): string | null {
 function isTerminal(status: string | null | undefined): boolean {
   return status != null && TERMINAL.has(status.toLowerCase());
 }
-function opposite(side: OutcomeSide): OutcomeSide { return side === "yes" ? "no" : "yes"; }
 function wireSide(side: OutcomeSide): "bid" | "ask" { return side === "yes" ? "bid" : "ask"; }
 function feeCents(contracts: number): number {
   return Math.ceil(0.07 * contracts * LIMIT_PRICE_CENTS * (100 - LIMIT_PRICE_CENTS) / 100);
@@ -350,7 +349,7 @@ async function exactTwoStreakTrigger(currentOpenMs: number): Promise<{
     const three = byOpen.get(currentOpenMs - 45 * 60_000);
     if (!one || !two || !three || one.result !== two.result || three.result === one.result) return null;
     return {
-      side: opposite(one.result),
+      side: one.result,
       priorResult: one.result,
       key: `${two.ticker}|${one.ticker}`,
     };
