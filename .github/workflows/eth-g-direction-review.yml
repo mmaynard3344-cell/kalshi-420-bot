@@ -20,6 +20,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Typecheck
-        run: pnpm --filter @workspace/api-server typecheck
+        run: pnpm run typecheck
       - name: Existing ETH execution tests
         run: pnpm --filter @workspace/api-server test
