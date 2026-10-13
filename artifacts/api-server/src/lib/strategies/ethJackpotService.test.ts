@@ -2,12 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   JACKPOT_MAX_PRICE_CENTS,
-  JACKPOT_REOBSERVE_COOLDOWN_MS,
-  JACKPOT_REOBSERVE_WINDOW_MS,
   JACKPOT_WAGER_CENTS,
   jackpotContracts,
   jackpotWireOrder,
-  shouldReobserveJackpotAttempt,
   shouldTriggerJackpot,
   sweepQuote,
 } from "./ethJackpotService.js";
@@ -27,7 +24,7 @@ test("Jackpot triggers only on authoritative A zero fill with runaway book", () 
   }), false, "50c executable depth is not a rescue");
   assert.equal(shouldTriggerJackpot({
     exchangeFillCount: 0, fillCountProvided: true, orderStatus: "resting",
-    bestAskCents: 76, depthAt50Contracts: 0,
+    bestAskCents: 91, depthAt50Contracts: 0,
   }), false, "above-ceiling runaway fails closed");
   assert.equal(shouldTriggerJackpot({
     exchangeFillCount: 0, fillCountProvided: false, orderStatus: "resting",
@@ -35,47 +32,9 @@ test("Jackpot triggers only on authoritative A zero fill with runaway book", () 
   }), false, "missing authoritative fill count fails closed");
 });
 
-test("Jackpot only re-observes a zero-fill during the short rescue window", () => {
-  const now = 1_000_000;
-  assert.equal(JACKPOT_REOBSERVE_WINDOW_MS, 5_000);
-  assert.equal(shouldReobserveJackpotAttempt({
-    status: "no_trigger", reason: "ask_not_runaway",
-    updatedAtMs: now - JACKPOT_REOBSERVE_COOLDOWN_MS,
-    orderCreatedAtMs: now - 2_000, nowMs: now,
-  }), true);
-  assert.equal(shouldReobserveJackpotAttempt({
-    status: "no_trigger", reason: "depth_at_50",
-    updatedAtMs: now - JACKPOT_REOBSERVE_COOLDOWN_MS,
-    orderCreatedAtMs: now - 2_000, nowMs: now,
-  }), true);
-  assert.equal(shouldReobserveJackpotAttempt({
-    status: "no_trigger", reason: "ask_above_75",
-    updatedAtMs: now - 1_000, orderCreatedAtMs: now - 2_000, nowMs: now,
-  }), false, "overshoot above the chase ceiling is terminal for J");
-  assert.equal(shouldReobserveJackpotAttempt({
-    status: "no_trigger", reason: "a_filled",
-    updatedAtMs: now - 1_000, orderCreatedAtMs: now - 2_000, nowMs: now,
-  }), false, "an A fill is terminal for J");
-  assert.equal(shouldReobserveJackpotAttempt({
-    status: "blocked", reason: "a_not_still_resting_zero_fill",
-    updatedAtMs: now - 1_000, orderCreatedAtMs: now - 2_000, nowMs: now,
-  }), false, "blocked safety states are never re-opened");
-  assert.equal(shouldReobserveJackpotAttempt({
-    status: "no_trigger", reason: "ask_not_runaway",
-    updatedAtMs: now - JACKPOT_REOBSERVE_COOLDOWN_MS + 1,
-    orderCreatedAtMs: now - 2_000, nowMs: now,
-  }), false, "cooldown prevents a read storm");
-  assert.equal(shouldReobserveJackpotAttempt({
-    status: "no_trigger", reason: "ask_not_runaway",
-    updatedAtMs: now - 1_000,
-    orderCreatedAtMs: now - JACKPOT_REOBSERVE_WINDOW_MS,
-    nowMs: now,
-  }), false, "re-observation cannot outlive the 5-second rescue window");
-});
-
-test("Jackpot reduced $1 sizing respects the 75c ceiling", () => {
+test("Jackpot reduced $1 sizing respects the configured ceiling", () => {
   assert.equal(JACKPOT_WAGER_CENTS, 100);
-  assert.equal(JACKPOT_MAX_PRICE_CENTS, 75);
+  assert.equal(JACKPOT_MAX_PRICE_CENTS, 90);
   assert.equal(jackpotContracts(), Math.floor(JACKPOT_WAGER_CENTS / JACKPOT_MAX_PRICE_CENTS));
   assert.ok(jackpotContracts() * JACKPOT_MAX_PRICE_CENTS <= JACKPOT_WAGER_CENTS);
 });
@@ -85,13 +44,13 @@ test("Jackpot uses native IOC and correct Kalshi wire complement for NO", () => 
   const yes = jackpotWireOrder({ ticker: "KXETH15M-X", side: "yes", clientOrderId: "y", exchangeIndex: 1 });
   assert.equal(yes.time_in_force, "immediate_or_cancel");
   assert.equal(yes.side, "bid");
-  assert.equal(yes.price, "0.7500");
+  assert.equal(yes.price, "0.9000");
   assert.equal(yes.count, expectedCount);
 
   const no = jackpotWireOrder({ ticker: "KXETH15M-X", side: "no", clientOrderId: "n", exchangeIndex: 1 });
   assert.equal(no.time_in_force, "immediate_or_cancel");
   assert.equal(no.side, "ask");
-  assert.equal(no.price, "0.2500", "BUY NO at 75c is SELL YES at 25c on V2 wire");
+  assert.equal(no.price, "0.1000", "BUY NO at 90c is SELL YES at 10c on V2 wire");
   assert.equal(no.count, expectedCount);
 });
 
