@@ -21,7 +21,7 @@ function gEffectivePrincipalCents(nowMs = Date.now()): number {
   }).formatToParts(new Date(nowMs));
   const rawHour = Number(parts.find((p) => p.type === "hour")?.value ?? NaN);
   const hour = rawHour === 24 ? 0 : rawHour;
-  return 500;
+  return 100;
 }
 
 let busy = false;
@@ -135,7 +135,7 @@ if (!source.includes("async function publishedDirection(") && !source.includes(t
 }
 
 const startupAnchor = `    progression: "500-500-500_flat_same_side_on_losses_reset_on_win_or_step3_loss",`;
-const startupReplacement = `    progression: "flat_500_no_loss_progression",
+const startupReplacement = `    progression: "flat_100_no_loss_progression",
     morningSizing: "disabled",
     regimeGate: "disabled",`;
 if (!source.includes('progression: "flat_200_base_300_morning_no_loss_progression"')) {
@@ -144,4 +144,4 @@ if (!source.includes('progression: "flat_200_base_300_morning_no_loss_progressio
 }
 
 fs.writeFileSync(file, source);
-console.log("Applied G all-hours/all-days eligibility with flat 500-cent sizing; weather gate disabled");
+console.log("Applied G all-hours/all-days eligibility with flat 100-cent sizing; weather gate disabled");
