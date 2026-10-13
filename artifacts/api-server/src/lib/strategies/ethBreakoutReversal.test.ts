@@ -7,8 +7,8 @@ import {
   evaluateEthBreakoutReversal,
 } from "./ethBreakoutReversal.js";
 import {
-  _readEthBreakoutReversalDirectAdjacentMoveForTesting,
-  _setEthBreakoutReversalMarketFetcherForTesting,
+  _readEthBreakoutDirectAdjacentMoveForTesting as _readEthBreakoutReversalDirectAdjacentMoveForTesting,
+  _setEthBreakoutMarketFetcherForTesting as _setEthBreakoutReversalMarketFetcherForTesting,
 } from "./ethBreakoutReversalRuntime.js";
 
 const p95 = 0.004;
