@@ -136,7 +136,6 @@ if (!source.includes("async function publishedDirection(") && !source.includes(t
 
 const startupAnchor = `    progression: "500-500-500_flat_same_side_on_losses_reset_on_win_or_step3_loss",`;
 const startupReplacement = `    progression: "flat_500_no_loss_progression",
-    entrySchedule: "all_hours_all_days",
     morningSizing: "disabled",
     regimeGate: "disabled",`;
 if (!source.includes('progression: "flat_200_base_300_morning_no_loss_progression"')) {
