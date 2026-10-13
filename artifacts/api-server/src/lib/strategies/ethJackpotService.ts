@@ -363,6 +363,29 @@ async function processCandidate(order: JackpotAOrder): Promise<void> {
   }
   await patchAttempt(order.id, { status: "triggered", reason: "a_zero_fill_runaway_book", bestAsk, depth50: levels50.depthAtOrBetterContracts });
 
+  // J replaces A's exact order and cannot safely invert its side. If G has a
+  // published opposite-side decision, do not create another conflicting trade.
+  // Missing G decisions are deferred, never treated as no signal.
+  if (process.env["ETH_G_DIRECTION_AUTHORITY_ENABLED"] === "true") {
+    try {
+      const result = await db.execute(sql`SELECT side FROM eth_g_market_directions WHERE ticker=${order.ticker} LIMIT 1`);
+      const rows = Array.isArray(result) ? result : (result as {rows?: unknown[]}).rows ?? [];
+      const record = rows[0] as {side?: unknown} | undefined;
+      const reason = !record ? "g_direction_pending" :
+        (record.side === "yes" || record.side === "no") && record.side !== order.side
+        ? "g_direction_conflict" : null;
+      if (reason) {
+        logger.info({event:"ETH_G_DIRECTION_J_BLOCKED",ticker:order.ticker,jSide:order.side,gSide:record?.side ?? null,reason}, "Jackpot does not trade against G");
+        await patchAttempt(order.id, {status:"blocked",reason});
+        return;
+      }
+    } catch (error) {
+      logger.error({event:"ETH_G_DIRECTION_J_READ_FAILED",ticker:order.ticker,error}, "Deferring Jackpot order after G direction read failure");
+      await patchAttempt(order.id, {status:"blocked",reason:"g_direction_lookup_failed"});
+      return;
+    }
+  }
+
   // Critical race fence: cancel A, then authenticate the exact order again. If
   // even one A contract filled, J must not add exposure.
   const canceled = await cancelAAndProveZero(order);
