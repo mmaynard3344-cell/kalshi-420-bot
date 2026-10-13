@@ -9,9 +9,9 @@ const ACK_RETRY_DELAYS_MS = [0, 250, 1_000] as const;
 function sleep(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }
 async function acknowledgeDurably(store: EthBigBetExecutionStore, input: Parameters<EthBigBetExecutionStore["acknowledgeEthBigBetOrder"]>[0]): Promise<boolean> { for (const delay of ACK_RETRY_DELAYS_MS) { if (delay > 0) await sleep(delay); try { if (await store.acknowledgeEthBigBetOrder({ ...input, acknowledgedAtMs: Date.now() })) return true; } catch {} } return false; }
 export async function submitEthBigBetIntent(input: { intent: EthBigBetOrderIntent; store: EthBigBetExecutionStore; exchange: EthBigBetExchangeSubmitter; capital: Omit<EthAccountCapitalInput, "requestedRiskCents">; requestedRiskCents: number; nowMs?: number; }): Promise<"submitted" | "blocked_duplicate" | "blocked_invalid_size" | "capital_blocked" | "reservation_failed" | "submission_unknown" | "rejected"> { let effectiveIntent = input.intent;
-  // Use the same persisted G ticker decision across independent ETH workers.
+  // Feature-gated until all ETH workers have the same authoritative policy.
   // No G decision for this ticker leaves the existing service direction untouched.
-  try {
+  if (process.env["ETH_G_DIRECTION_AUTHORITY_ENABLED"] === "true") try {
     const { sql } = await import("drizzle-orm");
     const { db } = await import("@workspace/db");
     const result = await db.execute(sql`SELECT side FROM eth_g_streak_reversal_orders WHERE ticker=${input.intent.ticker} AND status NOT IN ('rejected','canceled','cancelled') LIMIT 1`);
