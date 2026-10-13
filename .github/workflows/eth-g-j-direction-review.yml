@@ -1,0 +1,30 @@
+name: ETH G direction J review
+on:
+  push:
+    branches:
+      - review/eth-g-direction-j-20261012
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Jackpot execution suite
+        run: |
+          cd artifacts/api-server
+          node scripts/apply-jackpot-v2-repair.mjs
+          node scripts/apply-jackpot-next-strike-hydration.mjs
+          node scripts/fix-jackpot-v2-create-endpoint.mjs
+          node scripts/run-jackpot-test.mjs
+          node build-jackpot.mjs
