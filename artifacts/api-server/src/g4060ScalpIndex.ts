@@ -128,6 +128,14 @@ async function initStore(): Promise<void> {
     CREATE INDEX IF NOT EXISTS eth_g_streak_reversal_unsettled_idx
     ON eth_g_streak_reversal_orders (settled_at_ms, updated_at_ms)
   `);
+  await d.execute(sql`
+    CREATE TABLE IF NOT EXISTS eth_g_market_directions (
+      ticker TEXT PRIMARY KEY,
+      side TEXT CHECK (side IN ('yes','no')),
+      decided_at_ms BIGINT NOT NULL,
+      reason TEXT NOT NULL
+    )
+  `);
 }
 
 function newEntriesEnabled(): boolean {
@@ -329,9 +337,12 @@ async function discoverCurrentMarket(): Promise<{
   return { ticker, openMs, closeMs, exchangeIndex };
 }
 
-async function exactTwoStreakTrigger(currentOpenMs: number): Promise<{
-  side: OutcomeSide; key: string; priorResult: OutcomeSide;
-} | null> {
+type MarketDirectionDecision =
+  | { kind: "unknown" }
+  | { kind: "none" }
+  | { kind: "signal"; side: OutcomeSide; key: string; priorResult: OutcomeSide };
+
+async function exactTwoStreakDecision(currentOpenMs: number): Promise<MarketDirectionDecision> {
   try {
     const response = await kalshiFetch<{ markets?: Array<Record<string, unknown>> }>("/markets", {
       series_ticker: SERIES, status: "settled", limit: 20,
@@ -347,16 +358,35 @@ async function exactTwoStreakTrigger(currentOpenMs: number): Promise<{
     const one = byOpen.get(currentOpenMs - 15 * 60_000);
     const two = byOpen.get(currentOpenMs - 30 * 60_000);
     const three = byOpen.get(currentOpenMs - 45 * 60_000);
-    if (!one || !two || !three || one.result !== two.result || three.result === one.result) return null;
-    return {
-      side: one.result,
-      priorResult: one.result,
-      key: `${two.ticker}|${one.ticker}`,
-    };
+    // Never declare NO SIGNAL until all three necessary settlements are known.
+    if (!one || !two || !three) return { kind: "unknown" };
+    if (one.result !== two.result || three.result === one.result) return { kind: "none" };
+    return { kind: "signal", side: one.result, priorResult: one.result, key: `${two.ticker}|${one.ticker}` };
   } catch (err) {
-    logger.warn({ err }, "G streak reversal trigger history unavailable");
-    return null;
+    logger.warn({ err }, "G direction settlement history unavailable; decision deferred");
+    return { kind: "unknown" };
   }
+}
+
+async function publishedDirection(ticker: string): Promise<{exists: boolean; side: OutcomeSide | null}> {
+  const d = await db();
+  const existing = rows(await d.execute(sql`SELECT side FROM eth_g_market_directions WHERE ticker=${ticker}`))[0];
+  return existing ? { exists: true, side: existing["side"] === "yes" || existing["side"] === "no" ? existing["side"] : null } : { exists: false, side: null };
+}
+
+async function publishDirection(ticker: string, side: OutcomeSide | null, reason: string): Promise<boolean> {
+  const d = await db();
+  await d.execute(sql`
+    INSERT INTO eth_g_market_directions (ticker, side, decided_at_ms, reason)
+    VALUES (${ticker}, ${side}, ${Date.now()}, ${reason})
+    ON CONFLICT (ticker) DO NOTHING
+  `);
+  const current = await publishedDirection(ticker);
+  if (!current.exists || current.side !== side) {
+    logger.error({ticker, expectedSide:side, storedSide:current.side}, "G direction decision conflict: no new G order");
+    return false;
+  }
+  return true;
 }
 
 async function submitOrder(market: { ticker: string; closeMs: number; exchangeIndex: number }, side: OutcomeSide, step: number): Promise<void> {
@@ -443,14 +473,21 @@ async function tick(): Promise<void> {
     let state = await loadState();
 
     if (state.ladderSide == null) {
-      const trigger = await exactTwoStreakTrigger(market.openMs);
-      if (!trigger || trigger.key === state.lastTriggerKey) return;
-      await setState(trigger.side, 0, trigger.key);
-      state = { ladderSide: trigger.side, step: 0, lastTriggerKey: trigger.key };
-      logger.info({ ticker: market.ticker, priorResult: trigger.priorResult, side: trigger.side, triggerKey: trigger.key },
+      const stored = await publishedDirection(market.ticker);
+      if (stored.exists && stored.side == null) return;
+      const decision = await exactTwoStreakDecision(market.openMs);
+      if (decision.kind === "unknown") return;
+      if (decision.kind === "none" || decision.key === state.lastTriggerKey) {
+        await publishDirection(market.ticker, null, "no_eligible_g_streak");
+        return;
+      }
+      await setState(decision.side, 0, decision.key);
+      state = { ladderSide: decision.side, step: 0, lastTriggerKey: decision.key };
+      logger.info({ ticker: market.ticker, priorResult: decision.priorResult, side: decision.side, triggerKey: decision.key },
         "G streak reversal two-consecutive-side trigger armed");
     }
 
+    if (!await publishDirection(market.ticker, state.ladderSide, "g_ladder_direction")) return;
     await submitOrder(market, state.ladderSide, state.step);
   } catch (err) {
     logger.warn({ err }, "G streak reversal tick failed");
