@@ -69,6 +69,40 @@ if (!source.includes(settlementReplacement)) {
   source = source.replace(settlementAnchor, settlementReplacement);
 }
 
+// G publisher releases carry an immutable market decision table. Keep the
+// deployed flat, one-shot exact-two signal policy while publishing its side
+// before the exchange order. Other workers wait for this row.
+if (source.includes("async function publishedDirection(") && !source.includes('"g_flat_streak_direction"')) {
+  const tickStart = source.indexOf("async function tick(): Promise<void>");
+  const begin = source.indexOf("    const market = await discoverCurrentMarket();", tickStart);
+  const oldSubmit = "    await submitOrder(market, state.ladderSide, state.step);";
+  const finish = source.indexOf(oldSubmit, begin);
+  if (begin < 0 || finish < 0) throw new Error("G publisher flat tick anchor missing");
+  const replacement = `    const market = await discoverCurrentMarket();
+    if (!market || Date.now() < market.openMs || Date.now() > market.openMs + ENTRY_WINDOW_MS) return;
+    if (!gEntryWindowAllowed(market.openMs)) return;
+
+    // A ticker decision is immutable. Once published, G's one-shot entry for
+    // that market has already been attempted (or conclusively has no signal).
+    const published = await publishedDirection(market.ticker);
+    if (published.exists) return;
+
+    const state = await loadState();
+    const decision = await exactTwoStreakDecision(market.openMs);
+    if (decision.kind === "unknown") return;
+    if (decision.kind === "none" || decision.key === state.lastTriggerKey) {
+      await publishDirection(market.ticker, null, "no_eligible_g_streak");
+      return;
+    }
+
+    await setState(null, 0, decision.key);
+    if (!await publishDirection(market.ticker, decision.side, "g_flat_streak_direction")) return;
+    logger.info({ ticker: market.ticker, priorResult: decision.priorResult, side: decision.side, triggerKey: decision.key, principalCents: gEffectivePrincipalCents() },
+      "G flat scheduled exact-two reversal trigger armed");
+    await submitOrder(market, decision.side, 0);`;
+  source = source.slice(0, begin) + replacement + source.slice(finish + oldSubmit.length);
+}
+
 const tickAnchor = `    const market = await discoverCurrentMarket();
     if (!market || Date.now() < market.openMs || Date.now() > market.openMs + ENTRY_WINDOW_MS) return;
     let state = await loadState();
@@ -95,7 +129,7 @@ const tickReplacement = `    const market = await discoverCurrentMarket();
     logger.info({ ticker: market.ticker, priorResult: trigger.priorResult, side: trigger.side, triggerKey: trigger.key, principalCents: gEffectivePrincipalCents() },
       "G flat scheduled exact-two reversal trigger armed");
     await submitOrder(market, trigger.side, 0);`;
-if (!source.includes(tickReplacement)) {
+if (!source.includes("async function publishedDirection(") && !source.includes(tickReplacement)) {
   if (!source.includes(tickAnchor)) throw new Error("G tick anchor missing");
   source = source.replace(tickAnchor, tickReplacement);
 }
