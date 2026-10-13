@@ -487,6 +487,7 @@ async function tick(): Promise<void> {
         "G streak reversal two-consecutive-side trigger armed");
     }
 
+    if (state.ladderSide == null) return;
     if (!await publishDirection(market.ticker, state.ladderSide, "g_ladder_direction")) return;
     await submitOrder(market, state.ladderSide, state.step);
   } catch (err) {
