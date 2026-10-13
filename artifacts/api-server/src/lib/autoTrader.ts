@@ -3659,7 +3659,7 @@ async function restFetchAll(source: TriggerSource, isEthSettlementRetryPass = fa
   let ethExposure = false;
   if (mayRunMartingale) {
     ethSettlementComplete = (await reconcileEthMartingaleSettlements()) ?? false;
-    ethExposure = await hasUnsettledEthMartingaleExposure();
+    ethExposure = (await hasUnsettledEthMartingaleExposure()) ?? true;
   }
 
   // A fetched next window may have been evaluated while the prior ETH GTC was
