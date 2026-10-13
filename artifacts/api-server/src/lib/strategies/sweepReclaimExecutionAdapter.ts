@@ -1,3 +1,6 @@
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
+import { logger } from "../logger.js";
 import { captureOrderbook, type OrderbookSnapshot } from "../orderbookCapture.js";
 import {
   transitionSweepReclaimClaim,
@@ -30,6 +33,7 @@ export type SweepReclaimExecutionOutcome =
   | "persistence_failed"
   | "routing_unavailable"
   | "funds_or_halt_blocked"
+  | "g_direction_blocked"
   | "submitted"
   | "submission_unknown"
   | "rejected"
@@ -162,6 +166,27 @@ export async function executeSweepReclaimV1(
     || !Number.isSafeInteger(input.destinationCloseTimeMs)
     || !input.clientOrderId
     || !Number.isSafeInteger(nowMs)) return "invalid_input";
+
+  // L is intentionally a YES-only sweep/reclaim. It must not invert into an
+  // untested NO strategy merely because G says NO. Refuse conflicting entries.
+  if (process.env["ETH_G_DIRECTION_AUTHORITY_ENABLED"] === "true") {
+    try {
+      const raw = await db.execute(sql`SELECT side FROM eth_g_market_directions WHERE ticker=${input.destinationTicker} LIMIT 1`);
+      const records = Array.isArray(raw) ? raw : (raw as {rows?: unknown[]}).rows ?? [];
+      const decision = records[0] as {side?: unknown} | undefined;
+      if (!decision || decision.side === "no") {
+        const reason = !decision ? "g_direction_pending" : "g_direction_opposes_yes_only_l";
+        logger.info({event:"ETH_G_DIRECTION_L_BLOCKED",ticker:input.destinationTicker,side:"yes",gSide:decision?.side ?? null,reason}, "L will not buy opposite G direction");
+        await rejectBeforeAdmission(input, reason);
+        return "g_direction_blocked";
+      }
+      if (decision.side !== "yes" && decision.side !== null) throw new Error("Invalid G direction");
+    } catch (error) {
+      logger.error({event:"ETH_G_DIRECTION_L_READ_FAILED",ticker:input.destinationTicker,error}, "Deferring L order because G authority is unavailable");
+      await rejectBeforeAdmission(input, "g_direction_lookup_failed");
+      return "g_direction_blocked";
+    }
+  }
 
   if (input.destinationCloseTimeMs - nowMs < config.minimumSecondsRemaining * 1000) {
     await rejectBeforeAdmission(input, "minimum_time_remaining_blocked");

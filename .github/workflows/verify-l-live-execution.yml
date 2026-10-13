@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/l-live-execution
+      - review/eth-g-direction-l-20261012
 
 jobs:
   verify:
