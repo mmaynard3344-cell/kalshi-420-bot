@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildEthJumpOrderIntent, buildEthReversalOrderIntent } from "./ethBigBetIntent.js";
-import { submitEthBigBetIntent } from "./ethBigBetExecutor.js";
+import { resolveEthGDirection, submitEthBigBetIntent } from "./ethBigBetExecutor.js";
 import { ethBigBetCapitalRiskCents, ethBigBetOrderId, type EthBigBetOrderIntent } from "./ethBigBetLifecycle.js";
 
 const capital = {
@@ -139,4 +139,19 @@ test("a thrown POST is retained as submission_unknown, never assumed rejected", 
   });
   assert.equal(result, "submission_unknown");
   assert.deepEqual(acknowledgements, [{ orderId: ethBigBetOrderId(intent), status: "submission_unknown" }]);
+});
+
+
+test("G YES overrides competing NO without changing any other signal", () => {
+  assert.equal(resolveEthGDirection("no", "yes"), "yes");
+  assert.equal(resolveEthGDirection("yes", "yes"), "yes");
+});
+test("G NO overrides competing YES", () => {
+  assert.equal(resolveEthGDirection("yes", "no"), "no");
+  assert.equal(resolveEthGDirection("no", "no"), "no");
+});
+test("no G decision preserves original strategy direction", () => {
+  assert.equal(resolveEthGDirection("yes", null), "yes");
+  assert.equal(resolveEthGDirection("no", undefined), "no");
+  assert.equal(resolveEthGDirection("no", "invalid"), "no");
 });
