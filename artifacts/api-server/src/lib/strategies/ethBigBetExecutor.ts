@@ -1,3 +1,4 @@
+import { alignEthIntentToG } from "./ethGDirectionAuthority.js";
 import type { EthAccountCapitalInput } from "./ethAccountCapitalGuard.js";
 import {
   ethBigBetContracts,
@@ -60,6 +61,9 @@ export async function submitEthBigBetIntent(input: {
   requestedRiskCents: number;
   nowMs?: number;
 }): Promise<"submitted" | "blocked_duplicate" | "blocked_invalid_size" | "capital_blocked" | "reservation_failed" | "submission_unknown" | "rejected"> {
+  const alignedIntent = await alignEthIntentToG(input.intent);
+  if (!alignedIntent) return "reservation_failed";
+  input.intent = alignedIntent;
   const orderId = ethBigBetOrderId(input.intent);
   const unresolved = await input.store.listUnresolvedEthBigBetOrderIds(input.intent.strategy);
   if (!mayEvaluateBigBetMarket({ targetOrderId: orderId, unresolvedOrderIds: unresolved })) return "blocked_duplicate";
