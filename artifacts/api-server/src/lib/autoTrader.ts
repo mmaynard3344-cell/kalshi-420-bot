@@ -3658,7 +3658,7 @@ async function restFetchAll(source: TriggerSource, isEthSettlementRetryPass = fa
   let ethSettlementComplete = true;
   let ethExposure = false;
   if (mayRunMartingale) {
-    ethSettlementComplete = await reconcileEthMartingaleSettlements();
+    ethSettlementComplete = (await reconcileEthMartingaleSettlements()) ?? false;
     ethExposure = await hasUnsettledEthMartingaleExposure();
   }
 
