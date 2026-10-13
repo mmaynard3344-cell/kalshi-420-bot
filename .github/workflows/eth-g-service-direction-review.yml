@@ -1,0 +1,26 @@
+name: ETH G direction H review
+on:
+  push:
+    branches:
+      - review/eth-g-direction-h-20261012
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Workspace typecheck
+        run: pnpm run typecheck
+      - name: G direction guard tests
+        run: node artifacts/api-server/scripts/run-eth-g-direction-guard-test.mjs
+      - name: Service production bundle build
+        run: node artifacts/api-server/build-service-split.mjs
