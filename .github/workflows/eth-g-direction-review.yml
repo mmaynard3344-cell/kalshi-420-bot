@@ -1,0 +1,25 @@
+name: ETH G direction authority review
+on:
+  push:
+    branches:
+      - review/eth-g-direction-authority-20261012
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Targeted ETH service execution tests
+        run: node artifacts/api-server/scripts/run-eth-g-direction-review-test.mjs
