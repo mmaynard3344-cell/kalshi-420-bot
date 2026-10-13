@@ -18,13 +18,16 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Typecheck
-        run: pnpm run typecheck
-      - name: Jackpot execution suite
+      - name: Apply production Jackpot source repairs
         run: |
           cd artifacts/api-server
           node scripts/apply-jackpot-v2-repair.mjs
           node scripts/apply-jackpot-next-strike-hydration.mjs
           node scripts/fix-jackpot-v2-create-endpoint.mjs
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Jackpot execution suite
+        run: |
+          cd artifacts/api-server
           node scripts/run-jackpot-test.mjs
           node build-jackpot.mjs
