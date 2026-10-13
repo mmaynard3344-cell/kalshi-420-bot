@@ -27,6 +27,7 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
       - name: Jackpot execution suite
+        if: always()
         run: |
           cd artifacts/api-server
           node scripts/run-jackpot-test.mjs
