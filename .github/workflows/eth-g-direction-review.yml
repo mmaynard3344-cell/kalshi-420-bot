@@ -22,4 +22,4 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
       - name: Targeted ETH service execution tests
-        run: node artifacts/api-server/scripts/run-service-split-tests.mjs
+        run: node artifacts/api-server/scripts/run-eth-g-direction-review-test.mjs
