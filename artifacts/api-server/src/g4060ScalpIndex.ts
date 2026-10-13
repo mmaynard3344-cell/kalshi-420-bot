@@ -9,8 +9,8 @@ import { currentEthServiceRole } from "./lib/strategies/ethServiceRole.js";
 
 const SERIES = "KXETH15M";
 const LIMIT_PRICE_CENTS = 50;
-const PRINCIPALS_CENTS = [500, 500, 500] as const;
-const CONTRACTS = [10, 10, 10] as const;
+const PRINCIPALS_CENTS = [100, 100, 100] as const;
+const CONTRACTS = [2, 2, 2] as const;
 const POLL_MS = 2_000;
 const ENTRY_WINDOW_MS = 15 * 60_000;
 const CANCEL_AFTER_CLOSE_MS = 1_000;
