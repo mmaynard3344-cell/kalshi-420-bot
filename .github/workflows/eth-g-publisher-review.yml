@@ -19,6 +19,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Apply exact Railway G build patch
+        run: node artifacts/api-server/scripts/apply-g-regime-gate.mjs
       - name: Workspace typecheck
         run: pnpm run typecheck
       - name: Production G build
