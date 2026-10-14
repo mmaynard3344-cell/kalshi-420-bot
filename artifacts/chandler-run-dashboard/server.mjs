@@ -36,8 +36,8 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.url === "/report.pdf") {
-      const pdf = await readFile(join(__dirname, "public", "Chandler_Run_Visual_CMA_2026-10-12.pdf"));
-      res.writeHead(200, { "content-type": "application/pdf", "content-disposition": 'attachment; filename="Chandler_Run_Visual_CMA_2026-10-12.pdf"', "cache-control": "no-cache" });
+      const pdf = await readFile(join(__dirname, "public", "Chandler_Run_Visual_CMA_2026-10-14.pdf"));
+      res.writeHead(200, { "content-type": "application/pdf", "content-disposition": 'attachment; filename="Chandler_Run_Visual_CMA_2026-10-14.pdf"', "cache-control": "no-cache" });
       res.end(pdf); return;
     }
     if (req.url === "/" || req.url === "/index.html") {
