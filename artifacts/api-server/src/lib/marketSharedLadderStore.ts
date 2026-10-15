@@ -32,10 +32,16 @@ export async function reserveMarketLadder(tx:Tx,market:MarketLadder,orderId:stri
  return {dollars:wagerDollars(prior),state:next};
 }
 export async function recordMarketFill(tx:Tx,market:MarketLadder,orderId:string,settlementId:string):Promise<void>{
- await save(tx,markFilled(await locked(tx,market),orderId,settlementId));
+ const prior=await locked(tx,market);
+ const next=markFilled(prior,orderId,settlementId);
+ await tx.execute(sql`INSERT INTO market_six_step_events(market,exchange_order_id,settlement_id,transition,prior_step,next_step) VALUES(${market},${orderId},${settlementId},'FILLED',${prior.step},${next.step})`);
+ await save(tx,next);
 }
 export async function recordMarketNoFill(tx:Tx,market:MarketLadder,orderId:string):Promise<void>{
- await save(tx,releaseNoFill(await locked(tx,market),orderId));
+ const prior=await locked(tx,market);
+ const next=releaseNoFill(prior,orderId);
+ await tx.execute(sql`INSERT INTO market_six_step_events(market,exchange_order_id,transition,prior_step,next_step) VALUES(${market},${orderId},'CANCELLED_ZERO_FILL',${prior.step},${next.step})`);
+ await save(tx,next);
 }
 export async function recordMarketSettlement(tx:Tx,market:MarketLadder,settlementId:string,outcome:LadderOutcome):Promise<LadderState>{
  const current=await locked(tx,market);
