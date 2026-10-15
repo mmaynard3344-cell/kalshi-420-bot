@@ -458,8 +458,10 @@ export async function reconcileBtcSharedLadderRows(rows, exchangeOrders, fillsBy
     }
     // A partial fill remains held until the order is terminal.
     const result = resultByTicker.get(String(row.ticker));
-    await recordBtcFilled(pool, row.clientOrderId, row.clientOrderId);
-    row.ladderFilled = true;
+    if (row.ladderFilled !== true) {
+      await recordBtcFilled(pool, row.clientOrderId, row.clientOrderId);
+      row.ladderFilled = true;
+    }
     if (!["yes","no"].includes(result))continue;
     // Outcome determined only from a settled market result. Fee economics
     // must be independently reconciled for reporting.
