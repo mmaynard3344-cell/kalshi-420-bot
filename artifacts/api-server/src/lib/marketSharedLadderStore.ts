@@ -4,7 +4,7 @@
  * Caller must pass the Drizzle transaction handle from @workspace/db.
  */
 import {sql} from "drizzle-orm";
-import {reserveOrder,markFilled,releaseNoFill,settle,wagerDollars,type MarketLadder,type LadderState,type LadderOutcome} from "./marketSharedLadder.js";
+import {reserveOrder,markFilled,releaseNoFill,settle,wagerDollars,affordableContracts,type MarketLadder,type LadderState,type LadderOutcome} from "./marketSharedLadder.js";
 type Tx={execute:(query:unknown)=>Promise<any>};
 function rowValue(raw:any):any {
  return raw?.rows?.[0] ?? raw?.[0] ?? null;
@@ -79,4 +79,23 @@ export async function applyVerifiedMarketSettlement(
  db:LadderDatabase,market:MarketLadder,settlementId:string,outcome:LadderOutcome
 ):Promise<LadderState>{
  return db.transaction(tx=>recordMarketSettlement(tx,market,settlementId,outcome));
+}
+
+/** Atomically determine affordable contracts and reserve exactly one wager.
+ * No exchange order is sent. Caller must use this result without resizing it,
+ * commit the transaction, then submit the order under an execution gate.
+ */
+export async function claimSizedMarketWager(
+ db:LadderDatabase,market:MarketLadder,orderId:string,priceCents:number,
+ feeCents:(n:number,priceCents:number)=>number,maxContracts=10000
+):Promise<{dollars:number;contracts:number;totalCents:number;feeCents:number;state:LadderState}> {
+ return db.transaction(async tx=>{
+   const prior=await locked(tx,market);
+   if(prior.pendingOrderId||prior.pendingSettlementId)throw Error("market ladder is busy");
+   const size=affordableContracts(prior,priceCents,feeCents,maxContracts);
+   if(size.contracts<1)throw Error("no affordable contract");
+   const next=reserveOrder(prior,orderId);
+   await save(tx,next);
+   return {dollars:wagerDollars(prior),...size,state:next};
+ });
 }
