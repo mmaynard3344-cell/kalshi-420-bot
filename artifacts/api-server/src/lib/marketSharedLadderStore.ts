@@ -43,3 +43,33 @@ export async function recordMarketSettlement(tx:Tx,market:MarketLadder,settlemen
  if(next!==current)await save(tx,next);
  return next;
 }
+
+/**
+ * Atomic entry points for callers that own a Drizzle database connection.
+ * This deliberately does not perform any external Kalshi POST within a DB
+ * transaction. Reserve and commit first, then submit. On uncertain responses
+ * leave reservation held pending exchange reconciliation.
+ */
+export type LadderDatabase = {
+ transaction:<T>(work:(tx:Tx)=>Promise<T>)=>Promise<T>;
+};
+export async function claimMarketWager(
+ db:LadderDatabase,market:MarketLadder,orderId:string
+):Promise<{dollars:number;state:LadderState}>{
+ return db.transaction(tx=>reserveMarketLadder(tx,market,orderId));
+}
+export async function finalizeMarketFill(
+ db:LadderDatabase,market:MarketLadder,orderId:string,settlementId:string
+):Promise<void>{
+ return db.transaction(tx=>recordMarketFill(tx,market,orderId,settlementId));
+}
+export async function finalizeMarketZeroFill(
+ db:LadderDatabase,market:MarketLadder,orderId:string
+):Promise<void>{
+ return db.transaction(tx=>recordMarketNoFill(tx,market,orderId));
+}
+export async function applyVerifiedMarketSettlement(
+ db:LadderDatabase,market:MarketLadder,settlementId:string,outcome:LadderOutcome
+):Promise<LadderState>{
+ return db.transaction(tx=>recordMarketSettlement(tx,market,settlementId,outcome));
+}
