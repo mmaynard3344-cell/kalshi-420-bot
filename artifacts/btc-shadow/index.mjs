@@ -387,6 +387,18 @@ async function reconcileRecentOrders() {
 
   // Shared-ladder reconciliation must be explicitly enabled only after
   // complete order-history and restart recovery are implemented. Feature OFF.
+  // Read-only settlement audit wiring for BTC ladder review mode.
+  // Never advances or releases the ladder here: authenticated order history
+  // is needed first and the new order writer remains hard-gated.
+  if (BTC_SHARED_LADDER_REVIEW && btcLadderStartupState?.reconciliationRequired) {
+    const id = btcLadderStartupState.orderId ?? btcLadderStartupState.settlementId;
+    const known = recentOrders.find(o => o.clientOrderId === id);
+    json({ event: "btc_ladder_recovery_reconciliation_probe",
+      reservedOrderId: id, orderHistoryFound: Boolean(known),
+      fillHistoryFound: Boolean(known?.orderId && fillsByOrder.has(String(known.orderId))),
+      state: "held_until_authenticated_order_history_recovery" });
+  }
+
   for (const row of recentOrders) {
     const orderFills = fillsByOrder.get(String(row.orderId ?? "")) ?? [];
     let filledContracts = 0;
