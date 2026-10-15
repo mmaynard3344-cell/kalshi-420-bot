@@ -4,6 +4,7 @@ import pg from "pg";
 import {readFile} from "node:fs/promises";
 import {reserveBtcWager,recordBtcFilled,recordBtcVerifiedSettlement,recordBtcVerifiedZeroFill,reserveBtcWagerWithIdentity,attachBtcExchangeOrderId,loadBtcPendingIdentity} from "./btcSharedLadderStore.mjs";
 import {applyBtcSettlementEvidence} from "./btcSettlementWriter.mjs";
+import {reconcilePendingBtcOrder} from "./btcAuthenticatedRecovery.mjs";
 const url=process.env.BTC_TEST_DATABASE_URL;
 if(!url)throw Error("BTC_TEST_DATABASE_URL must target a disposable PostgreSQL instance");
 const pool=new pg.Pool({connectionString:url});
@@ -50,5 +51,22 @@ test("real PostgreSQL: pending order identity survives new connection and blocks
  assert.equal((await loadBtcPendingIdentity(pool)).exchangeOrderId,"exchange-ci-durable");
  await assert.rejects(()=>attachBtcExchangeOrderId(pool,"btc-ci-durable","other-order"),/conflict/);
  await assert.rejects(()=>reserveBtcWagerWithIdentity(pool,{clientOrderId:"btc-ci-next",ticker:"KXBTC15M-EXAMPLE",side:"yes"}),/busy/);
+});
+test("real PostgreSQL: authenticated pending BTC order settles after recovery and is exactly once",async()=>{
+ await reset();
+ const ticker="KXBTC15M-EXAMPLE";
+ await reserveBtcWagerWithIdentity(pool,{clientOrderId:"btc-ci-auth",ticker,side:"yes"});
+ await attachBtcExchangeOrderId(pool,"btc-ci-auth","exchange-ci-auth");
+ const requests=[];
+ const args={pool,publicBase:"https://example.test",authJson:async(method,path)=>{
+  requests.push(path);
+  if(path==="/portfolio/orders/exchange-ci-auth")return {order:{order_id:"exchange-ci-auth",client_order_id:"btc-ci-auth",ticker,status:"executed",fill_count_fp:"2"}};
+  if(path.startsWith("/portfolio/fills?order_id=exchange-ci-auth"))return {fills:[{order_id:"exchange-ci-auth",count_fp:"2"}],cursor:""};
+  throw Error("unexpected request");
+ },publicJson:async()=>({market:{ticker,result:"no"}})};
+ assert.deepEqual(await reconcilePendingBtcOrder(args),{state:"settled",kind:"LOSS",step:1});
+ assert.deepEqual(await reconcilePendingBtcOrder(args),{state:"idle"});
+ assert.equal((await pool.query("SELECT step FROM btc_shared_ladder WHERE market='BTC'")).rows[0].step,1);
+ assert.equal(requests.length,2);
 });
 test.after(async()=>{await pool.end()});
