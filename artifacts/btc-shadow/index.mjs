@@ -1,5 +1,6 @@
 import http from "node:http";
 import { submitReservedBtcOrder } from "./btcLadderOrderAdapter.mjs";
+import { loadPendingBtcReservation } from "./btcLadderRecovery.mjs";
 import { recordBtcFilled, recordBtcVerifiedZeroFill, recordBtcVerifiedSettlement } from "./btcSharedLadderStore.mjs";
 import { createHash, createSign } from "node:crypto";
 import { evaluatePortfolio, SERVICES, WINDOW_MS, HISTORY_MS } from "./signals.mjs";
@@ -12,6 +13,8 @@ const STAKE_CENTS = 100;
 // Never enable this while authenticated settlement reconciliation remains unintegrated.
 const BTC_SHARED_LADDER_REVIEW = process.env.BTC_SHARED_LADDER_REVIEW === "true";
 let btcLadderPool = null;
+let btcLadderStartupChecked = false;
+let btcLadderStartupState = null;
 async function getBtcLadderPool() {
   if (!process.env.DATABASE_URL) throw Error("btc_ladder_database_missing");
   if (!btcLadderPool) {
@@ -487,6 +490,9 @@ const status = () => ({
   mode: LIVE_ENABLED ? "live" : "shadow",
   ordersEnabled: LIVE_ENABLED,
   stakeCents: STAKE_CENTS,
+  ladderReviewEnabled: BTC_SHARED_LADDER_REVIEW,
+  ladderStartupChecked: btcLadderStartupChecked,
+  ladderStartupState: btcLadderStartupState,
   initializing, lastSuccessMs, currentTicker, lastError, candleError, lastOrderEvent,
   countersSinceMs: startedAtMs, historyCount: history.length, candleCount: candles.length,
   healthy: !initializing && lastSuccessMs != null && Date.now() - lastSuccessMs < 60_000,
@@ -514,6 +520,14 @@ async function tick() {
   busy = true;
   try {
     const now = Date.now();
+    // Diagnostic startup recovery only; no ladder POST or settlement writes
+    // are permitted until the authenticated reconciliation gate is complete.
+    if (BTC_SHARED_LADDER_REVIEW && !btcLadderStartupChecked) {
+      const recovered = await loadPendingBtcReservation(await getBtcLadderPool());
+      btcLadderStartupState = recovered;
+      btcLadderStartupChecked = true;
+      json({ event:"btc_ladder_startup_recovery", ...recovered });
+    }
     if (!history.length) history = await bootstrapHistory(now);
     if (!historyHydrated) {
       try { await hydrateRecentOrdersFromExchange(); }
