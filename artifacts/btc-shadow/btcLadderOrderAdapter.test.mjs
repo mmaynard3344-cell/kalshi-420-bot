@@ -22,13 +22,13 @@ test("reserves BTC stake before sending; leaves order pending",async()=>{
 });
 test("cannot send second trade before settlement",async()=>{
  const p=pool();
- await submitReservedBtcOrder({pool:p.db,orderId:"id1",askCents:50,feeCents:()=>0,send:p.send});
+ await submitReservedBtcOrder({pool:p.db,orderId:"id1",ticker:"KXBTC15M-EXAMPLE",side:"yes",askCents:50,feeCents:()=>0,send:p.send});
  await assert.rejects(()=>submitReservedBtcOrder({pool:p.db,orderId:"id2",ticker:"KXBTC15M-EXAMPLE",side:"no",askCents:50,feeCents:()=>0,send:p.send}),/busy/);
  assert.equal(p.posted(),1);
 });
 test("timeout retains durable pending order",async()=>{
  const p=pool();
- const result=await submitReservedBtcOrder({pool:p.db,orderId:"id1",askCents:50,feeCents:()=>0,send:async()=>{throw Error("timeout")}});
+ const result=await submitReservedBtcOrder({pool:p.db,orderId:"id1",ticker:"KXBTC15M-EXAMPLE",side:"yes",askCents:50,feeCents:()=>0,send:async()=>{throw Error("timeout")}});
  assert.equal(result.kind,"held");
  assert.equal(p.state.pending_order_id,"id1");
 });
