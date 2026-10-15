@@ -1,0 +1,17 @@
+name: Ladder bridge verification
+on:
+  pull_request:
+    paths:
+      - 'artifacts/api-server/src/lib/marketLadderExecutionBridge.ts'
+      - 'artifacts/api-server/scripts/marketLadderExecutionBridge.test.ts'
+      - 'artifacts/api-server/src/lib/marketSharedLadderStore.ts'
+      - '.github/workflows/ladder-bridge-verification.yml'
+  workflow_dispatch:
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Verify bridge tests
+        run: bun test artifacts/api-server/scripts/marketLadderExecutionBridge.test.ts
