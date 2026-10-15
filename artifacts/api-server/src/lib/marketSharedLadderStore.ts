@@ -4,7 +4,7 @@
  * Caller must pass the Drizzle transaction handle from @workspace/db.
  */
 import {sql} from "drizzle-orm";
-import {initialLadder,reserveOrder,markFilled,releaseNoFill,settle,wagerDollars,type MarketLadder,type LadderState,type LadderOutcome} from "./marketSharedLadder.js";
+import {reserveOrder,markFilled,releaseNoFill,settle,wagerDollars,type MarketLadder,type LadderState,type LadderOutcome} from "./marketSharedLadder.js";
 type Tx={execute:(query:unknown)=>Promise<any>};
 function rowValue(raw:any):any {
  return raw?.rows?.[0] ?? raw?.[0] ?? null;
@@ -20,7 +20,8 @@ async function locked(tx:Tx,market:MarketLadder):Promise<LadderState>{
  return parseRow(rowValue(result),market);
 }
 async function save(tx:Tx,s:LadderState):Promise<void>{
- await tx.execute(sql`UPDATE market_six_step_ladders SET step=${s.step},pending_order_id=${s.pendingOrderId},pending_settlement_id=${s.pendingSettlementId},last_settlement_id=${s.lastSettlementId},version=${s.version},updated_at=NOW() WHERE market=${s.market} AND version=${s.version-1}`);
+ const result=await tx.execute(sql`UPDATE market_six_step_ladders SET step=${s.step},pending_order_id=${s.pendingOrderId},pending_settlement_id=${s.pendingSettlementId},last_settlement_id=${s.lastSettlementId},version=${s.version},updated_at=NOW() WHERE market=${s.market} AND version=${s.version-1} RETURNING version`);
+ if(!rowValue(result))throw Error("market ladder compare-and-set failed");
 }
 export async function reserveMarketLadder(tx:Tx,market:MarketLadder,orderId:string):Promise<{dollars:number;state:LadderState}>{
  const prior=await locked(tx,market);
