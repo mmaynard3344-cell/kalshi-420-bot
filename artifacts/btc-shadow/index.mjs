@@ -1,6 +1,7 @@
 import http from "node:http";
 import { submitReservedBtcOrder } from "./btcLadderOrderAdapter.mjs";
 import { loadPendingBtcReservation } from "./btcLadderRecovery.mjs";
+import { reconcilePendingBtcOrder } from "./btcAuthenticatedRecovery.mjs";
 import { recordBtcFilled, recordBtcVerifiedZeroFill, recordBtcVerifiedSettlement } from "./btcSharedLadderStore.mjs";
 import { createHash, createSign } from "node:crypto";
 import { evaluatePortfolio, SERVICES, WINDOW_MS, HISTORY_MS } from "./signals.mjs";
@@ -548,6 +549,11 @@ async function tick() {
     }
     if (now - lastReconcileMs >= 30_000) {
       try {
+        if (BTC_SHARED_LADDER_REVIEW) {
+          const recovery = await reconcilePendingBtcOrder({pool:await getBtcLadderPool(),authJson,publicJson,publicBase:PUBLIC_BASE});
+          json({event:"btc_ladder_authenticated_recovery",...recovery});
+          btcLadderStartupState = await loadPendingBtcReservation(await getBtcLadderPool());
+        }
         await reconcileRecentOrders();
         lastReconcileMs = now;
       } catch (error) {
