@@ -578,6 +578,8 @@ async function tick() {
         lastReconcileMs = now;
       } catch (error) {
         json({ event: "btc_order_reconciliation_error", error: error instanceof Error ? error.message : "order_reconciliation_failed" });
+        // A 429 is transient exchange rate limiting; defer reconciliation without retrying orders.
+        lastReconcileMs = /public_source_http_429/.test(String(error)) ? now + 90_000 : now;
       }
     }
     if (now - lastBalanceProbeMs >= 30_000) {
@@ -598,11 +600,11 @@ async function tick() {
     }
     let open = null;
     let market = null;
-    for (let attempt = 0; attempt < 3 && !market; attempt++) {
+    for (let attempt = 0; attempt < 5 && !market; attempt++) {
       open = await publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=open&limit=20`);
       if (!Array.isArray(open.markets)) throw new Error("invalid_open_catalog");
       market = selectCurrent(open.markets, Date.now());
-      if (!market && attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1500));
+      if (!market && attempt < 4) await new Promise((resolve) => setTimeout(resolve, 2000));
     }
     if (!market) throw new Error("current_btc_market_unavailable");
     if (now - lastCandleMs > 60_000) {
