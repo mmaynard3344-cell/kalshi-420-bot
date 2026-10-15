@@ -573,6 +573,11 @@ async function tick() {
           const recovery = await reconcilePendingBtcOrder({pool:await getBtcLadderPool(),authJson,publicJson,publicBase:PUBLIC_BASE});
           json({event:"btc_ladder_authenticated_recovery",...recovery});
           btcLadderStartupState = await loadPendingBtcReservation(await getBtcLadderPool());
+          // Read-only production proof of ladder step and recent verified settlements.
+          const ladderPool = await getBtcLadderPool();
+          const stateRows = await ladderPool.query("SELECT step, pending_order_id, pending_settlement_id, last_settlement_id, version FROM btc_shared_ladder WHERE market='BTC'");
+          const eventRows = await ladderPool.query("SELECT kind, order_id, settlement_id, prior_step, next_step, created_at FROM btc_shared_ladder_events ORDER BY id DESC LIMIT 5");
+          json({event:"btc_ladder_readonly_state",state:stateRows.rows[0]??null,recentEvents:eventRows.rows});
         }
         await reconcileRecentOrders();
         lastReconcileMs = now;
