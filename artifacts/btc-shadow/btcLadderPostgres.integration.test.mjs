@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
 import {readFile} from "node:fs/promises";
-import {reserveBtcWager,recordBtcFilled,recordBtcVerifiedSettlement,recordBtcVerifiedZeroFill} from "./btcSharedLadderStore.mjs";
+import {reserveBtcWager,recordBtcFilled,recordBtcVerifiedSettlement,recordBtcVerifiedZeroFill,reserveBtcWagerWithIdentity,attachBtcExchangeOrderId,loadBtcPendingIdentity} from "./btcSharedLadderStore.mjs";
 import {applyBtcSettlementEvidence} from "./btcSettlementWriter.mjs";
 const url=process.env.BTC_TEST_DATABASE_URL;
 if(!url)throw Error("BTC_TEST_DATABASE_URL must target a disposable PostgreSQL instance");
@@ -10,7 +10,7 @@ const pool=new pg.Pool({connectionString:url});
 const schema=await readFile(new URL("./btcSharedLadder.sql",import.meta.url),"utf8");
 await pool.query(schema);
 async function reset(){
- await pool.query("TRUNCATE btc_shared_ladder_events RESTART IDENTITY");
+ await pool.query("TRUNCATE btc_shared_ladder_events,btc_ladder_order_identity RESTART IDENTITY");
  await pool.query("UPDATE btc_shared_ladder SET step=0,pending_order_id=NULL,pending_settlement_id=NULL,last_settlement_id=NULL,version=0 WHERE market='BTC'");
 }
 const reservation={clientOrderId:"btc-ci-1",ticker:"KXBTC15M-EXAMPLE",side:"yes"};
@@ -37,5 +37,18 @@ test("real PostgreSQL: verified zero fill does not advance ladder",async()=>{
  const r=await pool.query("SELECT step,pending_order_id FROM btc_shared_ladder WHERE market='BTC'");
  assert.equal(r.rows[0].step,0);
  assert.equal(r.rows[0].pending_order_id,null);
+});
+test("real PostgreSQL: pending order identity survives new connection and blocks conflicting exchange id",async()=>{
+ await reset();
+ await reserveBtcWagerWithIdentity(pool,{clientOrderId:"btc-ci-durable",ticker:"KXBTC15M-EXAMPLE",side:"no"});
+ const recovered=await loadBtcPendingIdentity(pool);
+ assert.equal(recovered.clientOrderId,"btc-ci-durable");
+ assert.equal(recovered.ticker,"KXBTC15M-EXAMPLE");
+ assert.equal(recovered.side,"no");
+ assert.equal(recovered.exchangeOrderId,null);
+ await attachBtcExchangeOrderId(pool,"btc-ci-durable","exchange-ci-durable");
+ assert.equal((await loadBtcPendingIdentity(pool)).exchangeOrderId,"exchange-ci-durable");
+ await assert.rejects(()=>attachBtcExchangeOrderId(pool,"btc-ci-durable","other-order"),/conflict/);
+ await assert.rejects(()=>reserveBtcWagerWithIdentity(pool,{clientOrderId:"btc-ci-next",ticker:"KXBTC15M-EXAMPLE",side:"yes"}),/busy/);
 });
 test.after(async()=>{await pool.end()});
