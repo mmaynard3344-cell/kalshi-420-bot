@@ -5,7 +5,26 @@ import {applyBtcSettlementEvidence} from "./btcSettlementWriter.mjs";
 export async function reconcilePendingBtcOrder({pool,authJson,publicJson,publicBase}){
  const reservation=await loadBtcPendingIdentity(pool);
  if(!reservation)return {state:"idle"};
- if(!reservation.exchangeOrderId)return {state:"held",reason:"exchange_order_id_not_persisted"};
+ if(!reservation.exchangeOrderId){
+  // A network timeout can lose the POST acknowledgement. Search authenticated
+  // order history for the deterministic client ID; never issue another POST.
+  let cursor=null,found=null,complete=false;
+  for(let page=0;page<50;page++){
+   const path="/portfolio/orders?limit=100"+(cursor?"&cursor="+encodeURIComponent(cursor):"");
+   const data=await authJson("GET",path);
+   if(!Array.isArray(data?.orders))return {state:"held",reason:"order_history_unavailable"};
+   found=data.orders.find(o=>o.client_order_id===reservation.clientOrderId&&o.ticker===reservation.ticker);
+   if(found)break;
+   const next=String(data.cursor??"");
+   if(!next){complete=true;break}
+   if(next===cursor)return {state:"held",reason:"order_cursor_did_not_advance"};
+   cursor=next;
+  }
+  if(!found)return {state:"held",reason:complete?"exchange_order_not_found":"order_history_pagination_limit"};
+  if(!found.order_id)return {state:"held",reason:"exchange_order_id_missing"};
+  await attachBtcExchangeOrderId(pool,reservation.clientOrderId,found.order_id);
+  reservation.exchangeOrderId=found.order_id;
+ }
  const orderRaw=await authJson("GET", "/portfolio/orders/"+encodeURIComponent(reservation.exchangeOrderId));
  const order=orderRaw?.order??orderRaw;
  if(!order||!order.order_id)return {state:"held",reason:"authenticated_order_missing"};
