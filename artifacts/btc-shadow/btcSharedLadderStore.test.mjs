@@ -30,8 +30,8 @@ test("reservation/fill/loss persists advancement; duplicate settlement does not 
  assert.equal((await recordBtcVerifiedSettlement(db.pool,"s1","LOSS")).step,1);
  assert.deepEqual(await recordBtcVerifiedSettlement(db.pool,"s1","LOSS"),{alreadyProcessed:true,step:1});
  assert.equal((await reserveBtcWager(db.pool,"o2")).stakeCents,200);
- assert.equal(db.calls.filter(q=>q==="BEGIN").length,5);
- assert.equal(db.calls.filter(q=>q==="COMMIT").length,4);
+ assert.equal(db.calls.filter(q=>q==="BEGIN").length,6);
+ assert.equal(db.calls.filter(q=>q==="COMMIT").length,5);
 });
 test("DB errors fail closed and roll back",async()=>{
  const db=mockDb();db.pool.connect=async()=>({query:async q=>{if(q==="BEGIN")return;throw Error("database offline")},release(){}});
