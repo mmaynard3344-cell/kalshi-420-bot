@@ -65,3 +65,35 @@ export async function recordBtcVerifiedSettlement(pool,settlementId,outcome){
   return {alreadyProcessed:false,step:next.step};
  });
 }
+
+export async function reserveBtcWagerWithIdentity(pool,{clientOrderId,ticker,side}){
+ if(!clientOrderId||!/^KXBTC15M-/.test(ticker)||!["yes","no"].includes(side))
+  throw Error("invalid BTC reservation identity");
+ return btcLadderTransaction(pool,async(prior,client)=>{
+  const next=claim(prior,clientOrderId);
+  // Identity and reservation commit atomically before order submission.
+  await client.query("INSERT INTO btc_ladder_order_identity(client_order_id,ticker,side) VALUES($1,$2,$3)",[clientOrderId,ticker,side]);
+  await event(client,"RESERVED",clientOrderId,null,prior,next);
+  await persist(client,next);
+  return {stakeCents:stakeCents(prior),version:next.version};
+ });
+}
+export async function attachBtcExchangeOrderId(pool,clientOrderId,exchangeOrderId){
+ if(!clientOrderId||!exchangeOrderId)throw Error("missing BTC exchange identity");
+ return btcLadderTransaction(pool,async(prior,client)=>{
+  if(prior.pendingOrderId!==clientOrderId && prior.pendingSettlementId!==clientOrderId)
+   throw Error("BTC exchange order not pending");
+  const r=await client.query("UPDATE btc_ladder_order_identity SET exchange_order_id=$2 WHERE client_order_id=$1 AND (exchange_order_id IS NULL OR exchange_order_id=$2) RETURNING client_order_id",[clientOrderId,exchangeOrderId]);
+  if(r.rowCount!==1)throw Error("BTC exchange order identity conflict");
+  return true;
+ });
+}
+export async function loadBtcPendingIdentity(pool){
+ return btcLadderTransaction(pool,async(prior,client)=>{
+  const id=prior.pendingOrderId??prior.pendingSettlementId;
+  if(!id)return null;
+  const r=await client.query("SELECT client_order_id,ticker,side,exchange_order_id FROM btc_ladder_order_identity WHERE client_order_id=$1",[id]);
+  if(r.rowCount!==1)throw Error("BTC pending identity missing: reconciliation blocked");
+  return {clientOrderId:r.rows[0].client_order_id,ticker:r.rows[0].ticker,side:r.rows[0].side,exchangeOrderId:r.rows[0].exchange_order_id};
+ });
+}
