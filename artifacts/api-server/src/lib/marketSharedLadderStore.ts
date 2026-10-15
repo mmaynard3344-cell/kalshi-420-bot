@@ -5,7 +5,7 @@
  */
 import {sql} from "drizzle-orm";
 import {reserveOrder,markFilled,releaseNoFill,settle,wagerDollars,affordableContracts,type MarketLadder,type LadderState,type LadderOutcome} from "./marketSharedLadder.js";
-type Tx={execute:(query:unknown)=>Promise<any>};
+type Tx={execute:(query: any)=>Promise<any>};
 function rowValue(raw:any):any {
  return raw?.rows?.[0] ?? raw?.[0] ?? null;
 }
