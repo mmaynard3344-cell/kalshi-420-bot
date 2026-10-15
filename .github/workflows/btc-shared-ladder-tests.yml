@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test artifacts/btc-shadow/btcSharedLadder.test.mjs
+      - run: node --test artifacts/btc-shadow/btcSharedLadder.test.mjs artifacts/btc-shadow/btcSharedLadderStore.test.mjs
