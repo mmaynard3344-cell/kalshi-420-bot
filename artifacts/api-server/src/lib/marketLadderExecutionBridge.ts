@@ -17,6 +17,7 @@ export async function submitThroughMarketLadder(
  if(!req.clientOrderId)throw Error("client order ID required");
  // The durable reservation is committed before any exchange API call.
  const claim=await claimSizedMarketWager(db,req.market,req.clientOrderId,req.priceCents,req.feeCents,req.maxContracts);
+ if(claim.contracts < 1 || claim.totalCents > claim.dollars*100)throw Error("invalid reserved order sizing");
  // A zero-fill rejection MUST be reconciled on the authenticated exchange
  // before releasing the reserved step. Do not release here.
  try {
