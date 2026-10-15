@@ -19,5 +19,7 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Build referenced workspace libraries
+        run: pnpm typecheck:libs
       - name: Typecheck API server
         run: pnpm --dir artifacts/api-server typecheck
