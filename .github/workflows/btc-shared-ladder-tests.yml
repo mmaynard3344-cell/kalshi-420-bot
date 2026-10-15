@@ -21,3 +21,31 @@ jobs:
       - name: Parse BTC production entrypoint
         run: node --check artifacts/btc-shadow/index.mjs
       - run: node --test artifacts/btc-shadow/btcSharedLadder.test.mjs artifacts/btc-shadow/btcSharedLadderStore.test.mjs artifacts/btc-shadow/btcLadderOrderAdapter.test.mjs artifacts/btc-shadow/btcLadderRecovery.test.mjs artifacts/btc-shadow/btcSettlementEvidence.test.mjs artifacts/btc-shadow/btcSettlementWriter.test.mjs
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: btc_ladder_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      BTC_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/btc_ladder_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated PostgreSQL test client
+        run: npm install --prefix artifacts/btc-shadow --no-save --package-lock=false pg@8
+      - name: Run real PostgreSQL BTC ladder test
+        run: node --test artifacts/btc-shadow/btcLadderPostgres.integration.test.mjs
