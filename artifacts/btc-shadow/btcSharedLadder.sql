@@ -20,3 +20,13 @@ CREATE TABLE IF NOT EXISTS btc_shared_ladder_events (
  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS btc_ladder_settlement_once ON btc_shared_ladder_events(settlement_id) WHERE settlement_id IS NOT NULL AND kind IN ('WIN','LOSS');
+
+-- Durable exchange identity survives process restarts and is required for
+-- authenticated order/fill reconciliation. Do not infer these from a 100-row page.
+CREATE TABLE IF NOT EXISTS btc_ladder_order_identity (
+ client_order_id TEXT PRIMARY KEY,
+ ticker TEXT NOT NULL,
+ side TEXT NOT NULL CHECK (side IN ('yes','no')),
+ exchange_order_id TEXT UNIQUE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
