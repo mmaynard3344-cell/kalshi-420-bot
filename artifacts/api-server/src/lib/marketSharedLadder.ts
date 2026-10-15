@@ -45,3 +45,26 @@ export function settle(state:LadderState,settlementId:string,outcome:LadderOutco
  const step=outcome==="WIN"?0:(state.step+1)%SIX_STEP_DOLLARS.length;
  return {...state,step,pendingSettlementId:null,lastSettlementId:settlementId,version:state.version+1};
 }
+
+/** Price-aware whole-contract sizing. Do not submit when one contract plus fee
+ * is unaffordable. Caller supplies the verified all-in taker fee in cents.
+ * Never round up: the total debit must remain within the current ladder stake.
+ */
+export function affordableContracts(
+ state:LadderState,
+ priceCents:number,
+ feeCents:(contracts:number,priceCents:number)=>number,
+ maxContracts=10000,
+):{contracts:number;totalCents:number;feeCents:number}{
+ if(!Number.isInteger(priceCents)||priceCents<1||priceCents>99)throw Error("invalid contract price");
+ if(!Number.isInteger(maxContracts)||maxContracts<1||maxContracts>100000)throw Error("invalid contract cap");
+ const budget=wagerDollars(state)*100;
+ let best=0,bestFee=0;
+ const upper=Math.min(maxContracts,Math.floor(budget/priceCents));
+ for(let count=1;count<=upper;count++){
+   const fee=feeCents(count,priceCents);
+   if(!Number.isSafeInteger(fee)||fee<0)throw Error("invalid fee");
+   if(count*priceCents+fee<=budget){best=count;bestFee=fee}
+ }
+ return {contracts:best,totalCents:best*priceCents+bestFee,feeCents:bestFee};
+}
