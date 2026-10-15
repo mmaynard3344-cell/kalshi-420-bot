@@ -28,6 +28,7 @@ async function save(tx:Tx,s:LadderState):Promise<void>{
 export async function reserveMarketLadder(tx:Tx,market:MarketLadder,orderId:string):Promise<{dollars:number;state:LadderState}>{
  const prior=await locked(tx,market);
  const next=reserveOrder(prior,orderId);
+ await tx.execute(sql`INSERT INTO market_six_step_events(market,exchange_order_id,transition,prior_step,next_step) VALUES(${market},${orderId},'RESERVED',${prior.step},${next.step})`);
  await save(tx,next);
  return {dollars:wagerDollars(prior),state:next};
 }
@@ -101,6 +102,7 @@ export async function claimSizedMarketWager(
    const size=affordableContracts(prior,priceCents,feeCents,maxContracts);
    if(size.contracts<1)throw Error("no affordable contract");
    const next=reserveOrder(prior,orderId);
+   await tx.execute(sql`INSERT INTO market_six_step_events(market,exchange_order_id,transition,prior_step,next_step) VALUES(${market},${orderId},'RESERVED',${prior.step},${next.step})`);
    await save(tx,next);
    return {dollars:wagerDollars(prior),...size,state:next};
  });
