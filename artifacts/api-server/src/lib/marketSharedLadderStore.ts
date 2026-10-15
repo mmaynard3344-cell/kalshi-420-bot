@@ -12,7 +12,9 @@ function rowValue(raw:any):any {
 function parseRow(row:any,market:MarketLadder):LadderState{
  if(!row)throw Error("ladder row missing");
  if(row.market!==market)throw Error("ladder market mismatch");
- return {market,step:Number(row.step),pendingOrderId:row.pending_order_id??null,pendingSettlementId:row.pending_settlement_id??null,lastSettlementId:row.last_settlement_id??null,version:Number(row.version)};
+ const step=Number(row.step),version=Number(row.version);
+ if(!Number.isInteger(step)||step<0||step>5||!Number.isSafeInteger(version)||version<0)throw Error("invalid persisted market ladder state");
+ return {market,step,pendingOrderId:row.pending_order_id??null,pendingSettlementId:row.pending_settlement_id??null,lastSettlementId:row.last_settlement_id??null,version};
 }
 async function locked(tx:Tx,market:MarketLadder):Promise<LadderState>{
  if(!["BTC","ETH","EURUSD"].includes(market))throw Error("unsupported market");
