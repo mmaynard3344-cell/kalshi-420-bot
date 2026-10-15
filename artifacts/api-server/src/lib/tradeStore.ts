@@ -12260,3 +12260,18 @@ export async function loadEthMartingaleSessionProfit(): Promise<{
     return null;
   }
 }
+
+/**
+ * Shared-ladder bridge to the SAME production PostgreSQL pool used by order
+ * reservations. Review-only: callers must still integrate each strategy's
+ * active order writer and authenticated settlement path.
+ *
+ * Fail closed when the production DB has not initialized or has degraded.
+ * The transaction is never held across a remote exchange POST.
+ */
+export async function withMarketLadderTransaction<T>(
+  work: (tx: { execute: (query: Parameters<NonNullable<typeof _db>["execute"]>[0]) => ReturnType<NonNullable<typeof _db>["execute"]> }) => Promise<T>,
+): Promise<T> {
+  if (!_db || !_healthy) throw new Error("market ladder storage unavailable");
+  return _db.transaction(async (tx) => work({ execute: (query) => tx.execute(query) }));
+}
