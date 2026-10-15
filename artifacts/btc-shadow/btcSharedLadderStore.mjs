@@ -40,6 +40,7 @@ export async function reserveBtcWager(pool,orderId){
 }
 export async function recordBtcFilled(pool,orderId,settlementId){
  return btcLadderTransaction(pool,async (prior,client)=>{
+  if (prior.pendingOrderId===null && (prior.pendingSettlementId===settlementId || prior.lastSettlementId===settlementId)) return prior;
   const next=confirmFill(prior,orderId,settlementId);
   await event(client,"FILLED",orderId,settlementId,prior,next);
   await persist(client,next);
