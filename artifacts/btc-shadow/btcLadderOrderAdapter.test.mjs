@@ -32,3 +32,11 @@ test("timeout retains durable pending order",async()=>{
  assert.equal(result.kind,"held");
  assert.equal(p.state.pending_order_id,"id1");
 });
+
+test("unaffordable step-one wager never reserves database state or submits",async()=>{
+ const p=pool();
+ const result=await submitReservedBtcOrder({pool:p.db,orderId:"unaffordable",askCents:99,feeCents:()=>5,send:p.send});
+ assert.equal(result.kind,"skipped");
+ assert.equal(p.state.pending_order_id,null);
+ assert.equal(p.posted(),0);
+});
