@@ -1,4 +1,5 @@
 import http from "node:http";
+import { readFile } from "node:fs/promises";
 import { submitReservedBtcOrder } from "./btcLadderOrderAdapter.mjs";
 import { loadPendingBtcReservation } from "./btcLadderRecovery.mjs";
 import { reconcilePendingBtcOrder } from "./btcAuthenticatedRecovery.mjs";
@@ -14,6 +15,7 @@ const STAKE_CENTS = 100;
 // Never enable this while authenticated settlement reconciliation remains unintegrated.
 const BTC_SHARED_LADDER_REVIEW = process.env.BTC_SHARED_LADDER_REVIEW === "true";
 let btcLadderPool = null;
+let btcLadderMigrationReady = false;
 let btcLadderStartupChecked = false;
 let btcLadderStartupState = null;
 async function getBtcLadderPool() {
@@ -21,6 +23,11 @@ async function getBtcLadderPool() {
   if (!btcLadderPool) {
     const { default: pg } = await import("pg");
     btcLadderPool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
+  }
+  if (!btcLadderMigrationReady) {
+    const schema = await readFile(new URL("./btcSharedLadder.sql", import.meta.url),"utf8");
+    await btcLadderPool.query(schema);
+    btcLadderMigrationReady = true;
   }
   return btcLadderPool;
 }
