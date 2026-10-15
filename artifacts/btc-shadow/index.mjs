@@ -1,5 +1,6 @@
 import http from "node:http";
 import { submitReservedBtcOrder } from "./btcLadderOrderAdapter.mjs";
+import { recordBtcFilled, recordBtcVerifiedZeroFill, recordBtcVerifiedSettlement } from "./btcSharedLadderStore.mjs";
 import { createHash, createSign } from "node:crypto";
 import { evaluatePortfolio, SERVICES, WINDOW_MS, HISTORY_MS } from "./signals.mjs";
 import { bootstrapHistory, parseFact, selectCurrent, parseCandles, publicJson, PUBLIC_BASE } from "./client.mjs";
@@ -381,6 +382,8 @@ async function reconcileRecentOrders() {
     fillsByOrder.set(id, rows);
   }
 
+  // Shared-ladder reconciliation must be explicitly enabled only after
+  // complete order-history and restart recovery are implemented. Feature OFF.
   for (const row of recentOrders) {
     const orderFills = fillsByOrder.get(String(row.orderId ?? "")) ?? [];
     let filledContracts = 0;
@@ -425,6 +428,43 @@ async function reconcileRecentOrders() {
     row.pnlUsd = won
       ? filledContracts - principalUsd - feesUsd
       : -principalUsd - feesUsd;
+  }
+}
+
+/**
+ * Review-only durable ladder reconciliation. Only rows explicitly submitted
+ * via the shared ladder are eligible. Existing legacy orders MUST NOT mutate
+ * this ledger. Never trust an empty or truncated fills page for zero-fill.
+ */
+export async function reconcileBtcSharedLadderRows(rows, exchangeOrders, fillsByOrder, resultByTicker, store) {
+  for (const row of rows) {
+    if (row.ladderReserved !== true || !row.clientOrderId || !row.orderId) continue;
+    const exchangeOrder = exchangeOrders.get(String(row.orderId));
+    if (!exchangeOrder) continue; // incomplete/expired exchange history: hold
+    const matches = fillsByOrder.get(String(row.orderId)) ?? [];
+    const filled = matches.reduce((count, fill) => count + Math.max(0, firstFinite(fill?.count_fp, fill?.count) ?? 0), 0);
+    const currentStatus = String(exchangeOrder.status ?? "").toLowerCase();
+    const terminal = ["executed","canceled","cancelled","closed","filled"].includes(currentStatus);
+    if (!terminal) continue;
+    const pool = await store();
+    if (filled <= 0) {
+      // No-fill requires explicit terminal exchange evidence AND a zero fill
+      // count from the authenticated order, not just absence in a fills page.
+      const exchangeFillCount = firstFinite(exchangeOrder.fill_count_fp, exchangeOrder.fill_count, exchangeOrder.filled_count_fp, exchangeOrder.filled_count);
+      if (exchangeFillCount !== 0) continue;
+      await recordBtcVerifiedZeroFill(pool, row.clientOrderId);
+      row.ladderReserved = false;
+      continue;
+    }
+    // A partial fill remains held until the order is terminal.
+    const result = resultByTicker.get(String(row.ticker));
+    await recordBtcFilled(pool, row.clientOrderId, row.clientOrderId);
+    row.ladderFilled = true;
+    if (!["yes","no"].includes(result))continue;
+    // Outcome determined only from a settled market result. Fee economics
+    // must be independently reconciled for reporting.
+    await recordBtcVerifiedSettlement(pool, row.clientOrderId, result === row.side ? "WIN" : "LOSS");
+    row.ladderReserved = false;
   }
 }
 
