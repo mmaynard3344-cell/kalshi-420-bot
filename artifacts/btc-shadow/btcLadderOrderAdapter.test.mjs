@@ -15,7 +15,7 @@ function pool(){
 }
 test("reserves BTC stake before sending; leaves order pending",async()=>{
  const p=pool();
- const result=await submitReservedBtcOrder({pool:p.db,orderId:"id1",askCents:50,feeCents:()=>0,send:p.send});
+ const result=await submitReservedBtcOrder({pool:p.db,orderId:"id1",ticker:"KXBTC15M-EXAMPLE",side:"yes",askCents:50,feeCents:()=>0,send:p.send});
  assert.equal(result.kind,"submitted");
  assert.equal(p.posted(),1);
  assert.equal(p.state.pending_order_id,"id1");
@@ -23,7 +23,7 @@ test("reserves BTC stake before sending; leaves order pending",async()=>{
 test("cannot send second trade before settlement",async()=>{
  const p=pool();
  await submitReservedBtcOrder({pool:p.db,orderId:"id1",askCents:50,feeCents:()=>0,send:p.send});
- await assert.rejects(()=>submitReservedBtcOrder({pool:p.db,orderId:"id2",askCents:50,feeCents:()=>0,send:p.send}),/busy/);
+ await assert.rejects(()=>submitReservedBtcOrder({pool:p.db,orderId:"id2",ticker:"KXBTC15M-EXAMPLE",side:"no",askCents:50,feeCents:()=>0,send:p.send}),/busy/);
  assert.equal(p.posted(),1);
 });
 test("timeout retains durable pending order",async()=>{
@@ -35,7 +35,7 @@ test("timeout retains durable pending order",async()=>{
 
 test("unaffordable step-one wager never reserves database state or submits",async()=>{
  const p=pool();
- const result=await submitReservedBtcOrder({pool:p.db,orderId:"unaffordable",askCents:99,feeCents:()=>5,send:p.send});
+ const result=await submitReservedBtcOrder({pool:p.db,orderId:"unaffordable",ticker:"KXBTC15M-EXAMPLE",side:"yes",askCents:99,feeCents:()=>5,send:p.send});
  assert.equal(result.kind,"skipped");
  assert.equal(p.state.pending_order_id,null);
  assert.equal(p.posted(),0);
