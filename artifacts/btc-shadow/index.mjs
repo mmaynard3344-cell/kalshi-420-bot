@@ -1,4 +1,5 @@
 import http from "node:http";
+import { submitReservedBtcOrder } from "./btcLadderOrderAdapter.mjs";
 import { createHash, createSign } from "node:crypto";
 import { evaluatePortfolio, SERVICES, WINDOW_MS, HISTORY_MS } from "./signals.mjs";
 import { bootstrapHistory, parseFact, selectCurrent, parseCandles, publicJson, PUBLIC_BASE } from "./client.mjs";
@@ -7,6 +8,17 @@ const LIVE_ENABLED = process.env.BTC_LIVE_ENABLED === "true" && process.env.TRAD
 const ORDER_EXECUTION_ENABLED =
   process.env.ORDER_EXECUTION_ENABLED === "true";
 const STAKE_CENTS = 100;
+// Never enable this while authenticated settlement reconciliation remains unintegrated.
+const BTC_SHARED_LADDER_REVIEW = process.env.BTC_SHARED_LADDER_REVIEW === "true";
+let btcLadderPool = null;
+async function getBtcLadderPool() {
+  if (!process.env.DATABASE_URL) throw Error("btc_ladder_database_missing");
+  if (!btcLadderPool) {
+    const { default: pg } = await import("pg");
+    btcLadderPool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
+  }
+  return btcLadderPool;
+}
 const TRADE_BASE = "https://external-api.kalshi.com/trade-api/v2";
 
 let history = [], candles = [], lastHistoryMs = 0, lastCandleMs = 0, busy = false;
@@ -67,6 +79,21 @@ async function authJson(method, path, body) {
     throw new Error("kalshi_" + response.status + ":" + String(detail));
   }
   return payload;
+}
+
+
+// Review wiring to the BTC runner's real authenticated order endpoint.
+// This adapter is intentionally not invoked while reconciliation is unfinished.
+async function submitBtcViaSharedLadder({ clientOrderId, ticker, side, askCents }) {
+  return submitReservedBtcOrder({
+    pool: await getBtcLadderPool(), orderId: clientOrderId, askCents,
+    feeCents: (n, p) => Math.ceil(0.07 * n * p * (100 - p) / 100),
+    send: async ({ orderId, contracts }) => {
+      const raw = await authJson("POST", "/portfolio/events/orders",
+        orderPayload(ticker, side, orderId, contracts, askCents));
+      return { kind: "accepted", exchangeOrderId: raw?.order?.order_id ?? raw?.order_id ?? null };
+    },
+  });
 }
 
 function quoteCents(market, side) {
@@ -192,6 +219,16 @@ async function executeDecision(decision, market) {
         status: "verification_only",
       };
       json({ event: "btc_live_order_would_submit", ...lastOrderEvent, reason: "review_branch_execution_disabled" });
+      return "terminal";
+    }
+
+    // Review-only integration: reservation uses the same client order id as
+    // Kalshi, with a database commit before the exchange POST. The feature
+    // gate deliberately fails closed until real settlement reconciliation ships.
+    if (BTC_SHARED_LADDER_REVIEW) {
+      totals[decision.service].skippedOrders++;
+      json({ event: "btc_ladder_review_blocked", service: decision.service,
+        ticker: decision.ticker, reason: "settlement_reconciler_not_integrated" });
       return "terminal";
     }
 
