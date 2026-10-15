@@ -1,0 +1,42 @@
+/** Transactional database adapter for per-market six-step ladders.
+ * REVIEW ONLY: No live order path imports this module yet.
+ * Requires market_six_step_ladders.review.sql to be applied.
+ * Caller must pass the Drizzle transaction handle from @workspace/db.
+ */
+import {sql} from "drizzle-orm";
+import {initialLadder,reserveOrder,markFilled,releaseNoFill,settle,wagerDollars,type MarketLadder,type LadderState,type LadderOutcome} from "./marketSharedLadder.js";
+type Tx={execute:(query:unknown)=>Promise<any>};
+function rowValue(raw:any):any {
+ return raw?.rows?.[0] ?? raw?.[0] ?? null;
+}
+function parseRow(row:any,market:MarketLadder):LadderState{
+ if(!row)throw Error("ladder row missing");
+ if(row.market!==market)throw Error("ladder market mismatch");
+ return {market,step:Number(row.step),pendingOrderId:row.pending_order_id??null,pendingSettlementId:row.pending_settlement_id??null,lastSettlementId:row.last_settlement_id??null,version:Number(row.version)};
+}
+async function locked(tx:Tx,market:MarketLadder):Promise<LadderState>{
+ if(!["BTC","ETH","EURUSD"].includes(market))throw Error("unsupported market");
+ const result=await tx.execute(sql`SELECT market,step,pending_order_id,pending_settlement_id,last_settlement_id,version FROM market_six_step_ladders WHERE market=${market} FOR UPDATE`);
+ return parseRow(rowValue(result),market);
+}
+async function save(tx:Tx,s:LadderState):Promise<void>{
+ await tx.execute(sql`UPDATE market_six_step_ladders SET step=${s.step},pending_order_id=${s.pendingOrderId},pending_settlement_id=${s.pendingSettlementId},last_settlement_id=${s.lastSettlementId},version=${s.version},updated_at=NOW() WHERE market=${s.market} AND version=${s.version-1}`);
+}
+export async function reserveMarketLadder(tx:Tx,market:MarketLadder,orderId:string):Promise<{dollars:number;state:LadderState}>{
+ const prior=await locked(tx,market);
+ const next=reserveOrder(prior,orderId);
+ await save(tx,next);
+ return {dollars:wagerDollars(prior),state:next};
+}
+export async function recordMarketFill(tx:Tx,market:MarketLadder,orderId:string,settlementId:string):Promise<void>{
+ await save(tx,markFilled(await locked(tx,market),orderId,settlementId));
+}
+export async function recordMarketNoFill(tx:Tx,market:MarketLadder,orderId:string):Promise<void>{
+ await save(tx,releaseNoFill(await locked(tx,market),orderId));
+}
+export async function recordMarketSettlement(tx:Tx,market:MarketLadder,settlementId:string,outcome:LadderOutcome):Promise<LadderState>{
+ const current=await locked(tx,market);
+ const next=settle(current,settlementId,outcome);
+ if(next!==current)await save(tx,next);
+ return next;
+}
