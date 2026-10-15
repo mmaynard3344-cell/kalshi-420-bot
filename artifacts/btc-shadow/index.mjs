@@ -90,7 +90,7 @@ async function authJson(method, path, body) {
 // This adapter is intentionally not invoked while reconciliation is unfinished.
 async function submitBtcViaSharedLadder({ clientOrderId, ticker, side, askCents }) {
   return submitReservedBtcOrder({
-    pool: await getBtcLadderPool(), orderId: clientOrderId, askCents,
+    pool: await getBtcLadderPool(), orderId: clientOrderId, ticker, side, askCents,
     feeCents: (n, p) => Math.ceil(0.07 * n * p * (100 - p) / 100),
     send: async ({ orderId, contracts }) => {
       const raw = await authJson("POST", "/portfolio/events/orders",
