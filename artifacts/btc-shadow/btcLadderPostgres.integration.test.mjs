@@ -69,4 +69,20 @@ test("real PostgreSQL: authenticated pending BTC order settles after recovery an
  assert.equal((await pool.query("SELECT step FROM btc_shared_ladder WHERE market='BTC'")).rows[0].step,1);
  assert.equal(requests.length,2);
 });
+test("real PostgreSQL: lost order acknowledgement recovered by authenticated client id",async()=>{
+ await reset();
+ const ticker="KXBTC15M-EXAMPLE";
+ await reserveBtcWagerWithIdentity(pool,{clientOrderId:"btc-ci-ack",ticker,side:"no"});
+ let listHits=0;
+ const result=await reconcilePendingBtcOrder({pool,publicBase:"https://example.test",authJson:async(method,path)=>{
+  if(path.startsWith("/portfolio/orders?")){listHits++;return {orders:[{client_order_id:"btc-ci-ack",order_id:"exchange-ci-ack",ticker}],cursor:""}}
+  if(path==="/portfolio/orders/exchange-ci-ack")return {order:{client_order_id:"btc-ci-ack",order_id:"exchange-ci-ack",ticker,status:"executed",fill_count_fp:"1"}};
+  if(path.startsWith("/portfolio/fills?"))return {fills:[{order_id:"exchange-ci-ack",count_fp:"1"}],cursor:""};
+  throw Error("unexpected auth path "+path)
+ },publicJson:async()=>({market:{ticker,result:"yes"}})});
+ assert.equal(result.state,"settled");
+ assert.equal(result.kind,"LOSS");
+ assert.equal(result.step,1);
+ assert.equal(listHits,1);
+});
 test.after(async()=>{await pool.end()});
