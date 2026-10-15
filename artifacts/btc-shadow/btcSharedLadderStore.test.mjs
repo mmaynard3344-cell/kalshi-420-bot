@@ -37,3 +37,13 @@ test("DB errors fail closed and roll back",async()=>{
  const db=mockDb();db.pool.connect=async()=>({query:async q=>{if(q==="BEGIN")return;throw Error("database offline")},release(){}});
  await assert.rejects(()=>reserveBtcWager(db.pool,"o1"),/database offline/);
 });
+
+test("duplicate fill delivery is idempotent and does not create a second event",async()=>{
+ const db=mockDb();
+ await reserveBtcWager(db.pool,"o1");
+ await recordBtcFilled(db.pool,"o1","s1");
+ const count=db.events.length;
+ await recordBtcFilled(db.pool,"o1","s1");
+ assert.equal(db.events.length,count);
+ assert.equal(db.row.pending_settlement_id,"s1");
+});
