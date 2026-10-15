@@ -1,0 +1,16 @@
+name: BTC shared ladder unit tests
+on:
+  pull_request:
+    paths:
+      - 'artifacts/btc-shadow/btcSharedLadder*.mjs'
+      - '.github/workflows/btc-shared-ladder-tests.yml'
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test artifacts/btc-shadow/btcSharedLadder.test.mjs
