@@ -39,8 +39,15 @@ export async function recordMarketNoFill(tx:Tx,market:MarketLadder,orderId:strin
 }
 export async function recordMarketSettlement(tx:Tx,market:MarketLadder,settlementId:string,outcome:LadderOutcome):Promise<LadderState>{
  const current=await locked(tx,market);
+ // The event ledger is the durable idempotency key, including for old
+ // settlements replayed after a newer settlement.
+ const seen=await tx.execute(sql`SELECT event_id FROM market_six_step_events WHERE market=${market} AND settlement_id=${settlementId} AND transition IN ('WIN','LOSS') LIMIT 1`);
+ if(rowValue(seen))return current;
  const next=settle(current,settlementId,outcome);
- if(next!==current)await save(tx,next);
+ if(next!==current){
+   await tx.execute(sql`INSERT INTO market_six_step_events(market,settlement_id,transition,prior_step,next_step) VALUES(${market},${settlementId},${outcome},${current.step},${next.step})`);
+   await save(tx,next);
+ }
  return next;
 }
 
