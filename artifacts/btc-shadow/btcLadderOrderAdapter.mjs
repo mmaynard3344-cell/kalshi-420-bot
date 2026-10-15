@@ -8,7 +8,11 @@ import {sizeBtcOrder,initialBtcLadder} from "./btcSharedLadder.mjs";
 export async function submitReservedBtcOrder({pool,orderId,askCents,feeCents,maxContracts=10000,send}){
  if(!orderId||typeof send!=="function")throw Error("missing BTC order dependency");
  if(!Number.isInteger(askCents)||askCents<1||askCents>99)throw Error("invalid ask");
- // At step one, even one contract must be affordable; otherwise never claim a\n // durable reservation that cannot be released by an exchange zero-fill.\n if(sizeBtcOrder(initialBtcLadder(),askCents,feeCents,maxContracts).contracts<1)\n  return {kind:"skipped",reason:"no_affordable_contract_at_step_one",orderId};\n // Reservation is durable and committed BEFORE any API POST.
+ // At step one, even one contract must be affordable; otherwise never claim a
+ // durable reservation that cannot be released by an exchange zero-fill.
+ if(sizeBtcOrder(initialBtcLadder(),askCents,feeCents,maxContracts).contracts<1)
+  return {kind:"skipped",reason:"no_affordable_contract_at_step_one",orderId};
+ // Reservation is durable and committed BEFORE any API POST.
  const reservation=await reserveBtcWager(pool,orderId);
  const sizing=sizeBtcOrder({step:[100,200,400,800,1600,3200].indexOf(reservation.stakeCents)},askCents,feeCents,maxContracts);
  if(sizing.contracts<1) {
