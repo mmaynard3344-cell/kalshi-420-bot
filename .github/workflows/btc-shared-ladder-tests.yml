@@ -5,6 +5,9 @@ on:
       - 'artifacts/btc-shadow/btcSharedLadder*.mjs'
       - 'artifacts/btc-shadow/btcLadderOrderAdapter*.mjs'
       - 'artifacts/btc-shadow/index.mjs'
+      - 'artifacts/btc-shadow/btcAuthenticatedRecovery.mjs'
+      - 'artifacts/btc-shadow/btcSharedLadder.sql'
+      - 'Dockerfile'
       - 'artifacts/btc-shadow/btcLadderRecovery*.mjs'
       - 'artifacts/btc-shadow/btcSettlementEvidence*.mjs'
       - 'artifacts/btc-shadow/btcSettlementWriter*.mjs'
@@ -49,3 +52,10 @@ jobs:
         run: npm install --prefix artifacts/btc-shadow --no-save --package-lock=false pg@8
       - name: Run real PostgreSQL BTC ladder test
         run: node --test artifacts/btc-shadow/btcLadderPostgres.integration.test.mjs
+
+  image-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build standalone BTC production container
+        run: docker build -t btc-ladder-ci -f Dockerfile .
