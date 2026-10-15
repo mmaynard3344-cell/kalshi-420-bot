@@ -194,6 +194,29 @@ async function executeDecision(decision, market) {
       return "retry";
     }
 
+    if (BTC_SHARED_LADDER_REVIEW) {
+      // New shared-ladder order path. The flag is OFF by default and requires
+      // durable schema, authenticated reconciliation and release approval.
+      if (!ORDER_EXECUTION_ENABLED) return "terminal";
+      const pool = await getBtcLadderPool();
+      const state = await loadPendingBtcReservation(pool);
+      if (state.reconciliationRequired) {
+        json({event:"btc_ladder_pending_blocks_order",service:decision.service,ticker:decision.ticker});
+        return "terminal";
+      }
+      const stakeBudget = [100,200,400,800,1600,3200][state.step];
+      const balance = await freshBalanceCents();
+      if (!stakeBudget || balance < stakeBudget) {
+        json({event:"btc_ladder_insufficient_balance",requiredCents:stakeBudget,balanceCents:balance});
+        return "retry";
+      }
+      const clientOrderId = deterministicUuid(decision.service,decision.ticker);
+      if (await alreadySubmitted(decision.ticker,clientOrderId)) return "terminal";
+      const outcome = await submitBtcViaSharedLadder({clientOrderId,ticker:decision.ticker,side:decision.side,askCents});
+      json({event:"btc_ladder_submit_result",service:decision.service,ticker:decision.ticker,kind:outcome.kind,reason:outcome.reason??null,orderId:clientOrderId});
+      return outcome.kind==="submitted"?"submitted":"terminal";
+    }
+
     const contracts = Math.floor(STAKE_CENTS / askCents);
     if (contracts < 1) {
       totals[decision.service].skippedOrders++;
@@ -224,16 +247,6 @@ async function executeDecision(decision, market) {
         status: "verification_only",
       };
       json({ event: "btc_live_order_would_submit", ...lastOrderEvent, reason: "review_branch_execution_disabled" });
-      return "terminal";
-    }
-
-    // Review-only integration: reservation uses the same client order id as
-    // Kalshi, with a database commit before the exchange POST. The feature
-    // gate deliberately fails closed until real settlement reconciliation ships.
-    if (BTC_SHARED_LADDER_REVIEW) {
-      totals[decision.service].skippedOrders++;
-      json({ event: "btc_ladder_review_blocked", service: decision.service,
-        ticker: decision.ticker, reason: "settlement_reconciler_not_integrated" });
       return "terminal";
     }
 
