@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { initialLadder, wagerDollars, reserveOrder, markFilled, releaseNoFill, settle } from "../src/lib/marketSharedLadder";
+import { initialLadder, wagerDollars, reserveOrder, markFilled, releaseNoFill, settle, affordableContracts } from "../src/lib/marketSharedLadder";
 
 test("losses advance 1,2,4,8,16,32 and sixth loss resets",()=>{
  let s=initialLadder("BTC");
@@ -38,4 +38,25 @@ test("provable zero fill releases slot without advancing",()=>{
 test("unmatched settlement cannot change ladder",()=>{
  const s=initialLadder("BTC");
  expect(()=>settle(s,"unmatched","WIN")).toThrow();
+});
+
+test("BTC, ETH, EURUSD are independent ladders",()=>{
+ let btc=markFilled(reserveOrder(initialLadder("BTC"),"btc"),"btc","s-btc");
+ btc=settle(btc,"s-btc","LOSS");
+ const eth=initialLadder("ETH"), fx=initialLadder("EURUSD");
+ expect(wagerDollars(btc)).toBe(2);
+ expect(wagerDollars(eth)).toBe(1);
+ expect(wagerDollars(fx)).toBe(1);
+});
+test("whole-contract sizing includes fees and never exceeds wager",()=>{
+ const fee=(n:number,c:number)=>Math.ceil(.07*n*c*(100-c)/100);
+ let s=initialLadder("EURUSD");
+ expect(affordableContracts(s,50,fee)).toEqual({contracts:1,totalCents:52,feeCents:2});
+ expect(affordableContracts(s,99,fee)).toEqual({contracts:1,totalCents:100,feeCents:1});
+ s=markFilled(reserveOrder(s,"o"),"o","s");
+ s=settle(s,"s","LOSS");
+ const size=affordableContracts(s,50,fee);
+ expect(size.contracts).toBe(3);
+ expect(size.totalCents).toBeLessThanOrEqual(200);
+ expect(()=>affordableContracts(s,0,fee)).toThrow();
 });
