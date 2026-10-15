@@ -4,6 +4,7 @@ on:
     paths:
       - 'artifacts/btc-shadow/btcSharedLadder*.mjs'
       - 'artifacts/btc-shadow/btcLadderOrderAdapter*.mjs'
+      - 'artifacts/btc-shadow/index.mjs'
       - '.github/workflows/btc-shared-ladder-tests.yml'
   workflow_dispatch:
 jobs:
@@ -14,4 +15,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Parse BTC production entrypoint
+        run: node --check artifacts/btc-shadow/index.mjs
       - run: node --test artifacts/btc-shadow/btcSharedLadder.test.mjs artifacts/btc-shadow/btcSharedLadderStore.test.mjs artifacts/btc-shadow/btcLadderOrderAdapter.test.mjs
