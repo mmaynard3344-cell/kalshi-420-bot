@@ -14,7 +14,7 @@ export async function submitReservedBtcOrder({pool,orderId,ticker,side,askCents,
   return {kind:"skipped",reason:"no_affordable_contract_at_step_one",orderId};
  // Reservation is durable and committed BEFORE any API POST.
  const reservation=await reserveBtcWagerWithIdentity(pool,{clientOrderId:orderId,ticker,side});
- const sizing=sizeBtcOrder({step:[100,200,400,800,1600,3200].indexOf(reservation.stakeCents)},askCents,feeCents,maxContracts);
+ const sizing=sizeBtcOrder({step:[200,400,800,1600,3200,6400].indexOf(reservation.stakeCents)},askCents,feeCents,maxContracts);
  if(sizing.contracts<1) {
    // Do not release a reservation here: there is no verified zero-fill from the exchange.
    return {kind:"held",reason:"no_affordable_contract",orderId};
