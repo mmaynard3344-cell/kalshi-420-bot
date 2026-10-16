@@ -90,7 +90,7 @@ function validateUsdOrderBudget(prepared,requestedCostCents) {
 }
 
 
-const db = new Database("/data/eurusd_a_dollar_pilot.sqlite", {
+const db = new Database(Bun.env.USD_ISOLATED_SMOKE === "true" ? Bun.env.USD_TEST_DB_PATH : "/data/eurusd_a_dollar_pilot.sqlite", {
   create: true
 });
 
@@ -600,6 +600,15 @@ for (const claim of db.query("SELECT ticker,exchange_order_id,side,contracts,ris
 }
 // Review integration: reconciling before signal generation; no live deployment.
 initializeUsdLadder(db,new Date().toISOString());
+if(Bun.env.USD_ISOLATED_SMOKE === "true"){
+  if(Bun.env.FX_LIVE_ENABLED === "true" || Bun.env.ORDER_EXECUTION_ENABLED === "true") throw Error("smoke_requires_live_disabled");
+  const state=await prepareUsdEntry(db,{getOrder:async()=>{throw Error("unexpected_network")},getMarket:async()=>{throw Error("unexpected_network")}});
+  if(!state.allowed || state.step!==0 || state.budgetCents!==100) throw Error("isolated_startup_gate_failed");
+  console.log(JSON.stringify({event:"FX_ISOLATED_SMOKE_PASS",step:state.step,budgetCents:state.budgetCents}));
+  db.close();
+  process.exit(0);
+}
+
 const usdEntry = await prepareUsdEntry(db,{
   getOrder:async id=>(await auth("GET","/portfolio/orders/"+encodeURIComponent(id)+"?exchange_index="+EXCHANGE_INDEX)).order,
   getMarket:async ticker=>(await get("/markets/"+encodeURIComponent(ticker))).market,
