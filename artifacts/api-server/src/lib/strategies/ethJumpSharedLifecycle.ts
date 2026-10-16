@@ -1,0 +1,23 @@
+import {reconcileBFromKalshi} from "./ethJumpSharedKalshiReconciler.js";
+import type {TransactionProvider} from "../sharedEthClaimStore.js";
+
+export type BSharedPendingOrder={
+ claimId:string;clientOrderId:string;ticker:string;side:"yes"|"no";
+ exchangeOrderId:string|null;
+};
+/** Durable source supplies unresolved B claim links. Never infer an order ID or
+ * release a claim solely from an absent or failed exchange response. */
+export async function reconcilePendingBSharedOrders(input:{
+ listPending:()=>Promise<BSharedPendingOrder[]>;
+ provider?:TransactionProvider;
+}):Promise<{finalized:number;pending:number;errors:number}>{
+ let finalized=0,pending=0,errors=0;
+ for(const order of await input.listPending()){
+  if(!order.claimId||!order.clientOrderId||!order.exchangeOrderId){pending++;continue;}
+  try{
+   const result=await reconcileBFromKalshi({...order,exchangeOrderId:order.exchangeOrderId,provider:input.provider});
+   if(result==="FINALIZED")finalized++;else pending++;
+  }catch{errors++; /* fail closed: keep the shared reservation */ }
+ }
+ return {finalized,pending,errors};
+}
