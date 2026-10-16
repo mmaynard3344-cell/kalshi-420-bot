@@ -14,6 +14,7 @@ export async function submitBViaSharedEthClaim(input:{
  intent:EthBigBetOrderIntent;
  exchange:EthBigBetExchangeSubmitter;
  estimatedFeeCents:(contracts:number)=>number;
+ persistExchangeOrderId?:(claimId:string,exchangeOrderId:string)=>Promise<void>;
  /** Inject only the disposable test provider; production defaults to Railway PostgreSQL. */
  provider?:TransactionProvider;
  persistBeforePost?:(record:{
@@ -48,7 +49,7 @@ export async function submitBViaSharedEthClaim(input:{
  });
  if(outcome.status==="SKIPPED_ACTIVE_CLAIM")return {kind:"skipped"};
  if(outcome.status==="SUBMISSION_UNCERTAIN")return {kind:"uncertain",claimId:outcome.claim.claimId};
- if(outcome.response.kind==="accepted")await recordBExchangeOrderId(outcome.claim.claimId,outcome.response.exchangeOrderId,input.provider??sharedEthPgProvider);
+ if(outcome.response.kind==="accepted")await (input.persistExchangeOrderId??((claimId,id)=>recordBExchangeOrderId(claimId,id,input.provider??sharedEthPgProvider)))(outcome.claim.claimId,outcome.response.exchangeOrderId);
  // An exchange-level rejection is still kept fenced until authoritative
  // no-fill reconciliation. No separate release on response alone.
  return {kind:"held",claimId:outcome.claim.claimId,result:outcome.response};
