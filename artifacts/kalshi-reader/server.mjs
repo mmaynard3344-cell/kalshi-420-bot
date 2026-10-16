@@ -25,6 +25,7 @@ const ALLOWED_READ_PATHS = new Set([
   '/api/trade/fills',
   '/api/trade/analytics/eth420-candidate-history',
   '/api/trade/analytics/eth420-live-market',
+  '/api/trade/analytics/martingale-cycles',
   '/api/trade/analytics/boundary-discovery',
 ]);
 
@@ -1229,6 +1230,7 @@ function serveSimpleTradeLog(req,res) {
 <style>body{margin:0;background:#101827;color:#f2f5fa;font:15px system-ui,sans-serif}main{max-width:1200px;margin:auto;padding:24px}header{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}h1{font-size:25px;margin:0 0 8px}p{color:#bdc9d8}button,select{background:#1f3047;color:white;border:1px solid #4a5d74;border-radius:7px;padding:9px 12px}table{width:100%;border-collapse:collapse;min-width:810px}th,td{padding:11px 9px;text-align:left;border-bottom:1px solid #304056;white-space:nowrap}th{color:#b9c7da;font-size:12px;position:sticky;top:0;background:#101827}section{overflow:auto;margin-top:18px}.muted{color:#9facbf}.warn{color:#f5cc82}.err{color:#ff9b9b}a{color:#aaceff}small{color:#aab9cb}</style>
 </head><body><main><header><div><h1>Shawshank · Trade Log</h1><p>Existing exchange orders and fills · read only</p></div><div><select id="market"><option value="ALL">All markets</option><option>ETH</option><option>BTC</option><option>USD</option></select> <button id="refresh">Refresh</button></div></header>
 <p id="status">Loading trades…</p><p class="warn">EUR/USD pilot orders are held by a separate Railway Function and may not be present in this feed. Missing entries do not mean no USD trades occurred.</p>
+<section id="martingale-cycles" style="border:1px solid #40516a;border-radius:12px;padding:18px;background:#172336;margin-top:20px"><h2 style="margin:0 0 5px">Martingale Cycle Tracker</h2><p style="font-size:13px">Current verified stages for USD, ETH and BTC · updates every 10 seconds</p><div id="martingale-cycle-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px"><p>Loading stages…</p></div><small id="martingale-cycle-updated" class="muted">Waiting for cycle data</small></section>
 <section><table><thead><tr><th>Time (ET)</th><th>Market</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Price</th><th>Bet Amount</th><th>Status</th><th>W/L</th><th>Net P&L</th><th>Order ID</th></tr></thead><tbody id="rows"></tbody></table></section><p><small>Source: Shawshank existing authenticated order/fill API. No trades submitted by this page.</small></p></main>
 <script>
 let all=[];
@@ -1331,7 +1333,7 @@ async function load(){
  finally{el('refresh').disabled=false}
 }
 el('refresh').addEventListener('click',load);el('market').addEventListener('change',draw);load();
-</script></body></html>`;
+</script><script src="/martingale-cycles.js" defer></script></body></html>`;
   return send(res,200,req.method === 'HEAD' ? '' : html,'text/html; charset=utf-8');
 }
 
