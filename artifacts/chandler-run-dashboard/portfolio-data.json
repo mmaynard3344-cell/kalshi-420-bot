@@ -1,7 +1,7 @@
 {
   "asOf": "2026-10-16",
   "title": "Taylor Morrison Atlanta Townhome CMAs",
-  "scope": "Atlanta townhome roster: six active builder-community tabs reconfirmed through official community and available-home pages, plus Henson Square and Auburn Glen Towns as sold-out references. The full Atlanta directory did not expose a complete machine-readable townhome roster on October 14, so no additional community was added without substantiation. Detached-home collections and nationwide scope are excluded.",
+  "scope": "Atlanta townhome roster: six active builder-community tabs rechecked through official community and available-home pages, plus Henson Square and Auburn Glen Towns as sold-out references. The full Atlanta directory did not expose a complete machine-readable townhome roster on October 16, so no additional community was added without substantiation. Detached-home collections and nationwide scope are excluded.",
   "financing": {
     "date": "2026-10-15",
     "rate30": 7.4,
@@ -631,7 +631,7 @@
       ],
       "confidence": "High for the three current official builder cards; moderate for historical closings; low for cached Forsyth cards, portal sold badges and unreconciled syndicated actives.",
       "inventoryNote": "The current official community page and builder-syndicated portal expose three Oconee address cards. A separately indexed official available-homes result still shows 6120 and 6122 Wayburn, but the live community page no longer lists them; 6118 also disappeared. Their status is unresolved\u2014no sale, cancellation or absorption is inferred. Portal headlines and cached cards are not released-home counts.",
-      "thesis": "For the original ten October net-contract objective, the official five-home roll cannot alone support ten contracts. Use $399,990 for the two interior Oconee tests and $419,990 for end/premium Oconee-Forsyth tests, conditional on options, margin and release capacity; pair with verified finance terms rather than an opaque headline incentive.",
+      "thesis": "The current three-home official roll cannot support the original ten October net-contract objective by itself. Conditional tests are $399,990 for 100 Epperly, $419,990 for 102 Epperly and $429,990 for end-unit 106 Epperly, subject to options, margin and release capacity; pair price with verified financing terms.",
       "recommendations": [
         "For the documented entry home, test 100 Epperly at $399,990 after margin review: $20,000 below today\u2019s ask and aligned with the six-sale gross median rounded to $399,990.",
         "Test 102 Epperly at $419,990 and 106 Epperly at $429,990, subject to matched option and position review. This compresses the current $39,000-$44,000 premiums over the entry ask without assuming the homes are identical.",
@@ -1283,7 +1283,7 @@
       ],
       "confidence": "Low to moderate: current asks; only an older corroborated gross closing.",
       "inventoryNote": "Three unique cards captured from a six-home portal headline. The gap does not establish hidden inventory, sales or cancellations.",
-      "thesis": "Protect the $349,990 entry offer. The ready Forsyth asks $56,500 more than the two November Forsyth addresses; explain that premium before applying a broad cut.",
+      "thesis": "The $365,990 Forsyth entry cards remain Chandler\u2019s clearest same-plan lower-price alternative. Use $359,990 as a conditional entry test only after options, completion and margin review; the $406,490 ready home needs documented value support.",
       "recommendations": [
         "Use $359,990 as a conditional entry test for 102 and 96 Wilder Ridge after options, completion and margin review; do not automatically restore the prior $349,990 price.",
         "For 611 Rosehill, retain the $379,990 conditional test only if options and position do not support the $406,490 ask. Proposed reduction: $26,500 (6.5%).",
@@ -3419,32 +3419,32 @@
     {
       "title": "Taylor Morrison Atlanta community directory",
       "url": "https://www.taylormorrison.com/ga/atlanta",
-      "status": "Full directory did not expose a complete machine-readable townhome roster October 14. Official community/available-home pages reconfirm the six active tabs and two sold-out reference tabs; no new Atlanta townhome community was substantiated."
+      "status": "Full directory did not expose a complete machine-readable townhome roster October 16. Official community and available-home pages support six active tabs and two sold-out reference tabs; no new Atlanta townhome community was substantiated."
     },
     {
       "title": "Freddie Mac PMMS",
       "url": "https://www.freddiemac.com/pmms",
-      "status": "Read October 14; latest weekly release remains October 8: 30-year 7.40%, 15-year 6.73%. Next regular release is October 15."
+      "status": "Read October 16; October 15 weekly release: 30-year 7.40%, 15-year 6.71%."
     },
     {
       "title": "Georgia MLS Gwinnett snapshot",
       "url": "https://www.gamls.com/statistics/marketsnapshot/county/Gwinnett",
-      "status": "Read October 14; September 2026: 659 closings, 523 contracts, $410,000 median, 1,288 new, 3,597 active."
+      "status": "Read October 16; September 2026: 659 closings, 523 contracts, $410,000 median, 1,288 new, 3,597 active."
     },
     {
       "title": "Georgia MLS Cobb snapshot",
       "url": "https://www.gamls.com/statistics/marketsnapshot/county/Cobb",
-      "status": "Read October 14; September 2026: 617 closings, 442 contracts, $418,500 median, 1,082 new, 2,799 active."
+      "status": "Read October 16; September 2026 revised to 620 closings, 442 contracts, $417,750 median, 1,082 new, 2,799 active."
     },
     {
       "title": "Georgia MLS Forsyth snapshot",
       "url": "https://www.gamls.com/statistics/marketsnapshot/county/Forsyth",
-      "status": "Read October 14; September 2026: 211 closings, 153 contracts, $574,900 median, 448 new, 1,267 active. Page header duplication noted."
+      "status": "Read October 16; September 2026 revised to 212 closings, 153 contracts, $579,950 median, 448 new, 1,267 active; duplicated header noted."
     },
     {
       "title": "Georgia MLS Hall snapshot",
       "url": "https://www.gamls.com/statistics/marketsnapshot/county/Hall",
-      "status": "Re-read October 14; September 2026: 214 closings, 167 contracts, $408,500 median, 345 new, 1,155 active."
+      "status": "Read October 16; September 2026: 214 closings, 167 contracts, $408,500 median, 345 new, 1,155 active."
     },
     {
       "title": "Taylor Morrison Chandler Run community page",
@@ -3479,22 +3479,22 @@
     {
       "title": "Georgia MLS Gwinnett snapshot",
       "url": "https://www.gamls.com/statistics/marketsnapshot/county/Gwinnett",
-      "status": "Read October 16; September 2026 unchanged: 659 closings, 523 contracts, $410,000 median, 1,288 new, 3,597 active."
+      "status": "Read October 16; September 2026: 659 closings, 523 contracts, $410,000 median, 1,288 new, 3,597 active."
     },
     {
       "title": "Georgia MLS Cobb snapshot",
       "url": "https://www.gamls.com/statistics/marketsnapshot/county/Cobb",
-      "status": "Read October 16; September revised: 620 closings, 442 contracts, $417,750 median, 1,082 new, 2,799 active."
+      "status": "Read October 16; September 2026 revised to 620 closings, 442 contracts, $417,750 median, 1,082 new, 2,799 active."
     },
     {
       "title": "Georgia MLS Forsyth snapshot",
       "url": "https://www.gamls.com/statistics/marketsnapshot/county/Forsyth",
-      "status": "Read October 16; September revised: 212 closings, 153 contracts, $579,950 median, 448 new, 1,267 active; duplicated header noted."
+      "status": "Read October 16; September 2026 revised to 212 closings, 153 contracts, $579,950 median, 448 new, 1,267 active; duplicated header noted."
     },
     {
       "title": "Georgia MLS Hall snapshot",
       "url": "https://www.gamls.com/statistics/marketsnapshot/county/Hall",
-      "status": "Read October 16; September unchanged: 214 closings, 167 contracts, $408,500 median, 345 new, 1,155 active."
+      "status": "Read October 16; September 2026: 214 closings, 167 contracts, $408,500 median, 345 new, 1,155 active."
     }
   ],
   "changeLog": [
@@ -3510,7 +3510,7 @@
     "Address samples and builder headline counts are not absorption. No sales pace, cancellations or incentives are inferred from card counts.",
     "County statistics cover all residential property types. Active / monthly closings is a calculated ratio, not published months of supply or community absorption.",
     "Price tests are analyst recommendations conditional on options, position, margin, released inventory and measured buyer response. They do not guarantee ten sales.",
-    "Research attempted October 14, 2026. Source registers distinguish successful current fields, older underlying updates, portal badges and failed rechecks. Carried records are not silently relabeled current."
+    "Research attempted October 16, 2026. Source registers distinguish successful current fields, older underlying updates, portal badges and failed rechecks. Carried records are not silently relabeled current."
   ],
   "previousAsOf": "2026-10-14",
   "refreshHistory": [
