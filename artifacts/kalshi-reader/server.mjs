@@ -1354,6 +1354,16 @@ async function martingaleCyclesReadOnly(req,res) {
       );
       const row=result.rows[0],step=Number(row?.step);
       if(!Number.isInteger(step)||step<0||step>5)return;
+      const btcTable=await client.query("SELECT to_regclass('public.btc_shared_ladder') AS ladder");
+      if(btcTable.rows[0]?.ladder){
+        const btc=await client.query("SELECT step,pending_order_id,pending_settlement_id FROM btc_shared_ladder WHERE market='BTC' LIMIT 1");
+        const b=btc.rows[0],btcStep=Number(b?.step);
+        if(b&&Number.isInteger(btcStep)&&btcStep>=0&&btcStep<=5){
+          cycles[2]={market:'BTC',step:btcStep+1,maxSteps:6,nextWagerCents:[100,200,400,800,1600,3200][btcStep],
+            status:b.pending_order_id?'Order pending settlement':b.pending_settlement_id?'Settlement pending confirmation':'Ready for next signal',
+            source:'btc_shared_ladder PostgreSQL',activeTicker:null};
+        }
+      }
       cycles[1]={market:'ETH',step:step+1,maxSteps:6,nextWagerCents:[100,200,400,800,1600,3200][step],
         status:row.active_claim_id?'Waiting for settlement ('+(row.status||'pending')+')':'Ready for signal',
         source:'shared PostgreSQL ledger',activeTicker:row.ticker||null};
