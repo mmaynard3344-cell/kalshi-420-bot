@@ -9,6 +9,7 @@ import { currentEthServiceRole } from "./lib/strategies/ethServiceRole.js";
 import { submitThroughSharedEthGate } from "./lib/sharedEthOrderGateway.js";
 import { sharedEthPgProvider } from "./lib/sharedEthPgProvider.js";
 import { ethContractsWithinBudget } from "./lib/sharedEthOrderSizing.js";
+import { finalizeEthClaim } from "./lib/sharedEthClaimStore.js";
 
 const SERIES = "KXETH15M";
 const LIMIT_PRICE_CENTS = 50;
@@ -131,7 +132,7 @@ async function initStore(): Promise<void> {
     CREATE INDEX IF NOT EXISTS eth_g_streak_reversal_unsettled_idx
     ON eth_g_streak_reversal_orders (settled_at_ms, updated_at_ms)
   `);
-  await d.execute(sql`
+  if(process.env["ETH_G_SHARED_MARTINGALE_ENABLED"]==="true") await d.execute(sql`
     CREATE TABLE IF NOT EXISTS eth_g_shared_claim_links (
       client_order_id TEXT PRIMARY KEY,
       claim_id UUID NOT NULL UNIQUE REFERENCES eth_shared_martingale_claims(claim_id),
@@ -282,6 +283,22 @@ async function fetchMarketResult(ticker: string): Promise<OutcomeSide | null> {
 
 async function settleOrder(order: GOrder, result: OutcomeSide): Promise<void> {
   const d = await db();
+  if(process.env["ETH_G_SHARED_MARTINGALE_ENABLED"]==="true"){
+    const linked=rows(await d.execute(sql`
+      SELECT claim_id FROM eth_g_shared_claim_links WHERE client_order_id=${order.clientOrderId}
+    `))[0];
+    if(!linked)throw Error("G shared settlement missing claim link");
+    if(!isTerminal(order.status))return;
+    const outcome=order.filledContracts<=0?"ZERO_FILL":order.side===result?"WIN":"LOSS";
+    await finalizeEthClaim(sharedEthPgProvider,String(linked["claim_id"]),
+      "G:"+order.clientOrderId+":"+result,outcome);
+    await d.execute(sql`
+      UPDATE eth_g_streak_reversal_orders SET settlement_result=${result},
+        won=${order.filledContracts>0?order.side===result:null},settled_at_ms=${Date.now()},
+        updated_at_ms=${Date.now()} WHERE id=${order.id} AND settled_at_ms IS NULL
+    `);
+    return;
+  }
   const won = order.filledContracts > 0 ? order.side === result : null;
   await d.transaction(async (tx) => {
     const claim = await tx.execute(sql`
@@ -516,6 +533,16 @@ async function submitGWithSharedReservation(
    self_trade_prevention_type:"taker_at_cross",exchange_index:market.exchangeIndex
   });
  });
+ if(attempt.status==="SUBMITTED" || attempt.status==="SUBMISSION_UNCERTAIN"){
+  const d=await db();
+  const parsed=attempt.status==="SUBMITTED"?parseKalshiOrderResponse(attempt.response,0):null;
+  await d.execute(sql`
+    UPDATE eth_g_streak_reversal_orders
+    SET kalshi_order_id=${parsed?.kalshiOrderId??null},
+      status=${parsed?.kalshiOrderId?(parsed.orderStatus??"submitted"):"submission_unknown"},
+      updated_at_ms=${Date.now()} WHERE client_order_id=${clientOrderId}
+  `);
+ }
  logger.info({ticker:market.ticker,status:attempt.status,claimId:attempt.status==="SKIPPED_ACTIVE_CLAIM"?null:attempt.claim.claimId},
   "G shared ETH claim gateway decision");
 }
