@@ -44,6 +44,8 @@ jobs:
             if(!x.includes(evidence))throw Error("Missing G authenticated final-fill guard "+evidence);
           if(x.indexOf("verifiedFills")>x.indexOf("finalizeEthClaim("))throw Error("G finalizing before verified fills");
           NODE
+      - name: Validate explicit shared migration installer syntax
+        run: node --check artifacts/api-server/scripts/install-g-shared-martingale.mjs
       - name: Verify gateway does not turn on by default
         run: |
           node -e 'const fs=require("fs");const s=fs.readFileSync("artifacts/api-server/src/g4060ScalpIndex.ts","utf8");if(!s.includes("ETH_G_SHARED_MARTINGALE_ENABLED")||!s.includes("ETH_SHARED_SETTLEMENT_BRIDGE_READY"))process.exit(1)'
