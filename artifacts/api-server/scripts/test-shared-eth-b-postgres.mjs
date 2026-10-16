@@ -20,7 +20,7 @@ await build({
  entryPoints:[resolve("src/lib/strategies/ethJumpSharedAdapter.ts")],
  bundle:true,platform:"node",format:"esm",outfile:bAdapterFile,packages:"external",
  plugins:[{name:"disposable-db-only",setup(b){
-  b.onResolve({filter:/sharedEthPgProvider\\.js$|^@workspace\\/db$/},()=>({path:"db-stub",namespace:"review-stub"}));
+  b.onResolve({filter:new RegExp("sharedEthPgProvider|@workspace/db")},()=>({path:"db-stub",namespace:"review-stub"}));
   b.onLoad({filter:/.*/,namespace:"review-stub"},()=>({contents:"export const sharedEthPgProvider = null;",loader:"js"}));
  }}]
 });
