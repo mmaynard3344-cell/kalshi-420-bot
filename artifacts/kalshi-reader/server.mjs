@@ -1337,8 +1337,37 @@ el('refresh').addEventListener('click',load);el('market').addEventListener('chan
   return send(res,200,req.method === 'HEAD' ? '' : html,'text/html; charset=utf-8');
 }
 
+async function martingaleCyclesReadOnly(req,res) {
+  if(req.method!=='GET'&&req.method!=='HEAD')return send(res,405,'Method not allowed');
+  const unavailable=(market,status)=>({market,step:null,maxSteps:null,nextWagerCents:null,status,source:'unverified',activeTicker:null});
+  const cycles=[
+    unavailable('USD','USD strategy cycle source not yet connected'),
+    unavailable('ETH','ETH shared ledger unavailable'),
+    unavailable('BTC','BTC strategy cycle source not yet connected')
+  ];
+  try{
+    await withReadOnlyDb(async(client)=>{
+      const tables=await client.query("SELECT to_regclass('public.eth_shared_martingale_state') AS state, to_regclass('public.eth_shared_martingale_claims') AS claims");
+      if(!tables.rows[0]?.state||!tables.rows[0]?.claims)return;
+      const result=await client.query(
+        "SELECT s.step,s.active_claim_id,c.ticker,c.status FROM eth_shared_martingale_state s LEFT JOIN eth_shared_martingale_claims c ON c.claim_id=s.active_claim_id WHERE s.singleton=TRUE LIMIT 1"
+      );
+      const row=result.rows[0],step=Number(row?.step);
+      if(!Number.isInteger(step)||step<0||step>5)return;
+      cycles[1]={market:'ETH',step:step+1,maxSteps:6,nextWagerCents:[100,200,400,800,1600,3200][step],
+        status:row.active_claim_id?'Waiting for settlement ('+(row.status||'pending')+')':'Ready for signal',
+        source:'shared PostgreSQL ledger',activeTicker:row.ticker||null};
+    });
+  }catch(error){
+    console.error('Martingale cycle read-only fetch failed',String(error?.message??error));
+    cycles[1].status='ETH database read failed';
+  }
+  return send(res,200,req.method==='HEAD'?'':JSON.stringify({generatedAtMs:Date.now(),cycles}),'application/json; charset=utf-8');
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  if (url.pathname === '/api/trade/analytics/martingale-cycles') return void martingaleCyclesReadOnly(req,res);
   if (url.pathname === '/api/diagnostics/trade-results') return void tradeResultsReadOnly(req,res,url);
   if (url.pathname === '/trades') return void serveSimpleTradeLog(req, res);
   if (url.pathname === '/api/diagnostics/btc-bl-status') return void btcBlStatusDiagnostics(req, res);
