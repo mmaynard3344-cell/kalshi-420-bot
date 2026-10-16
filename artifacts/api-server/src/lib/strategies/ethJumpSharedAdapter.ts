@@ -2,6 +2,7 @@ import {submitThroughSharedEthGate} from "../sharedEthOrderGateway.js";
 import type {TransactionProvider} from "../sharedEthClaimStore.js";
 import {sharedEthPgProvider} from "../sharedEthPgProvider.js";
 import {ethContractsWithinBudget} from "../sharedEthOrderSizing.js";
+import {recordBClaimBeforePost,recordBExchangeOrderId} from "./ethJumpSharedClaimJournal.js";
 import type {EthBigBetExchangeSubmitter,EthBigBetSubmitResult} from "./ethBigBetExecutor.js";
 import type {EthBigBetOrderIntent} from "./ethBigBetLifecycle.js";
 
@@ -15,7 +16,7 @@ export async function submitBViaSharedEthClaim(input:{
  estimatedFeeCents:(contracts:number)=>number;
  /** Inject only the disposable test provider; production defaults to Railway PostgreSQL. */
  provider?:TransactionProvider;
- persistBeforePost:(record:{
+ persistBeforePost?:(record:{
    claimId:string;clientOrderId:string;contracts:number;budgetCents:number;
    priceCents:number;ticker:string;side:"yes"|"no";
  })=>Promise<void>;
@@ -35,7 +36,7 @@ export async function submitBViaSharedEthClaim(input:{
  },async (claim,id)=>{
   const size=ethContractsWithinBudget(claim.budgetCents,input.intent.limitPriceCents,input.estimatedFeeCents);
   if(size.contracts<1)throw Error("no affordable ETH B contracts including fees");
-  await input.persistBeforePost({
+  await (input.persistBeforePost??(async record=>recordBClaimBeforePost({claimId:record.claimId,clientOrderId:record.clientOrderId,ticker:record.ticker,side:record.side,contracts:record.contracts},input.provider??sharedEthPgProvider)))({
    claimId:claim.claimId,clientOrderId:id,contracts:size.contracts,
    budgetCents:claim.budgetCents,priceCents:input.intent.limitPriceCents,
    ticker:input.intent.ticker,side:input.intent.side
@@ -47,6 +48,7 @@ export async function submitBViaSharedEthClaim(input:{
  });
  if(outcome.status==="SKIPPED_ACTIVE_CLAIM")return {kind:"skipped"};
  if(outcome.status==="SUBMISSION_UNCERTAIN")return {kind:"uncertain",claimId:outcome.claim.claimId};
+ if(outcome.response.kind==="accepted")await recordBExchangeOrderId(outcome.claim.claimId,outcome.response.exchangeOrderId,input.provider??sharedEthPgProvider);
  // An exchange-level rejection is still kept fenced until authoritative
  // no-fill reconciliation. No separate release on response alone.
  return {kind:"held",claimId:outcome.claim.claimId,result:outcome.response};
