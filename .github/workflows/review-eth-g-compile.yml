@@ -1,0 +1,21 @@
+name: ETH G integration compilation gate
+on:
+  push:
+    branches:
+      - review/eth-g-shared-ladder-adapter
+  workflow_dispatch:
+jobs:
+  compile-g:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile G plus shared ledger without running trading
+        run: |
+          npm install --prefix /tmp/eth-g-build --no-audit --no-fund esbuild
+          /tmp/eth-g-build/node_modules/.bin/esbuild artifacts/api-server/src/g4060ScalpIndex.ts --bundle --packages=external --platform=node --format=esm --outfile=/tmp/eth-g-review.mjs
+      - name: Verify gateway does not turn on by default
+        run: |
+          node -e 'const fs=require("fs");const s=fs.readFileSync("artifacts/api-server/src/g4060ScalpIndex.ts","utf8");if(!s.includes("ETH_G_SHARED_MARTINGALE_ENABLED")||!s.includes("ETH_SHARED_SETTLEMENT_BRIDGE_READY"))process.exit(1)'
