@@ -1379,7 +1379,7 @@ async function martingaleCyclesReadOnly(req,res) {
           if(row&&Number.isInteger(step)&&step>=0&&step<=5){
             const age=Date.now()-seen;
             cycles[0]={market:'USD',step:step+1,maxSteps:6,
-              nextWagerCents:[100,200,400,800,1600,3200][step],
+              nextWagerCents:[200,400,800,1600,3200,6400][step],
               status:age>25*60000?'Stale snapshot ('+Math.round(age/60000)+' min old)':
                row.unresolved?'Outstanding order awaiting reconciliation':'Ready for next signal',
               source:'USD Function SQLite snapshot',activeTicker:null};
@@ -1393,7 +1393,7 @@ async function martingaleCyclesReadOnly(req,res) {
           const result=await client.query("SELECT s.step,s.active_claim_id,c.ticker,c.status FROM eth_shared_martingale_state s LEFT JOIN eth_shared_martingale_claims c ON c.claim_id=s.active_claim_id WHERE s.singleton=TRUE LIMIT 1");
           const row=result.rows[0],step=Number(row?.step);
           if(row&&Number.isInteger(step)&&step>=0&&step<=5)
-            cycles[1]={market:'ETH',step:step+1,maxSteps:6,nextWagerCents:[100,200,400,800,1600,3200][step],
+            cycles[1]={market:'ETH',step:step+1,maxSteps:6,nextWagerCents:[200,400,800,1600,3200,6400][step],
               status:row.active_claim_id?'Waiting for settlement ('+(row.status||'pending')+')':'Ready for next signal',
               source:'eth_shared_martingale_state',activeTicker:row.ticker||null};
         }
@@ -1404,7 +1404,7 @@ async function martingaleCyclesReadOnly(req,res) {
           const r=await client.query("SELECT step,pending_order_id,pending_settlement_id FROM btc_shared_ladder WHERE market='BTC' LIMIT 1");
           const row=r.rows[0],step=Number(row?.step);
           if(row&&Number.isInteger(step)&&step>=0&&step<=5)
-            cycles[2]={market:'BTC',step:step+1,maxSteps:6,nextWagerCents:[100,200,400,800,1600,3200][step],
+            cycles[2]={market:'BTC',step:step+1,maxSteps:6,nextWagerCents:[200,400,800,1600,3200,6400][step],
               status:row.pending_order_id?'Order pending settlement':row.pending_settlement_id?'Settlement pending verification':'Ready for next signal',
               source:'btc_shared_ladder',activeTicker:null};
         }
