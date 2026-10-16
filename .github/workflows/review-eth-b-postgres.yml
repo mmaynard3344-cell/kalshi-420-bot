@@ -30,8 +30,8 @@ jobs:
         run: |
           mkdir -p /tmp/eth-b-gate/src/lib/strategies /tmp/eth-b-gate/scripts
           cp artifacts/api-server/src/lib/sharedEthMartingale.ts artifacts/api-server/src/lib/sharedEthClaimStore.ts artifacts/api-server/src/lib/sharedEthOrderGateway.ts artifacts/api-server/src/lib/sharedEthPgProvider.ts artifacts/api-server/src/lib/sharedEthOrderSizing.ts /tmp/eth-b-gate/src/lib/
-          cp artifacts/api-server/src/lib/strategies/ethJumpSharedAdapter.ts artifacts/api-server/src/lib/strategies/ethJumpSharedSettlement.ts artifacts/api-server/src/lib/strategies/ethJumpSharedKalshiReconciler.ts /tmp/eth-b-gate/src/lib/strategies/
-          cp artifacts/api-server/scripts/test-shared-eth-b-postgres.mjs artifacts/api-server/scripts/test-b-kalshi-reconciler.mjs /tmp/eth-b-gate/scripts/
+          cp artifacts/api-server/src/lib/strategies/ethJumpSharedAdapter.ts artifacts/api-server/src/lib/strategies/ethJumpSharedSettlement.ts artifacts/api-server/src/lib/strategies/ethJumpSharedKalshiReconciler.ts artifacts/api-server/src/lib/strategies/ethJumpSharedLifecycle.ts /tmp/eth-b-gate/src/lib/strategies/
+          cp artifacts/api-server/scripts/test-shared-eth-b-postgres.mjs artifacts/api-server/scripts/test-b-kalshi-reconciler.mjs artifacts/api-server/scripts/test-b-shared-lifecycle.mjs /tmp/eth-b-gate/scripts/
           printf '{"type":"module"}' > /tmp/eth-b-gate/package.json
           cd /tmp/eth-b-gate
           npm install --no-audit --no-fund pg esbuild
@@ -48,3 +48,6 @@ jobs:
       - name: Test mocked authenticated B reconciliation
         working-directory: /tmp/eth-b-gate
         run: node scripts/test-b-kalshi-reconciler.mjs
+      - name: Test B lifecycle fail-closed recovery
+        working-directory: /tmp/eth-b-gate
+        run: node scripts/test-b-shared-lifecycle.mjs
