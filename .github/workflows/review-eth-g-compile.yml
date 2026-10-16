@@ -1,0 +1,83 @@
+name: ETH G integration compilation gate
+on:
+  push:
+    branches:
+      - review/eth-g-shared-ladder-adapter
+  pull_request:
+    branches:
+      - deploy/eth-g-one-dollar-20261013
+  workflow_dispatch:
+jobs:
+  compile-g:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile G plus shared ledger without running trading
+        run: |
+          npm install --prefix /tmp/eth-g-build --no-audit --no-fund esbuild
+          /tmp/eth-g-build/node_modules/.bin/esbuild artifacts/api-server/src/g4060ScalpIndex.ts --bundle --packages=external --platform=node --format=esm --outfile=/tmp/eth-g-review.mjs
+      - name: Verify shared G settlement and order recovery wiring
+        run: |
+          node -e 'const fs=require("fs");const s=fs.readFileSync("artifacts/api-server/src/g4060ScalpIndex.ts","utf8");for(const x of ["submitThroughSharedEthGate(","finalizeEthClaim(","eth_g_shared_claim_links","refreshOrder(order)","reconcileOutstanding()","ETH_G_SHARED_MARTINGALE_ENABLED"])if(!s.includes(x))throw Error("G shared integration missing "+x)'
+      - name: Verify unresolved G shared submissions retain exchange identity fence
+        run: |
+          node - <<'NODE'
+          const fs=require("fs");
+          const s=fs.readFileSync("artifacts/api-server/src/g4060ScalpIndex.ts","utf8");
+          const start=s.indexOf("async function reconcileOutstanding()");
+          const end=s.indexOf("async function discoverCurrentMarket()",start);
+          const body=s.slice(start,end);
+          if(!body.includes('ETH_G_SHARED_MARTINGALE_ENABLED') || !body.includes('!order.kalshiOrderId)continue') || body.indexOf('!order.kalshiOrderId)continue')>body.indexOf('await settleOrder(order, result)'))throw Error("G shared order identity fence missing before settlement");
+          NODE
+      - name: Check G authenticated terminal-fill settlement fence
+        run: |
+          node - <<'NODE'
+          const fs=require("fs");
+          const s=fs.readFileSync("artifacts/api-server/src/g4060ScalpIndex.ts","utf8");
+          const start=s.indexOf("async function settleOrder(");
+          const end=s.indexOf("async function reconcileOutstanding()",start);
+          const x=s.slice(start,end);
+          for(const evidence of ["rawDetail","client_order_id","order_id","ticker","fillCountProvided","verifiedFills","finalizeEthClaim("])
+            if(!x.includes(evidence))throw Error("Missing G authenticated final-fill guard "+evidence);
+          if(x.indexOf("verifiedFills")>x.indexOf("finalizeEthClaim("))throw Error("G finalizing before verified fills");
+          NODE
+      - name: Validate explicit shared migration installer syntax
+        run: node --check artifacts/api-server/scripts/install-g-shared-martingale.mjs
+      - name: Verify gateway does not turn on by default
+        run: |
+          node -e 'const fs=require("fs");const s=fs.readFileSync("artifacts/api-server/src/g4060ScalpIndex.ts","utf8");if(!s.includes("ETH_G_SHARED_MARTINGALE_ENABLED")||!s.includes("ETH_SHARED_SETTLEMENT_BRIDGE_READY"))process.exit(1)'
+
+  disposable-g-ledger:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: eth_g_disposable_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eth_g_disposable_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Set up isolated G ledger test
+        run: |
+          mkdir -p /tmp/eth-g-ledger/src/lib /tmp/eth-g-ledger/scripts
+          cp artifacts/api-server/src/lib/sharedEthMartingale.ts artifacts/api-server/src/lib/sharedEthClaimStore.ts artifacts/api-server/src/lib/sharedEthOrderGateway.ts /tmp/eth-g-ledger/src/lib/
+          cp artifacts/api-server/scripts/test-shared-eth-disposable-postgres.mjs /tmp/eth-g-ledger/scripts/
+          printf '{"type":"module"}' > /tmp/eth-g-ledger/package.json
+          cd /tmp/eth-g-ledger
+          npm install --no-audit --no-fund pg esbuild
+      - name: Exercise G shared reservation, timeout, partial fill, settlement
+        working-directory: /tmp/eth-g-ledger
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/eth_g_disposable_test
+        run: node scripts/test-shared-eth-disposable-postgres.mjs
