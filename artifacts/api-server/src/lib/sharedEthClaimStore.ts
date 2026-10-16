@@ -51,15 +51,15 @@ export async function finalizeEthClaim(
     );
     const state=rows[0];
     if(!state)throw new Error("ETH shared ladder missing");
-    const claimRows=await tx.query<{status:string;settlement_id:string|null;step:number}>(
+    const claimRows=await tx.query<{status:string;settlement_id:string|null;step:number;outcome:EthSettlement|null}>(
       "SELECT status,settlement_id,step FROM eth_shared_martingale_claims WHERE claim_id=$1 FOR UPDATE",
       [claimId]
     );
     const claim=claimRows.rows[0];
     if(!claim)throw new Error("unknown ETH claim");
     if(["SETTLED","ZERO_FILL"].includes(claim.status)){
-      if(claim.settlement_id!==settlementId)throw new Error("conflicting settlement ID");
-      return {step:Number(state.step),alreadyApplied:true};
+      if(claim.settlement_id!==settlementId || claim.outcome!==outcome)throw new Error("conflicting settlement identity or outcome");
+      return {step:nextStep(Number(claim.step),outcome),alreadyApplied:true};
     }
     if(state.active_claim_id!==claimId)throw new Error("stale ETH settlement claim");
     if(claim.status!=="SUBMITTED")throw new Error("cannot settle an unsubmitted claim");
