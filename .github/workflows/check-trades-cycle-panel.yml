@@ -1,0 +1,26 @@
+name: Validate Trade Log cycle panel
+on:
+  push:
+    branches:
+      - fix/trades-cycle-panel-20261016
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check server and separate cycle tracker JavaScript
+        run: |
+          node --check artifacts/kalshi-reader/server.mjs
+          node --check artifacts/kalshi-reader/public/martingale-cycles.js
+      - name: Verify Trade Log markup and API allowlist
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const code=fs.readFileSync('artifacts/kalshi-reader/server.mjs','utf8');
+          for(const term of ['id="martingale-cycle-cards"','/martingale-cycles.js','/api/trade/analytics/martingale-cycles'])
+            if(!code.includes(term)) throw new Error('Missing '+term);
+          NODE
