@@ -91,6 +91,23 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
       logger.error({ticker:input.market.ticker,error:String(error)},"B shared ETH reconciliation unavailable; no order submitted");
       return finish("storage_unavailable","shared_reconciliation_unavailable");
     }
+    // Explicit second activation gate: never enable this before every ETH
+    // executor has the same shared claim fence and migrations are verified.
+    if(process.env["ETH_B_SHARED_SUBMISSION_READY"]==="true"){
+      const exchange=createEthBigBetKalshiSubmitter(input.exchangeIndex);
+      if(!exchange)return finish("routing_unavailable","shared_exchange_unavailable");
+      try{
+        const submission=await submitBViaSharedEthClaim({
+          intent,exchange,
+          estimatedFeeCents:(contracts)=>Math.ceil(0.07*contracts*intent.limitPriceCents*(100-intent.limitPriceCents)/100),
+        });
+        logger.info({ticker:intent.ticker,kind:submission.kind},"B shared ETH submit result");
+        return finish(submission.kind==="held"?"submitted":submission.kind==="skipped"?"blocked_duplicate":"submission_unknown");
+      }catch(error){
+        logger.error({ticker:intent.ticker,error:String(error)},"B shared ETH submission held for reconciliation");
+        return finish("submission_unknown","shared_submission_error");
+      }
+    }
     logger.error({ticker:input.market.ticker,service:"B"},
       "ETH B shared cutover requested, but execution adapter not installed; fail closed");
     return finish("disabled","shared_eth_adapter_not_installed");
