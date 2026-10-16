@@ -1207,7 +1207,7 @@ function serveSimpleTradeLog(req,res) {
 <style>body{margin:0;background:#101827;color:#f2f5fa;font:15px system-ui,sans-serif}main{max-width:1200px;margin:auto;padding:24px}header{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}h1{font-size:25px;margin:0 0 8px}p{color:#bdc9d8}button,select{background:#1f3047;color:white;border:1px solid #4a5d74;border-radius:7px;padding:9px 12px}table{width:100%;border-collapse:collapse;min-width:810px}th,td{padding:11px 9px;text-align:left;border-bottom:1px solid #304056;white-space:nowrap}th{color:#b9c7da;font-size:12px;position:sticky;top:0;background:#101827}section{overflow:auto;margin-top:18px}.muted{color:#9facbf}.warn{color:#f5cc82}.err{color:#ff9b9b}a{color:#aaceff}small{color:#aab9cb}</style>
 </head><body><main><header><div><h1>Shawshank · Trade Log</h1><p>Existing exchange orders and fills · read only</p></div><div><select id="market"><option value="ALL">All markets</option><option>ETH</option><option>BTC</option><option>USD</option></select> <button id="refresh">Refresh</button></div></header>
 <p id="status">Loading trades…</p><p class="warn">EUR/USD pilot orders are held by a separate Railway Function and may not be present in this feed. Missing entries do not mean no USD trades occurred.</p>
-<section><table><thead><tr><th>Time (ET)</th><th>Market</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Price</th><th>Status</th><th>W/L</th><th>Net profit</th><th>Order ID</th></tr></thead><tbody id="rows"></tbody></table></section><p><small>Source: Shawshank existing authenticated order/fill API. No trades submitted by this page.</small></p></main>
+<section><table><thead><tr><th>Time (ET)</th><th>Market</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Price</th><th>Status</th><th>W/L</th><th>Net P&L</th><th>Order ID</th></tr></thead><tbody id="rows"></tbody></table></section><p><small>Source: Shawshank existing authenticated order/fill API. No trades submitted by this page.</small></p></main>
 <script>
 let all=[];
 const el=id=>document.getElementById(id);
@@ -1224,25 +1224,53 @@ function draw(){
 async function load(){
  el('refresh').disabled=true;el('status').textContent='Loading orders and fills…';
  try{
-  const [ro,rf]=await Promise.all([fetch('/api/trade/orders?limit=1000',{cache:'no-store'}),fetch('/api/trade/fills?limit=1000',{cache:'no-store'})]);
+  const [ro,rf,own]=await Promise.all([fetch('/api/trade/orders?limit=1000',{cache:'no-store'}),fetch('/api/trade/fills?limit=1000',{cache:'no-store'}),fetch('/api/diagnostics/service-ownership',{cache:'no-store'}).catch(()=>null)]);
   if(!ro.ok||!rf.ok)throw Error('The trade feed returned an error');
   const [op,fp]=await Promise.all([ro.json(),rf.json()]);
   const orders=Array.isArray(op)?op:Array.isArray(op.orders)?op.orders:[];
   const fills=Array.isArray(fp)?fp:Array.isArray(fp.fills)?fp.fills:[];
+  const ownersByOrder=new Map(), ownersByClient=new Map();
+  if(own?.ok){
+   const data=await own.json();
+   for(const record of (Array.isArray(data.rows)?data.rows:[])){
+    if(!record.service||record.service==='Unattributed')continue;
+    if(record.orderId)ownersByOrder.set(String(record.orderId),record.service);
+    if(record.clientOrderId)ownersByClient.set(String(record.clientOrderId),record.service);
+   }
+  }
   const byId=new Map();
   for(const f of fills){const id=val(f,'order_id','orderId','kalshi_order_id');if(!id)continue;const key=String(id);const a=byId.get(key)||{qty:0};a.qty+=Number(val(f,'count','count_fp','filled_contracts','quantity')||0);byId.set(key,a)}
-  all=orders.map(o=>{const ticker=String(val(o,'ticker','market_ticker')||'');const id=val(o,'order_id','orderId','kalshi_order_id');const fill=byId.get(String(id));const count=Number(val(o,'fill_count_fp','fill_count','filled_contracts')??fill?.qty??0);const rawDollars=val(o,'realized_pnl_dollars','realized_net_pnl_dollars','realized_pnl','pnl_dollars');const rawCents=val(o,'realized_pnl_cents','realized_net_pnl_cents','pnl_cents');const status=String(val(o,'status','state')||'').toLowerCase();let net=null;if(count>0&&rawDollars!==null&&Number.isFinite(Number(rawDollars)))net=Number(rawDollars);else if(count>0&&rawCents!==null&&Number.isFinite(Number(rawCents)))net=Number(rawCents)/100;const wl=count===0&&['canceled','cancelled','expired','rejected'].includes(status)?'NO FILL':net===null?'Pending':net>0?'WIN':net<0?'LOSS':'BREAK EVEN';return {wl,netProfit:net===null?'—':(net>0?'+':'')+'time:val(o,'created_time','created_at','created_at_ms','time','submitted_at'),market:market(ticker),service:val(o,'service','origin_service','strategy','strategy_name','service_name')||'Unattributed',ticker,side:val(o,'side','action','position_side'),requested:val(o,'initial_count_fp','initial_count','count_fp','count','contracts'),filled:val(o,'fill_count_fp','fill_count','filled_contracts')??fill?.qty??'—',price:val(o,'yes_price_dollars','no_price_dollars','price','limit_price'),status:val(o,'status','state'),id:id||'—'};}).sort((a,b)=>{const ts=x=>typeof x==='number'?(x>1e12?x:x*1000):Date.parse(x)||0;return ts(b.time)-ts(a.time)});
+  all=orders.map(o=>{
+    const ticker=String(val(o,'ticker','market_ticker')||'');
+    const id=val(o,'order_id','orderId','kalshi_order_id');
+    const clientId=val(o,'client_order_id','clientOrderId');
+    const fill=byId.get(String(id));
+    const count=Number(val(o,'fill_count_fp','fill_count','filled_contracts')??fill?.qty??0);
+    const status=String(val(o,'status','state')||'').toLowerCase();
+    const moneyD=val(o,'realized_net_pnl_dollars','realized_pnl_dollars','realized_pnl','pnl_dollars');
+    const moneyC=val(o,'realized_net_pnl_cents','realized_pnl_cents','pnl_cents');
+    let net=null;
+    if(count>0&&moneyD!==null&&Number.isFinite(Number(moneyD)))net=Number(moneyD);
+    else if(count>0&&moneyC!==null&&Number.isFinite(Number(moneyC)))net=Number(moneyC)/100;
+    const wl=count===0&&['canceled','cancelled','expired','rejected'].includes(status)?'NO FILL':net===null?'Pending':net>0?'WIN':net<0?'LOSS':'BREAK EVEN';
+    return {
+      time:val(o,'created_time','created_at','created_at_ms','time','submitted_at'),
+      market:market(ticker),
+      service:ownersByOrder.get(String(id))||ownersByClient.get(String(clientId))||val(o,'service','origin_service','strategy','strategy_name','service_name')||'Unattributed',
+      ticker,side:val(o,'position_side','direction','side'),
+      requested:val(o,'initial_count_fp','initial_count','count_fp','count','contracts'),
+      filled:val(o,'fill_count_fp','fill_count','filled_contracts')??fill?.qty??'—',
+      price:val(o,'yes_price_dollars','no_price_dollars','price','limit_price'),
+      status:val(o,'status','state'),wl,
+      netProfit:net===null?'—':(net>0?'+':'')+'$'+net.toFixed(2),
+      id:id||'—'
+    };
+  }).sort((a,b)=>{
+    const ts=x=>typeof x==='number'?(x>1e12?x:x*1000):Date.parse(x)||0;
+    return ts(b.time)-ts(a.time);
+  });
   draw();
- }catch(e){el('status').textContent='Could not load orders: '+e.message;el('rows').innerHTML='<tr><td colspan="10">Trade feed unavailable.</td></tr>'}
- finally{el('refresh').disabled=false}
-}
-el('refresh').addEventListener('click',load);el('market').addEventListener('change',draw);load();
-</script></body></html>`;
-  return send(res,200,req.method === 'HEAD' ? '' : html,'text/html; charset=utf-8');
-}
-+net.toFixed(2),time:val(o,'created_time','created_at','created_at_ms','time','submitted_at'),market:market(ticker),service:val(o,'service','origin_service','strategy','strategy_name','service_name')||'Unattributed',ticker,side:val(o,'side','action','position_side'),requested:val(o,'initial_count_fp','initial_count','count_fp','count','contracts'),filled:val(o,'fill_count_fp','fill_count','filled_contracts')??fill?.qty??'—',price:val(o,'yes_price_dollars','no_price_dollars','price','limit_price'),status:val(o,'status','state'),id:id||'—'};}).sort((a,b)=>{const ts=x=>typeof x==='number'?(x>1e12?x:x*1000):Date.parse(x)||0;return ts(b.time)-ts(a.time)});
-  draw();
- }catch(e){el('status').textContent='Could not load orders: '+e.message;el('rows').innerHTML='<tr><td colspan="10">Trade feed unavailable.</td></tr>'}
+ }catch(e){el('status').textContent='Could not load orders: '+e.message;el('rows').innerHTML='<tr><td colspan="12">Trade feed unavailable.</td></tr>'}
  finally{el('refresh').disabled=false}
 }
 el('refresh').addEventListener('click',load);el('market').addEventListener('change',draw);load();
