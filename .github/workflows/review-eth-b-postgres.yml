@@ -45,6 +45,10 @@ jobs:
           TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/eth_b_gate_test
         run: node scripts/test-shared-eth-b-postgres.mjs
 
+      - name: Compile actual B Jump runtime entrypoint
+        run: |
+          cd artifacts/api-server
+          ../../node_modules/.bin/esbuild src/lib/strategies/ethJumpLiveRunner.ts --bundle --packages=external --platform=node --format=esm --outfile=/tmp/eth-jump-review.mjs
       - name: Test mocked authenticated B reconciliation
         working-directory: /tmp/eth-b-gate
         run: node scripts/test-b-kalshi-reconciler.mjs
