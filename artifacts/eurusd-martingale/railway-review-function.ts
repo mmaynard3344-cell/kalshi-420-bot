@@ -411,8 +411,10 @@ async function executeFx(
       "SELECT ticker FROM fx_live_order_claims WHERE ticker=?"
     ).get(ticker)) return false;
 
-    // Daily aggregate exposure cap lifted.
-    // Per-order $1 cap remains.
+    // Repeat the unresolved-order check inside the same SQLite write transaction
+    // that claims the next market. This protects overlapping scheduler invocations.
+    if (hasUnresolvedUsdOrders(db)) return false;
+    // The per-order cap is enforced immediately before the claim.
     db.query(`
       INSERT INTO fx_live_order_claims
       (ticker,eastern_day,client_order_id,side,
