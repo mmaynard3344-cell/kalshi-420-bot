@@ -109,6 +109,7 @@ try{
   side:"no",wagerCents:42000,limitPriceCents:50,marketOpenTimeMs:Date.now()};
  let posts=0,journals=0;
  const bInput={intent,provider:txProvider,estimatedFeeCents:()=>0,
+  persistExchangeOrderId:async (claimId,orderId)=>{assert.ok(claimId);assert.equal(orderId,"B-EXCHANGE-1");},
   persistBeforePost:async(j)=>{journals++;assert.equal(j.budgetCents,100);assert.equal(j.contracts,2);},
   exchange:{submit:async(req)=>{posts++;assert.equal(req.contracts,2);assert.equal(req.side,"no");assert.equal(journals,1);return {kind:"accepted",exchangeOrderId:"B-EXCHANGE-1"};}}};
  assert.equal((await submitBViaSharedEthClaim(bInput)).kind,"skipped","B blocked by earlier G/F claim");
