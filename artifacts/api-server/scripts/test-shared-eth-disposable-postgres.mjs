@@ -11,7 +11,7 @@ import {pathToFileURL} from "node:url";
 const temp=await mkdtemp(join(tmpdir(),"eth-shared-pg-"));
 const outfile=join(temp,"claim-bundle.mjs");
 await build({entryPoints:[resolve("src/lib/sharedEthClaimStore.ts")],bundle:true,platform:"node",format:"esm",outfile,packages:"external"});
-const {claimFirstEthSignal,finalizeEthClaim}=await import(pathToFileURL(outfile).href);
+const {claimFirstEthSignal,finalizeEthClaim,markEthClaimSubmitted,releaseUnsubmittedEthClaim}=await import(pathToFileURL(outfile).href);
 const url=process.env.TEST_DATABASE_URL;
 if(!url)throw Error("TEST_DATABASE_URL must point to an isolated throwaway PostgreSQL database");
 const parsed=new URL(url);
@@ -35,6 +35,24 @@ try{
  const won=a||b;await pool.query("UPDATE eth_shared_martingale_claims SET status='SUBMITTED' WHERE claim_id=$1",[won.claimId]);
  const loss=await finalizeEthClaim(txProvider,won.claimId,randomUUID(),"LOSS");assert.equal(loss.step,1);
  const second=await claimFirstEthSignal(txProvider,make("E"));assert.equal(second.budgetCents,200);
+ // A submitted partially filled order must survive a fresh DB connection/restart.
+ await markEthClaimSubmitted(txProvider,second.claimId,"exchange-partial-1");
+ const blocked=await claimFirstEthSignal(txProvider,make("B"));
+ assert.equal(blocked,null,"partial fill keeps shared slot locked");
+ assert.equal(await releaseUnsubmittedEthClaim(txProvider,second.claimId),false,"submitted trade cannot be released as unsubmitted");
+ const persisted=await pool.query("SELECT status,order_id FROM eth_shared_martingale_claims WHERE claim_id=$1",[second.claimId]);
+ assert.equal(persisted.rows[0].status,"SUBMITTED");
+ assert.equal(persisted.rows[0].order_id,"exchange-partial-1");
+ const third=await claimFirstEthSignal(txProvider,make("L"));assert.equal(third,null,"fresh transaction still sees held claim");
+ // Only authenticated final settlement unlocks the submitted partial-fill claim.
+ const resultId=randomUUID();
+ const settled=await finalizeEthClaim(txProvider,second.claimId,resultId,"WIN");
+ assert.equal(settled.step,0);
+ assert.equal((await finalizeEthClaim(txProvider,second.claimId,resultId,"WIN")).alreadyApplied,true);
+ const after=await claimFirstEthSignal(txProvider,make("H"));assert.equal(after.budgetCents,100);
+ assert.equal(await releaseUnsubmittedEthClaim(txProvider,after.claimId),true);
+ const next=await claimFirstEthSignal(txProvider,make("C"));assert.equal(next.budgetCents,100);
+ console.log("PASS: submitted partial-fill reservation survives independent transactions and releases only on settlement; duplicate settlement idempotent");
  console.log("PASS: independent PostgreSQL connections serialize claims and advance stake after loss");
 }finally{
  await pool.end();
