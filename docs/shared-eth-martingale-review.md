@@ -32,3 +32,6 @@ USD is on its own Railway Function/SQLite ladder (not covered by this ETH Postgr
 
 ## Outstanding before integration
 Review exact live service list and submission chokepoints, and write transaction-provider adapter plus tests using disposable Postgres. The SQL/TypeScript branch has no production imports or route registrations. Do not merge or deploy.
+
+## CI execution trigger
+The disposable PostgreSQL CI gate is triggered by commits to this review branch; production deployment is not part of the workflow.
