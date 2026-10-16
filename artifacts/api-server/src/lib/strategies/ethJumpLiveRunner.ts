@@ -76,6 +76,15 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
   if (!intent) return finish("no_signal");
   if (input.exchangeIndex == null || !Number.isInteger(input.exchangeIndex) || input.exchangeIndex < 0) return finish("routing_unavailable", "invalid_exchange_index");
   try { await ensureStoreReady(); } catch { return finish("storage_unavailable", "execution_store_unavailable"); }
+  // A service must never fall back to its independent stake when the global
+  // ETH shared-ladder cutover is requested but this executor is not bridged.
+  // The shared claim, order identity, and exchange settlement must be wired
+  // together before this gate can be replaced by the shared execution adapter.
+  if(process.env["ETH_SHARED_MARTINGALE_ENABLED"]==="true"){
+    logger.error({ticker:input.market.ticker,service:"B"},
+      "ETH B shared cutover requested, but execution adapter not installed; fail closed");
+    return finish("disabled","shared_eth_adapter_not_installed");
+  }
   const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
   if (requestedRiskCents < 1) return finish("capital_unavailable", "invalid_requested_risk");
   const flagEnabled = isBkFreshBalanceCapitalPolicyEnabled();
