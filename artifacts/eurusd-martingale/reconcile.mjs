@@ -5,7 +5,7 @@ import {applyUsdSettlement,getUsdLadder,hasUnresolvedUsdOrders} from './store.mj
  */
 export async function reconcileUsdLadder(db,{getOrder,getMarket,findOrderByClientId,now=()=>new Date().toISOString()}) {
  const state=getUsdLadder(db);
- const claims=db.query("SELECT ticker,created_at,side,status,exchange_order_id,client_order_id FROM fx_live_order_claims WHERE created_at >= ? AND status NOT IN ('ladder_won','ladder_lost','ladder_zero_fill') ORDER BY created_at ASC").all(state.activated_at);
+ const claims=db.query("SELECT * FROM fx_live_order_claims WHERE created_at >= ? AND status NOT IN ('ladder_won','ladder_lost','ladder_zero_fill') ORDER BY created_at ASC").all(state.activated_at);
  for(const c of claims){
    let exchangeOrderId=c.exchange_order_id;
    if(!exchangeOrderId){
