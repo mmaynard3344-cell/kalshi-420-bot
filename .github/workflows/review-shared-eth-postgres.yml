@@ -1,0 +1,41 @@
+name: Shared ETH PostgreSQL isolation gate
+on:
+  push:
+    branches:
+      - review/shared-eth-martingale-first-signal
+  workflow_dispatch:
+jobs:
+  disposable-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: eth_gate_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eth_gate_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated test tools
+        run: |
+          mkdir -p /tmp/eth-shared-gate/src/lib /tmp/eth-shared-gate/scripts
+          cp artifacts/api-server/src/lib/sharedEthMartingale.ts artifacts/api-server/src/lib/sharedEthClaimStore.ts /tmp/eth-shared-gate/src/lib/
+          cp artifacts/api-server/scripts/test-shared-eth-disposable-postgres.mjs /tmp/eth-shared-gate/scripts/
+          echo '{"type":"module"}' > /tmp/eth-shared-gate/package.json
+          cd /tmp/eth-shared-gate
+          npm install --no-audit --no-fund pg esbuild
+      - name: Run real PostgreSQL concurrent-claim gate
+        working-directory: /tmp/eth-shared-gate
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/eth_gate_test
+        run: node scripts/test-shared-eth-disposable-postgres.mjs
