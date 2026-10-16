@@ -1242,7 +1242,7 @@ let all=[];
 const el=id=>document.getElementById(id);
 async function loadCycles(){
  const cards=el('cycle-cards'),stamp=el('cycle-updated');
- try {
+ try{
   const response=await fetch('/api/trade/analytics/martingale-cycles',{cache:'no-store'});
   if(!response.ok)throw Error('Cycle API '+response.status);
   const data=await response.json();
@@ -1250,7 +1250,18 @@ async function loadCycles(){
   cards.innerHTML=['USD','ETH','BTC'].map(name=>{
    const c=records.find(x=>x.market===name);
    const step=c&&Number.isInteger(c.step)&&c.step>0?'Step '+c.step+' / '+(c.maxSteps??'?'):'Step unavailable';
-   const stake=c&&Number.isFinite(c.nextWagerCents)?'Next 
+   const stake=c&&Number.isFinite(c.nextWagerCents)?'Next '+String.fromCharCode(36)+(c.nextWagerCents/100).toFixed(2):'Next wager unknown';
+   return '<div style="border:1px solid #40516a;border-radius:8px;padding:14px">' +
+    '<strong>'+esc(name)+'</strong><div style="font-size:21px;font-weight:700;margin:8px 0">'+esc(step)+'</div>' +
+    '<div>'+esc(stake)+'</div><small class="muted">'+esc(c?.status??'Live state not connected')+'</small></div>';
+  }).join('');
+  stamp.textContent='Last checked '+new Date().toLocaleTimeString('en-US',{timeZone:'America/New_York'})+' ET';
+ }catch(error){
+  cards.innerHTML=['USD','ETH','BTC'].map(name=>'<div style="border:1px solid #40516a;border-radius:8px;padding:14px"><strong>'+name+'</strong><div>Step unavailable</div><small>Cycle source unreachable</small></div>').join('');
+  stamp.textContent='Cycle source unavailable; no step inferred from order history';
+ }
+}
+loadCycles();setInterval(loadCycles,10000);
 const val=(o,...keys)=>{for(const k of keys)if(o?.[k]!==undefined&&o[k]!==null)return o[k];return null};
 const market=t=>/EURUSD|USD15M|FX/.test(t)?'USD':/BTC/.test(t)?'BTC':/ETH/.test(t)?'ETH':'Other';
 const dt=v=>{if(!v)return '—';const n=typeof v==='number'?(v>1e12?v:v*1000):Date.parse(v);return Number.isFinite(n)?new Date(n).toLocaleString('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}):'—'};
