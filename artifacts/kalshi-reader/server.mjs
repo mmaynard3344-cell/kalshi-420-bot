@@ -1233,7 +1233,142 @@ async function load(){
   const owners=new Map();if(rs?.ok){const ownerData=await rs.json();for(const item of (ownerData.rows??[])){if(!item.service||item.service==='Unattributed')continue;if(item.orderId)owners.set('o:'+String(item.orderId),item.service);if(item.clientOrderId)owners.set('c:'+String(item.clientOrderId),item.service);}}
   const byId=new Map();
   for(const f of fills){const id=val(f,'order_id','orderId','kalshi_order_id');if(!id)continue;const key=String(id);const a=byId.get(key)||{qty:0};a.qty+=Number(val(f,'count','count_fp','filled_contracts','quantity')||0);byId.set(key,a)}
-  all=orders.map(o=>{const ticker=String(val(o,'ticker','market_ticker')||'');const id=val(o,'order_id','orderId','kalshi_order_id');const fill=byId.get(String(id));const fillsCount=Number(val(o,'fill_count_fp','fill_count','filled_contracts')??fill?.qty??0);const outcome=String(val(o,'settlement_result','market_result','result')??resultByTicker.get(ticker)??'').toLowerCase();const orderSide=String(val(o,'position_side','direction','side')??'').toUpperCase();const selection=orderSide==='YES'||orderSide==='NO'?orderSide:null;const explicitPnl=val(o,'realized_pnl_dollars','realized_pnl','pnl_dollars','pnl');const rawCents=val(o,'realized_pnl_cents','pnl_cents');const cost=val(o,'actual_notional_dollars','filled_cost_dollars');const costCents=val(o,'actual_notional_cents','filled_cost_cents');const fee=val(o,'actual_fee_dollars','fee_dollars');const feeCents=val(o,'actual_fee_cents','fee_cents');let profit=null;if(fillsCount>0&&Number.isFinite(Number(explicitPnl))&&explicitPnl!==null)profit=Number(explicitPnl);else if(fillsCount>0&&rawCents!==null&&Number.isFinite(Number(rawCents)))profit=Number(rawCents)/100;else if(fillsCount>0&&selection&&['yes','no'].includes(outcome)){const principal=cost!==null?Number(cost):(costCents!==null?Number(costCents)/100:NaN);const fees=fee!==null?Number(fee):(feeCents!==null?Number(feeCents)/100:NaN);if(Number.isFinite(principal)&&Number.isFinite(fees))profit=(selection.toLowerCase()===outcome?fillsCount:0)-principal-fees;}const wl=profit===null?'Pending':profit>0?'WIN':profit<0?'LOSS':'EVEN';return {wl,profit:profit===null?'—':(profit>=0?'+':'')+','created_at','created_at_ms','time','submitted_at'),market:market(ticker),service:owners.get('o:'+String(id))||owners.get('c:'+String(val(o,'client_order_id','clientOrderId')||''))||val(o,'service','origin_service','strategy','strategy_name','service_name')||'Unattributed',ticker,side:val(o,'side','action','position_side'),requested:val(o,'initial_count_fp','initial_count','count_fp','count','contracts'),filled:val(o,'fill_count_fp','fill_count','filled_contracts')??fill?.qty??'—',price:val(o,'yes_price_dollars','no_price_dollars','price','limit_price'),status:val(o,'status','state'),id:id||'—'};}).sort((a,b)=>{const ts=x=>typeof x==='number'?(x>1e12?x:x*1000):Date.parse(x)||0;return ts(b.time)-ts(a.time)});
+  all=orders.map(o=>{const ticker=String(val(o,'ticker','market_ticker')||'');const id=val(o,'order_id','orderId','kalshi_order_id');const fill=byId.get(String(id));const fillsCount=Number(val(o,'fill_count_fp','fill_count','filled_contracts')??fill?.qty??0);const outcome=String(val(o,'settlement_result','market_result','result')??resultByTicker.get(ticker)??'').toLowerCase();const orderSide=String(val(o,'position_side','direction','side')??'').toUpperCase();const selection=orderSide==='YES'||orderSide==='NO'?orderSide:null;const explicitPnl=val(o,'realized_pnl_dollars','realized_pnl','pnl_dollars','pnl');const rawCents=val(o,'realized_pnl_cents','pnl_cents');const cost=val(o,'actual_notional_dollars','filled_cost_dollars');const costCents=val(o,'actual_notional_cents','filled_cost_cents');const fee=val(o,'actual_fee_dollars','fee_dollars');const feeCents=val(o,'actual_fee_cents','fee_cents');let profit=null;if(fillsCount>0&&Number.isFinite(Number(explicitPnl))&&explicitPnl!==null)profit=Number(explicitPnl);else if(fillsCount>0&&rawCents!==null&&Number.isFinite(Number(rawCents)))profit=Number(rawCents)/100;else if(fillsCount>0&&selection&&['yes','no'].includes(outcome)){const principal=cost!==null?Number(cost):(costCents!==null?Number(costCents)/100:NaN);const fees=fee!==null?Number(fee):(feeCents!==null?Number(feeCents)/100:NaN);if(Number.isFinite(principal)&&Number.isFinite(fees))profit=(selection.toLowerCase()===outcome?fillsCount:0)-principal-fees;}const wl=profit===null?'Pending':profit>0?'WIN':profit<0?'LOSS':'EVEN';return {wl,profit:profit===null?'—':(profit>=0?'+':'')+',market:market(ticker),service:owners.get('o:'+String(id))||owners.get('c:'+String(val(o,'client_order_id','clientOrderId')||''))||val(o,'service','origin_service','strategy','strategy_name','service_name')||'Unattributed',ticker,side:val(o,'side','action','position_side'),requested:val(o,'initial_count_fp','initial_count','count_fp','count','contracts'),filled:val(o,'fill_count_fp','fill_count','filled_contracts')??fill?.qty??'—',price:val(o,'yes_price_dollars','no_price_dollars','price','limit_price'),status:val(o,'status','state'),id:id||'—'};}).sort((a,b)=>{const ts=x=>typeof x==='number'?(x>1e12?x:x*1000):Date.parse(x)||0;return ts(b.time)-ts(a.time)});
+  draw();
+ }catch(e){el('status').textContent='Could not load orders: '+e.message;el('rows').innerHTML='<tr><td colspan="10">Trade feed unavailable.</td></tr>'}
+ finally{el('refresh').disabled=false}
+}
+el('refresh').addEventListener('click',load);el('market').addEventListener('change',draw);load();
+</script></body></html>`;
+  return send(res,200,req.method === 'HEAD' ? '' : html,'text/html; charset=utf-8');
+}
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  if (url.pathname === '/trades') return void serveSimpleTradeLog(req, res);
+  if (url.pathname === '/api/diagnostics/btc-bl-status') return void btcBlStatusDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/service-ownership') return void serviceOwnershipDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/service-ledger-today') return void serviceLedgerTodayDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/market-results-recent') return void recentMarketResultsDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/big-bet-rows-recent') return void recentBigBetRowsDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/restart-daily-pnl') return void restartDailyPnlDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/shadow-performance') return void shadowPerformanceDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/exchange-ticker') return void exchangeTickerDiagnostics(req, res, url);
+  if (url.pathname === '/api/diagnostics/candidate-lifecycle') return void candidateLifecycleDiagnostics(req, res, url);
+  if (url.pathname === '/api/diagnostics/settlement-latency') return void settlementLatencyDiagnostics(req, res, url);
+  if (url.pathname === '/api/diagnostics/back-flips') return void backFlipDiagnostics(req, res, false);
+  if (url.pathname === '/api/diagnostics/back-flips.csv') return void backFlipDiagnostics(req, res, true);
+  if (url.pathname.startsWith('/api/')) return void proxyRead(req, res, url);
+  serveStatic(req, res, url);
+});
+
+server.listen(port, '0.0.0.0', () => {
+  console.log(`Read-only ETH 420 operator UI listening on ${port}`);
+  void Promise.all([
+    graceJson('/api/trade/status').then((s) => console.log('TRADE_STATUS_PNL_DIAGNOSTIC', JSON.stringify({
+      date: s?.date ?? null,
+      daily_realized_net_pnl_dollars: s?.daily_realized_net_pnl_dollars ?? null,
+      daily_realized_settled_fill_count: s?.daily_realized_settled_fill_count ?? null,
+      daily_realized_pending_fill_count: s?.daily_realized_pending_fill_count ?? null,
+      daily_realized_unverified_fill_count: s?.daily_realized_unverified_fill_count ?? null,
+    }))),
+    withReadOnlyDb(async (client) => {
+      const tables = ['eth_martingale_orders','eth420_candidate_live_orders','eth_big_bet_orders','eth_g_streak_reversal_orders','jackpot_attempts','kamakazee_orders'];
+      const q = await client.query(`
+        SELECT table_name, column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema='public' AND table_name = ANY($1::text[])
+        ORDER BY table_name, ordinal_position
+      `, [tables]);
+      console.log('SERVICE_LEDGER_SCHEMA_DIAGNOSTIC', JSON.stringify(q.rows));
+      const [a,cand,big,g,j,k] = await Promise.all([
+        client.query(`
+          SELECT COUNT(*)::int AS n,
+                 COALESCE(SUM(
+                   CASE WHEN settlement_result = side
+                     THEN (COALESCE(filled_contracts,0)::numeric - COALESCE(actual_notional_dollars,0)::numeric - COALESCE(actual_fee_dollars,0)::numeric)
+                     ELSE -(COALESCE(actual_notional_dollars,0)::numeric + COALESCE(actual_fee_dollars,0)::numeric)
+                   END
+                 ),0) AS pnl
+          FROM eth_martingale_orders
+          WHERE eastern_date='2026-09-23'
+            AND settlement_result IN ('yes','no')
+            AND COALESCE(filled_contracts,0)::numeric > 0
+        `),
+        client.query(`
+          SELECT COUNT(*)::int AS n, COALESCE(SUM(realized_pnl_delta_cents),0)::int AS pnl_cents
+          FROM eth420_candidate_live_orders
+          WHERE eastern_date='2026-09-23' AND realized_pnl_delta_cents IS NOT NULL
+        `),
+        client.query(`
+          SELECT strategy, COUNT(*)::int AS n, COALESCE(SUM(realized_pnl_cents),0)::int AS pnl_cents
+          FROM eth_big_bet_orders
+          WHERE created_at_ms >= 1790136000000
+            AND created_at_ms < 1790222400000
+            AND realized_pnl_cents IS NOT NULL
+          GROUP BY strategy ORDER BY strategy
+        `),
+        client.query(`
+          SELECT COUNT(*)::int AS n,
+                 COUNT(*) FILTER (WHERE settlement_result IN ('yes','no'))::int AS settled,
+                 COUNT(*) FILTER (WHERE won IS TRUE)::int AS wins,
+                 COUNT(*) FILTER (WHERE won IS FALSE)::int AS losses
+          FROM eth_g_streak_reversal_orders
+          WHERE created_at_ms >= 1790136000000 AND created_at_ms < 1790222400000
+        `),
+        client.query(`
+          SELECT COUNT(*)::int AS n,
+                 COUNT(*) FILTER (WHERE official_result IN ('yes','no'))::int AS settled,
+                 COALESCE(SUM(j_fee_cents),0)::int AS fees_cents
+          FROM jackpot_attempts
+          WHERE detected_at_ms >= 1790136000000 AND detected_at_ms < 1790222400000
+            AND j_kalshi_order_id IS NOT NULL
+        `),
+        client.query(`
+          SELECT COUNT(*)::int AS n,
+                 COUNT(*) FILTER (WHERE official_result IN ('yes','no'))::int AS settled
+          FROM kamakazee_orders
+          WHERE created_at_ms >= 1790136000000 AND created_at_ms < 1790222400000
+            AND kalshi_order_id IS NOT NULL
+        `)
+      ]);
+      console.log('SERVICE_LEDGER_TODAY_DIAGNOSTIC', JSON.stringify({
+        A:a.rows, candidate:cand.rows, BI:big.rows, G:g.rows, J:j.rows, K:k.rows
+      }));
+    }),
+  ]).catch((error) => console.error('PNL_SCHEMA_DIAGNOSTIC_FAILED', String(error?.message ?? error)));
+  void withReadOnlyDb(async (client) => {
+    const r = await client.query(`
+      SELECT id, kalshi_order_id, origin_service, created_at_ms
+        FROM eth420_candidate_live_orders
+       WHERE id IN (
+         'KXETH15M-26SEP231345-45:eth420-live-v1',
+         'KXETH15M-26SEP231400-00:eth420-live-v1',
+         'KXETH15M-26SEP231415-15:eth420-live-v1'
+       )
+       ORDER BY created_at_ms DESC
+    `);
+    console.log('CANDIDATE_ORIGIN_DIAGNOSTIC', JSON.stringify(r.rows));
+    const early = await client.query(`
+      SELECT id, ticker, kalshi_order_id, origin_service, requested_contracts, fill_price_cents, created_at_ms
+      FROM eth420_candidate_live_orders
+      WHERE ticker IN (
+        'KXETH15M-26SEP230530-30',
+        'KXETH15M-26SEP230615-15',
+        'KXETH15M-26SEP230815-15',
+        'KXETH15M-26SEP231145-45',
+        'KXETH15M-26SEP231300-00',
+        'KXETH15M-26SEP231315-15'
+      )
+      ORDER BY created_at_ms
+    `);
+    console.log('EARLY_CANDIDATE_ORIGIN_DIAGNOSTIC', JSON.stringify(early.rows));
+  }).catch((error) => console.error('CANDIDATE_ORIGIN_DIAGNOSTIC_FAILED', String(error?.message ?? error)));
+  for (const path of ['/api/trade/fills?limit=10000', '/api/trade/orders?limit=1000']) {
+    const url = new URL(path, 'http://shawshank.local');
+    void refreshReadCache(url).catch((error) => console.error('Dashboard cache warm failed', path, error));
+  }
+});
++profit.toFixed(2),time:val(o,'created_time','created_at','created_at_ms','time','submitted_at'),market:market(ticker),service:owners.get('o:'+String(id))||owners.get('c:'+String(val(o,'client_order_id','clientOrderId')||''))||val(o,'service','origin_service','strategy','strategy_name','service_name')||'Unattributed',ticker,side:val(o,'side','action','position_side'),requested:val(o,'initial_count_fp','initial_count','count_fp','count','contracts'),filled:val(o,'fill_count_fp','fill_count','filled_contracts')??fill?.qty??'—',price:val(o,'yes_price_dollars','no_price_dollars','price','limit_price'),status:val(o,'status','state'),id:id||'—'};}).sort((a,b)=>{const ts=x=>typeof x==='number'?(x>1e12?x:x*1000):Date.parse(x)||0;return ts(b.time)-ts(a.time)});
   draw();
  }catch(e){el('status').textContent='Could not load orders: '+e.message;el('rows').innerHTML='<tr><td colspan="10">Trade feed unavailable.</td></tr>'}
  finally{el('refresh').disabled=false}
