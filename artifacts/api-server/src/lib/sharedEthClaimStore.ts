@@ -75,3 +75,45 @@ export async function finalizeEthClaim(
     return {step,alreadyApplied:false};
   });
 }
+
+/** Must run in the same database as all ETH executors. Claim remains held
+ * between order submission and authenticated terminal settlement. */
+export async function markEthClaimSubmitted(
+  db: TransactionProvider, claimId: string, orderId: string
+): Promise<void> {
+  if (!claimId || !orderId) throw new Error("claim and exchange order IDs required");
+  await db.transaction(async tx => {
+    const {rows}=await tx.query<{active_claim_id:string|null}>(
+      "SELECT active_claim_id FROM eth_shared_martingale_state WHERE singleton=TRUE FOR UPDATE"
+    );
+    if(rows[0]?.active_claim_id!==claimId)throw new Error("ETH claim not active");
+    const updated=await tx.query<{claim_id:string}>(
+      "UPDATE eth_shared_martingale_claims SET status='SUBMITTED',order_id=$2 WHERE claim_id=$1 AND status='RESERVED' RETURNING claim_id",
+      [claimId,orderId]
+    );
+    if(updated.rows.length!==1)throw new Error("claim not reservable for submission");
+  });
+}
+
+/** Only a verified pre-submit failure can release an ETH claim.
+ * Never use this to release an order whose exchange submission is uncertain. */
+export async function releaseUnsubmittedEthClaim(
+  db: TransactionProvider, claimId: string
+): Promise<boolean> {
+  if(!claimId)throw new Error("claim ID required");
+  return db.transaction(async tx=>{
+    const {rows}=await tx.query<{active_claim_id:string|null}>(
+      "SELECT active_claim_id FROM eth_shared_martingale_state WHERE singleton=TRUE FOR UPDATE"
+    );
+    if(rows[0]?.active_claim_id!==claimId)return false;
+    const updated=await tx.query<{claim_id:string}>(
+      "UPDATE eth_shared_martingale_claims SET status='RELEASED',resolved_at=NOW() WHERE claim_id=$1 AND status='RESERVED' RETURNING claim_id",
+      [claimId]
+    );
+    if(updated.rows.length!==1)return false;
+    await tx.query(
+      "UPDATE eth_shared_martingale_state SET active_claim_id=NULL,version=version+1,updated_at=NOW() WHERE singleton=TRUE"
+    );
+    return true;
+  });
+}
