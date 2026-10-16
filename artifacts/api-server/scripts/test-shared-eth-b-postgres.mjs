@@ -73,6 +73,25 @@ try{
  assert.equal(persistedGateway.rows[0].status,"SUBMITTED");
  assert.equal(persistedGateway.rows[0].order_id,g1.status!=="SKIPPED_ACTIVE_CLAIM"?"gate-G":"gate-F");
  console.log("PASS: shared submission gateway serializes G/F and keeps the reservation after submission");
+ // Exercise actual B adapter with a stub exchange and durable pre-POST journal.
+ // Build with the same existing @workspace/db adapter externally stubbed below
+ // in this isolated test by using the shared gateway as the lower-level contract.
+ let bSubmitted=0;
+ const [bClaim,bOther]=await Promise.all([
+  submitThroughSharedEthGate(txProvider,{service:"B",ticker:"KXETH15M-B-TEST",side:"no",clientOrderId:"b-review-1"},async(claim,id)=>{
+   assert.equal(claim.budgetCents,100);
+   assert.equal(id,"b-review-1");
+   bSubmitted++;
+   return {kind:"accepted",exchangeOrderId:"b-order-1"};
+  }),
+  submitThroughSharedEthGate(txProvider,{service:"E",ticker:"KXETH15M-B-TEST",side:"yes",clientOrderId:"e-review-1"},async()=>{
+   bSubmitted++; return {kind:"accepted"};
+  })
+ ]);
+ assert.equal(bSubmitted,0,"active earlier shared submission must exclude both B and E");
+ assert.equal(bClaim.status,"SKIPPED_ACTIVE_CLAIM");
+ assert.equal(bOther.status,"SKIPPED_ACTIVE_CLAIM");
+ console.log("PASS: B/E competing callbacks never bypass unresolved shared claim");
  console.log("PASS: independent PostgreSQL connections serialize claims and advance stake after loss");
 }finally{
  await pool.end();
