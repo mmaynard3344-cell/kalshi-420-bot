@@ -11,7 +11,7 @@ import { bootstrapHistory, parseFact, selectCurrent, parseCandles, publicJson, P
 const LIVE_ENABLED = process.env.BTC_LIVE_ENABLED === "true" && process.env.TRADING_ENABLED === "true";
 const ORDER_EXECUTION_ENABLED =
   process.env.ORDER_EXECUTION_ENABLED === "true";
-const STAKE_CENTS = 100;
+const STAKE_CENTS = 200;
 // Never enable this while authenticated settlement reconciliation remains unintegrated.
 const BTC_SHARED_LADDER_REVIEW = process.env.BTC_SHARED_LADDER_REVIEW === "true";
 let btcLadderPool = null;
@@ -211,7 +211,7 @@ async function executeDecision(decision, market) {
         json({event:"btc_ladder_pending_blocks_order",service:decision.service,ticker:decision.ticker});
         return "terminal";
       }
-      const stakeBudget = [100,200,400,800,1600,3200][state.step];
+      const stakeBudget = [200,400,800,1600,3200,6400][state.step];
       const balance = await freshBalanceCents();
       if (!stakeBudget || balance < stakeBudget) {
         json({event:"btc_ladder_insufficient_balance",requiredCents:stakeBudget,balanceCents:balance});
