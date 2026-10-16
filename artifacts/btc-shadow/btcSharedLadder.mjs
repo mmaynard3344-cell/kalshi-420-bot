@@ -1,5 +1,5 @@
 // Pure BTC ladder state machine. No live order side effects.
-export const BTC_STAKES_CENTS = Object.freeze([100,200,400,800,1600,3200]);
+export const BTC_STAKES_CENTS = Object.freeze([200,400,800,1600,3200,6400]);
 export function initialBtcLadder() {
  return {step:0,pendingOrderId:null,pendingSettlementId:null,lastSettlementId:null,version:0};
 }
