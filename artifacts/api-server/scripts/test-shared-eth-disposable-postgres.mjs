@@ -12,6 +12,9 @@ const temp=await mkdtemp(join(tmpdir(),"eth-shared-pg-"));
 const outfile=join(temp,"claim-bundle.mjs");
 await build({entryPoints:[resolve("src/lib/sharedEthClaimStore.ts")],bundle:true,platform:"node",format:"esm",outfile,packages:"external"});
 const {claimFirstEthSignal,finalizeEthClaim,markEthClaimSubmitted,releaseUnsubmittedEthClaim}=await import(pathToFileURL(outfile).href);
+const gatewayFile=join(temp,"gateway-bundle.mjs");
+await build({entryPoints:[resolve("src/lib/sharedEthOrderGateway.ts")],bundle:true,platform:"node",format:"esm",outfile:gatewayFile,packages:"external"});
+const {submitThroughSharedEthGate}=await import(pathToFileURL(gatewayFile).href);
 const url=process.env.TEST_DATABASE_URL;
 if(!url)throw Error("TEST_DATABASE_URL must point to an isolated throwaway PostgreSQL database");
 const parsed=new URL(url);
@@ -53,6 +56,20 @@ try{
  assert.equal(await releaseUnsubmittedEthClaim(txProvider,after.claimId),true);
  const next=await claimFirstEthSignal(txProvider,make("C"));assert.equal(next.budgetCents,100);
  console.log("PASS: submitted partial-fill reservation survives independent transactions and releases only on settlement; duplicate settlement idempotent");
+ assert.equal(await releaseUnsubmittedEthClaim(txProvider,next.claimId),true);
+ const makeGateway=(svc)=>({service:svc,ticker:"KXETH15M-26OCT161500-00",side:"yes",clientOrderId:"gate-"+svc});
+ const [g1,g2]=await Promise.all([
+  submitThroughSharedEthGate(txProvider,makeGateway("G"),async()=>{throw Error("network timeout after POST");}),
+  submitThroughSharedEthGate(txProvider,makeGateway("F"),async()=>({accepted:true}))
+ ]);
+ assert.equal([g1,g2].filter(x=>x.status!=="SKIPPED_ACTIVE_CLAIM").length,1,"one G/F gateway winner");
+ const winner=g1.status!=="SKIPPED_ACTIVE_CLAIM"?g1:g2;
+ const blockedAfter=await claimFirstEthSignal(txProvider,make("B"));
+ assert.equal(blockedAfter,null,"uncertain or accepted submission must hold cross-service reservation");
+ const persistedGateway=await pool.query("SELECT status,order_id FROM eth_shared_martingale_claims WHERE claim_id=$1",[winner.claim.claimId]);
+ assert.equal(persistedGateway.rows[0].status,"SUBMITTED");
+ assert.equal(persistedGateway.rows[0].order_id,g1.status!=="SKIPPED_ACTIVE_CLAIM"?"gate-G":"gate-F");
+ console.log("PASS: shared submission gateway serializes G/F and keeps the reservation after submission");
  console.log("PASS: independent PostgreSQL connections serialize claims and advance stake after loss");
 }finally{
  await pool.end();
