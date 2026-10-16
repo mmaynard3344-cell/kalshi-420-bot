@@ -15,5 +15,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: oven-sh/setup-bun@v2
+      - name: Compile standalone Railway review function without executing it
+        run: bun build artifacts/eurusd-martingale/railway-review-function.ts --target bun --outfile /tmp/usd-railway-review.js
       - name: Run no-order ladder and SQLite tests
         run: node --experimental-sqlite --test artifacts/eurusd-martingale/*.test.mjs
