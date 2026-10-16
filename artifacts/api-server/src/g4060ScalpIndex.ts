@@ -132,6 +132,14 @@ async function initStore(): Promise<void> {
     ON eth_g_streak_reversal_orders (settled_at_ms, updated_at_ms)
   `);
   await d.execute(sql`
+    CREATE TABLE IF NOT EXISTS eth_g_shared_claim_links (
+      client_order_id TEXT PRIMARY KEY,
+      claim_id UUID NOT NULL UNIQUE REFERENCES eth_shared_martingale_claims(claim_id),
+      ticker TEXT NOT NULL UNIQUE,
+      created_at_ms BIGINT NOT NULL
+    )
+  `);
+  await d.execute(sql`
     CREATE TABLE IF NOT EXISTS eth_g_market_directions (
       ticker TEXT PRIMARY KEY,
       side TEXT CHECK (side IN ('yes','no')),
@@ -483,6 +491,24 @@ async function submitGWithSharedReservation(
   if(size.contracts===0)throw Error("Shared ETH wager cannot fund a contract including fees");
   const balance=kalshiBalanceCents((await fetchFreshKalshiBalanceForExchangeRead(market.exchangeIndex)).value);
   if(balance==null||balance<size.totalCents)throw Error("insufficient exchange balance; leave claim locked pending reconciliation");
+  // The G reconciler uses its durable order journal; link it to the globally
+  // locked claim before the exchange request so crash recovery can identify it.
+  const journalId="g-streak-reversal:"+market.ticker;
+  const now=Date.now();
+  const d=await db();
+  const inserted=await d.execute(sql`
+    INSERT INTO eth_g_streak_reversal_orders
+     (id,ticker,side,step,principal_cents,requested_contracts,filled_contracts,
+      client_order_id,status,market_close_ms,exchange_index,created_at_ms,updated_at_ms)
+    VALUES (${journalId},${market.ticker},${side},${claim.step},${size.principalCents},${size.contracts},0,
+      ${id},'submitting',${market.closeMs},${market.exchangeIndex},${now},${now})
+    ON CONFLICT (ticker) DO NOTHING RETURNING id
+  `);
+  if(rows(inserted).length!==1)throw Error("G shared claim collision; preserve global reservation");
+  await d.execute(sql`
+    INSERT INTO eth_g_shared_claim_links(client_order_id,claim_id,ticker,created_at_ms)
+    VALUES (${id},${claim.claimId},${market.ticker},${now})
+  `);
   return kalshiAuthFetch<Record<string,unknown>>("POST","/portfolio/events/orders",{
    ticker:market.ticker,client_order_id:id,side:wireSide(side),
    count:`${size.contracts}.00`,price:"0.5000",
