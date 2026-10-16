@@ -1230,10 +1230,272 @@ function serveSimpleTradeLog(req,res) {
 <style>body{margin:0;background:#101827;color:#f2f5fa;font:15px system-ui,sans-serif}main{max-width:1200px;margin:auto;padding:24px}header{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}h1{font-size:25px;margin:0 0 8px}p{color:#bdc9d8}button,select{background:#1f3047;color:white;border:1px solid #4a5d74;border-radius:7px;padding:9px 12px}table{width:100%;border-collapse:collapse;min-width:810px}th,td{padding:11px 9px;text-align:left;border-bottom:1px solid #304056;white-space:nowrap}th{color:#b9c7da;font-size:12px;position:sticky;top:0;background:#101827}section{overflow:auto;margin-top:18px}.muted{color:#9facbf}.warn{color:#f5cc82}.err{color:#ff9b9b}a{color:#aaceff}small{color:#aab9cb}</style>
 </head><body><main><header><div><h1>Shawshank · Trade Log</h1><p>Existing exchange orders and fills · read only</p><p><a href="/">View martingale cycle tracker (USD · ETH · BTC) →</a></p></div><div><select id="market"><option value="ALL">All markets</option><option>ETH</option><option>BTC</option><option>USD</option></select> <button id="refresh">Refresh</button></div></header>
 <p id="status">Loading trades…</p><p class="warn">EUR/USD pilot orders are held by a separate Railway Function and may not be present in this feed. Missing entries do not mean no USD trades occurred.</p>
+<section id="cycles-panel" aria-label="Martingale cycle tracker" style="border:1px solid #304056;border-radius:12px;padding:18px;margin:20px 0;background:#172236">
+<h2 style="margin:0 0 6px;font-size:22px">Martingale cycle tracker</h2>
+<p style="font-size:13px;margin:0 0 14px">Live persisted steps · updates every 10 seconds · read only</p>
+<div id="cycle-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px"><div>Loading cycle data…</div></div>
+<p id="cycle-updated" style="font-size:12px;margin:12px 0 0;color:#9facbf">Waiting for verified state</p>
+</section>
 <section><table><thead><tr><th>Time (ET)</th><th>Market</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Price</th><th>Bet Amount</th><th>Status</th><th>W/L</th><th>Net P&L</th><th>Order ID</th></tr></thead><tbody id="rows"></tbody></table></section><p><small>Source: Shawshank existing authenticated order/fill API. No trades submitted by this page.</small></p></main>
 <script>
 let all=[];
 const el=id=>document.getElementById(id);
+async function loadCycles(){
+ const cards=el('cycle-cards'),stamp=el('cycle-updated');
+ try {
+  const response=await fetch('/api/trade/analytics/martingale-cycles',{cache:'no-store'});
+  if(!response.ok)throw Error('Cycle API '+response.status);
+  const data=await response.json();
+  const records=Array.isArray(data.cycles)?data.cycles:[];
+  cards.innerHTML=['USD','ETH','BTC'].map(name=>{
+   const c=records.find(x=>x.market===name);
+   const step=c&&Number.isInteger(c.step)&&c.step>0?'Step '+c.step+' / '+(c.maxSteps??'?'):'Step unavailable';
+   const stake=c&&Number.isFinite(c.nextWagerCents)?'Next 
+const val=(o,...keys)=>{for(const k of keys)if(o?.[k]!==undefined&&o[k]!==null)return o[k];return null};
+const market=t=>/EURUSD|USD15M|FX/.test(t)?'USD':/BTC/.test(t)?'BTC':/ETH/.test(t)?'ETH':'Other';
+const dt=v=>{if(!v)return '—';const n=typeof v==='number'?(v>1e12?v:v*1000):Date.parse(v);return Number.isFinite(n)?new Date(n).toLocaleString('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}):'—'};
+const esc=s=>String(s??'—').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+function draw(){
+ const sel=el('market').value;
+ const rows=sel==='ALL'?all:all.filter(x=>x.market===sel);
+ el('rows').innerHTML=rows.slice(0,500).map(x=>'<tr>'+[dt(x.time),x.market,x.service,x.ticker,x.side,x.requested,x.filled,x.price,x.betAmount,x.status,x.wl,x.netProfit,x.id].map(v=>'<td>'+esc(v)+'</td>').join('')+'</tr>').join('')||'<tr><td colspan="13">No records available in this feed for this selection.</td></tr>';
+ el('status').textContent=rows.length+' orders shown'+(all.length>500?' (latest 500)':'')+' · refreshed '+new Date().toLocaleTimeString('en-US',{timeZone:'America/New_York'});
+}
+async function load(){
+ el('refresh').disabled=true;el('status').textContent='Loading orders and fills…';
+ try{
+  const [ro,rf,own,settlements]=await Promise.all([fetch('/api/trade/orders?limit=1000',{cache:'no-store'}),fetch('/api/trade/fills?limit=1000',{cache:'no-store'}),fetch('/api/diagnostics/service-ownership',{cache:'no-store'}).catch(()=>null),fetch('/api/diagnostics/trade-results?limit=160',{cache:'no-store'}).catch(()=>null)]);
+  if(!ro.ok||!rf.ok)throw Error('The trade feed returned an error');
+  const [op,fp]=await Promise.all([ro.json(),rf.json()]);
+  const orders=Array.isArray(op)?op:Array.isArray(op.orders)?op.orders:[];
+  const fills=Array.isArray(fp)?fp:Array.isArray(fp.fills)?fp.fills:[];
+  const ownersByOrder=new Map(), ownersByClient=new Map();
+  if(own?.ok){
+   const data=await own.json();
+   for(const record of (Array.isArray(data.rows)?data.rows:[])){
+    if(!record.service||record.service==='Unattributed')continue;
+    if(record.orderId)ownersByOrder.set(String(record.orderId),record.service);
+    if(record.clientOrderId)ownersByClient.set(String(record.clientOrderId),record.service);
+   }
+  }
+  const settlementByTicker=new Map();
+  if(settlements?.ok){
+    const data=await settlements.json();
+    for(const record of (Array.isArray(data.rows)?data.rows:[])){
+      if(['yes','no'].includes(String(record.result).toLowerCase()))
+        settlementByTicker.set(String(record.ticker),String(record.result).toLowerCase());
+    }
+  }
+  const byId=new Map();
+  for(const f of fills){
+    const id=val(f,'order_id','orderId','kalshi_order_id');if(!id)continue;
+    const key=String(id),a=byId.get(key)||{qty:0,cost:0,fees:0,complete:true,side:null};
+    const qty=Number(val(f,'count_fp','count','filled_contracts','quantity'));
+    const side=String(val(f,'outcome_side','position_side','side')||'').toLowerCase();
+    const price=side==='no'?val(f,'no_price_dollars'):side==='yes'?val(f,'yes_price_dollars'):null;
+    const fee=val(f,'fee_cost','fee_cost_dollars','fee_dollars','fee_paid_dollars');
+    if(!Number.isFinite(qty)||qty<=0||price===null||fee===null||!Number.isFinite(Number(price))||!Number.isFinite(Number(fee)))a.complete=false;
+    else {a.cost+=qty*Number(price);a.fees+=Number(fee);}
+    if(side==='yes'||side==='no'){if(a.side&&a.side!==side)a.complete=false;else a.side=side;}
+    a.qty+=Number.isFinite(qty)?qty:0;byId.set(key,a);
+  }
+  all=orders.map(o=>{
+    const ticker=String(val(o,'ticker','market_ticker')||'');
+    const id=val(o,'order_id','orderId','kalshi_order_id');
+    const clientId=val(o,'client_order_id','clientOrderId');
+    const fill=byId.get(String(id));
+    const count=Number(val(o,'fill_count_fp','fill_count','filled_contracts')??fill?.qty??0);
+    const status=String(val(o,'status','state')||'').toLowerCase();
+    const moneyD=val(o,'realized_net_pnl_dollars','realized_pnl_dollars','realized_pnl','pnl_dollars');
+    const moneyC=val(o,'realized_net_pnl_cents','realized_pnl_cents','pnl_cents');
+    let net=null;
+    if(count>0&&moneyD!==null&&Number.isFinite(Number(moneyD)))net=Number(moneyD);
+    else if(count>0&&moneyC!==null&&Number.isFinite(Number(moneyC)))net=Number(moneyC)/100;
+    const result=settlementByTicker.get(ticker);
+    const position=String(val(o,'outcome_side','position_side','direction')||fill?.side||'').toLowerCase();
+    if(net===null&&count>0&&['yes','no'].includes(position)&&result){
+      const orderCost=val(o,'taker_fill_cost_dollars');
+      const makerCost=val(o,'maker_fill_cost_dollars');
+      const orderFee=val(o,'taker_fees_dollars');
+      const makerFee=val(o,'maker_fees_dollars');
+      const hasOrderCosts=[orderCost,makerCost,orderFee,makerFee].every(v=>v!==null&&Number.isFinite(Number(v)));
+      if(hasOrderCosts)net=(position===result?count:0)-Number(orderCost)-Number(makerCost)-Number(orderFee)-Number(makerFee);
+      else if(fill?.complete&&fill.qty===count)net=(position===result?count:0)-fill.cost-fill.fees;
+    }
+    const takerCost=val(o,'taker_fill_cost_dollars');
+    const makerCost=val(o,'maker_fill_cost_dollars');
+    const orderCost=[takerCost,makerCost].every(v=>v!==null&&Number.isFinite(Number(v)))?Number(takerCost)+Number(makerCost):null;
+    const betCost=count===0?0:orderCost!==null?orderCost:fill?.complete&&fill.qty===count?fill.cost:null;
+    const wl=count===0&&['canceled','cancelled','expired','rejected'].includes(status)?'NO FILL':net===null?'Pending':net>0?'WIN':net<0?'LOSS':'BREAK EVEN';
+    return {
+      time:val(o,'created_time','created_at','created_at_ms','time','submitted_at'),
+      market:market(ticker),
+      service:ownersByOrder.get(String(id))||ownersByClient.get(String(clientId))||val(o,'service','origin_service','strategy','strategy_name','service_name')||'Unattributed',
+      ticker,side:['yes','no'].includes(position)?position:'—',
+      requested:val(o,'initial_count_fp','initial_count','count_fp','count','contracts'),
+      filled:val(o,'fill_count_fp','fill_count','filled_contracts')??fill?.qty??'—',
+      price:val(o,'yes_price_dollars','no_price_dollars','price','limit_price'),
+      betAmount:betCost===null?'—':'$'+betCost.toFixed(2),
+      status:val(o,'status','state'),wl,
+      netProfit:net===null?'—':(net>0?'+':'')+'$'+net.toFixed(2),
+      id:id||'—'
+    };
+  }).sort((a,b)=>{
+    const ts=x=>typeof x==='number'?(x>1e12?x:x*1000):Date.parse(x)||0;
+    return ts(b.time)-ts(a.time);
+  });
+  draw();
+ }catch(e){el('status').textContent='Could not load orders: '+e.message;el('rows').innerHTML='<tr><td colspan="12">Trade feed unavailable.</td></tr>'}
+ finally{el('refresh').disabled=false}
+}
+el('refresh').addEventListener('click',load);el('market').addEventListener('change',draw);load();
+</script></body></html>`;
+  return send(res,200,req.method === 'HEAD' ? '' : html,'text/html; charset=utf-8');
+}
+
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  if (url.pathname === '/api/diagnostics/trade-results') return void tradeResultsReadOnly(req,res,url);
+  if (url.pathname === '/trades') return void serveSimpleTradeLog(req, res);
+  if (url.pathname === '/api/diagnostics/btc-bl-status') return void btcBlStatusDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/service-ownership') return void serviceOwnershipDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/service-ledger-today') return void serviceLedgerTodayDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/market-results-recent') return void recentMarketResultsDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/big-bet-rows-recent') return void recentBigBetRowsDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/restart-daily-pnl') return void restartDailyPnlDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/shadow-performance') return void shadowPerformanceDiagnostics(req, res);
+  if (url.pathname === '/api/diagnostics/exchange-ticker') return void exchangeTickerDiagnostics(req, res, url);
+  if (url.pathname === '/api/diagnostics/candidate-lifecycle') return void candidateLifecycleDiagnostics(req, res, url);
+  if (url.pathname === '/api/diagnostics/settlement-latency') return void settlementLatencyDiagnostics(req, res, url);
+  if (url.pathname === '/api/diagnostics/back-flips') return void backFlipDiagnostics(req, res, false);
+  if (url.pathname === '/api/diagnostics/back-flips.csv') return void backFlipDiagnostics(req, res, true);
+  if (url.pathname.startsWith('/api/')) return void proxyRead(req, res, url);
+  serveStatic(req, res, url);
+});
+
+server.listen(port, '0.0.0.0', () => {
+  console.log(`Read-only ETH 420 operator UI listening on ${port}`);
+  void Promise.all([
+    graceJson('/api/trade/status').then((s) => console.log('TRADE_STATUS_PNL_DIAGNOSTIC', JSON.stringify({
+      date: s?.date ?? null,
+      daily_realized_net_pnl_dollars: s?.daily_realized_net_pnl_dollars ?? null,
+      daily_realized_settled_fill_count: s?.daily_realized_settled_fill_count ?? null,
+      daily_realized_pending_fill_count: s?.daily_realized_pending_fill_count ?? null,
+      daily_realized_unverified_fill_count: s?.daily_realized_unverified_fill_count ?? null,
+    }))),
+    withReadOnlyDb(async (client) => {
+      const tables = ['eth_martingale_orders','eth420_candidate_live_orders','eth_big_bet_orders','eth_g_streak_reversal_orders','jackpot_attempts','kamakazee_orders'];
+      const q = await client.query(`
+        SELECT table_name, column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema='public' AND table_name = ANY($1::text[])
+        ORDER BY table_name, ordinal_position
+      `, [tables]);
+      console.log('SERVICE_LEDGER_SCHEMA_DIAGNOSTIC', JSON.stringify(q.rows));
+      const [a,cand,big,g,j,k] = await Promise.all([
+        client.query(`
+          SELECT COUNT(*)::int AS n,
+                 COALESCE(SUM(
+                   CASE WHEN settlement_result = side
+                     THEN (COALESCE(filled_contracts,0)::numeric - COALESCE(actual_notional_dollars,0)::numeric - COALESCE(actual_fee_dollars,0)::numeric)
+                     ELSE -(COALESCE(actual_notional_dollars,0)::numeric + COALESCE(actual_fee_dollars,0)::numeric)
+                   END
+                 ),0) AS pnl
+          FROM eth_martingale_orders
+          WHERE eastern_date='2026-09-23'
+            AND settlement_result IN ('yes','no')
+            AND COALESCE(filled_contracts,0)::numeric > 0
+        `),
+        client.query(`
+          SELECT COUNT(*)::int AS n, COALESCE(SUM(realized_pnl_delta_cents),0)::int AS pnl_cents
+          FROM eth420_candidate_live_orders
+          WHERE eastern_date='2026-09-23' AND realized_pnl_delta_cents IS NOT NULL
+        `),
+        client.query(`
+          SELECT strategy, COUNT(*)::int AS n, COALESCE(SUM(realized_pnl_cents),0)::int AS pnl_cents
+          FROM eth_big_bet_orders
+          WHERE created_at_ms >= 1790136000000
+            AND created_at_ms < 1790222400000
+            AND realized_pnl_cents IS NOT NULL
+          GROUP BY strategy ORDER BY strategy
+        `),
+        client.query(`
+          SELECT COUNT(*)::int AS n,
+                 COUNT(*) FILTER (WHERE settlement_result IN ('yes','no'))::int AS settled,
+                 COUNT(*) FILTER (WHERE won IS TRUE)::int AS wins,
+                 COUNT(*) FILTER (WHERE won IS FALSE)::int AS losses
+          FROM eth_g_streak_reversal_orders
+          WHERE created_at_ms >= 1790136000000 AND created_at_ms < 1790222400000
+        `),
+        client.query(`
+          SELECT COUNT(*)::int AS n,
+                 COUNT(*) FILTER (WHERE official_result IN ('yes','no'))::int AS settled,
+                 COALESCE(SUM(j_fee_cents),0)::int AS fees_cents
+          FROM jackpot_attempts
+          WHERE detected_at_ms >= 1790136000000 AND detected_at_ms < 1790222400000
+            AND j_kalshi_order_id IS NOT NULL
+        `),
+        client.query(`
+          SELECT COUNT(*)::int AS n,
+                 COUNT(*) FILTER (WHERE official_result IN ('yes','no'))::int AS settled
+          FROM kamakazee_orders
+          WHERE created_at_ms >= 1790136000000 AND created_at_ms < 1790222400000
+            AND kalshi_order_id IS NOT NULL
+        `)
+      ]);
+      console.log('SERVICE_LEDGER_TODAY_DIAGNOSTIC', JSON.stringify({
+        A:a.rows, candidate:cand.rows, BI:big.rows, G:g.rows, J:j.rows, K:k.rows
+      }));
+    }),
+  ]).catch((error) => console.error('PNL_SCHEMA_DIAGNOSTIC_FAILED', String(error?.message ?? error)));
+  void withReadOnlyDb(async (client) => {
+    const r = await client.query(`
+      SELECT id, kalshi_order_id, origin_service, created_at_ms
+        FROM eth420_candidate_live_orders
+       WHERE id IN (
+         'KXETH15M-26SEP231345-45:eth420-live-v1',
+         'KXETH15M-26SEP231400-00:eth420-live-v1',
+         'KXETH15M-26SEP231415-15:eth420-live-v1'
+       )
+       ORDER BY created_at_ms DESC
+    `);
+    console.log('CANDIDATE_ORIGIN_DIAGNOSTIC', JSON.stringify(r.rows));
+    const early = await client.query(`
+      SELECT id, ticker, kalshi_order_id, origin_service, requested_contracts, fill_price_cents, created_at_ms
+      FROM eth420_candidate_live_orders
+      WHERE ticker IN (
+        'KXETH15M-26SEP230530-30',
+        'KXETH15M-26SEP230615-15',
+        'KXETH15M-26SEP230815-15',
+        'KXETH15M-26SEP231145-45',
+        'KXETH15M-26SEP231300-00',
+        'KXETH15M-26SEP231315-15'
+      )
+      ORDER BY created_at_ms
+    `);
+    console.log('EARLY_CANDIDATE_ORIGIN_DIAGNOSTIC', JSON.stringify(early.rows));
+  }).catch((error) => console.error('CANDIDATE_ORIGIN_DIAGNOSTIC_FAILED', String(error?.message ?? error)));
+  for (const path of ['/api/trade/fills?limit=10000', '/api/trade/orders?limit=1000']) {
+    const url = new URL(path, 'http://shawshank.local');
+    void refreshReadCache(url).catch((error) => console.error('Dashboard cache warm failed', path, error));
+  }
+});
++(c.nextWagerCents/100).toFixed(2):'Next wager unknown';
+   return '<div style="border:1px solid #40516a;border-radius:8px;padding:14px">'
+    +'<strong style="color:#d7e7fd">'+name+'</strong>'
+    +'<div style="font-size:21px;font-weight:700;margin:8px 0">'+esc(step)+'</div>'
+    +'<div>'+esc(stake)+'</div>'
+    +'<small class="muted">'+esc(c?.status??'Live state not connected')+'</small>'
+    +'</div>';
+  }).join('');
+  stamp.textContent='Last checked '+new Date().toLocaleTimeString('en-US',{timeZone:'America/New_York'})+' ET · BTC and USD show unavailable until their independent step stores are connected.';
+ }catch(error){
+  cards.innerHTML=['USD','ETH','BTC'].map(name=>'<div style="border:1px solid #40516a;border-radius:8px;padding:14px"><strong>'+name+'</strong><div style="margin-top:8px">Step unavailable</div><small class="muted">Cycle source unreachable</small></div>').join('');
+  stamp.textContent='Cycle source unavailable · no step inferred from order history';
+ }
+}
+loadCycles();setInterval(loadCycles,10000);
+
 const val=(o,...keys)=>{for(const k of keys)if(o?.[k]!==undefined&&o[k]!==null)return o[k];return null};
 const market=t=>/EURUSD|USD15M|FX/.test(t)?'USD':/BTC/.test(t)?'BTC':/ETH/.test(t)?'ETH':'Other';
 const dt=v=>{if(!v)return '—';const n=typeof v==='number'?(v>1e12?v:v*1000):Date.parse(v);return Number.isFinite(n)?new Date(n).toLocaleString('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}):'—'};
