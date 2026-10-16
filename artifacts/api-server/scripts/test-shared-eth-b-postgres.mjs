@@ -16,7 +16,15 @@ const gatewayFile=join(temp,"gateway-bundle.mjs");
 await build({entryPoints:[resolve("src/lib/sharedEthOrderGateway.ts")],bundle:true,platform:"node",format:"esm",outfile:gatewayFile,packages:"external"});
 const {submitThroughSharedEthGate}=await import(pathToFileURL(gatewayFile).href);
 const bAdapterFile=join(temp,"b-adapter.mjs");
-await build({entryPoints:[resolve("src/lib/strategies/ethJumpSharedAdapter.ts")],bundle:true,platform:"node",format:"esm",outfile:bAdapterFile,packages:"external"});
+await build({
+ entryPoints:[resolve("src/lib/strategies/ethJumpSharedAdapter.ts")],
+ bundle:true,platform:"node",format:"esm",outfile:bAdapterFile,packages:"external",
+ plugins:[{name:"disposable-db-only",setup(b){
+  b.onResolve({filter:/sharedEthPgProvider\\.js$/},()=>({path:"db-stub",namespace:"review-stub"}));
+  b.onLoad({filter:/.*/,namespace:"review-stub"},()=>({contents:"export const sharedEthPgProvider = null;",loader:"js"}));
+ }}]
+});
+const {submitBViaSharedEthClaim}=await import(pathToFileURL(bAdapterFile).href);
 
 const url=process.env.TEST_DATABASE_URL;
 if(!url)throw Error("TEST_DATABASE_URL must point to an isolated throwaway PostgreSQL database");
@@ -91,6 +99,22 @@ try{
  assert.equal(bSubmitted,0,"active earlier shared submission must exclude both B and E");
  assert.equal(bClaim.status,"SKIPPED_ACTIVE_CLAIM");
  assert.equal(bOther.status,"SKIPPED_ACTIVE_CLAIM");
+ const intent={strategy:"jump",orderTag:"jump-test",ticker:"KXETH15M-26OCT161515-15",
+  side:"no",wagerCents:42000,limitPriceCents:50,marketOpenTimeMs:Date.now()};
+ let posts=0,journals=0;
+ const bInput={intent,provider:txProvider,estimatedFeeCents:()=>0,
+  persistBeforePost:async(j)=>{journals++;assert.equal(j.budgetCents,100);assert.equal(j.contracts,2);},
+  exchange:{submit:async(req)=>{posts++;assert.equal(req.contracts,2);assert.equal(req.side,"no");assert.equal(journals,1);return {kind:"accepted",exchangeOrderId:"B-EXCHANGE-1"};}}};
+ assert.equal((await submitBViaSharedEthClaim(bInput)).kind,"skipped","B blocked by earlier G/F claim");
+ assert.equal(posts,0);
+ await finalizeEthClaim(txProvider,winner.claim.claimId,randomUUID(),"ZERO_FILL");
+ const bAccepted=await submitBViaSharedEthClaim(bInput);
+ assert.equal(bAccepted.kind,"held");assert.equal(posts,1);
+ assert.equal((await submitBViaSharedEthClaim(bInput)).kind,"skipped");
+ assert.equal(posts,1,"B must never double-submit");
+ const bRow=await pool.query("SELECT service,status,order_id FROM eth_shared_martingale_claims WHERE claim_id=$1",[bAccepted.claimId]);
+ assert.equal(bRow.rows[0].service,"B");assert.equal(bRow.rows[0].status,"SUBMITTED");
+ console.log("PASS: actual B adapter holds cross-service lock, sizes two contracts, persists first, and rejects duplicate POST");
  console.log("PASS: B/E competing callbacks never bypass unresolved shared claim");
  console.log("PASS: independent PostgreSQL connections serialize claims and advance stake after loss");
 }finally{
