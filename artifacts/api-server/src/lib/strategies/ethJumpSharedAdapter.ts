@@ -1,4 +1,5 @@
 import {submitThroughSharedEthGate} from "../sharedEthOrderGateway.js";
+import type {TransactionProvider} from "../sharedEthClaimStore.js";
 import {sharedEthPgProvider} from "../sharedEthPgProvider.js";
 import {ethContractsWithinBudget} from "../sharedEthOrderSizing.js";
 import type {EthBigBetExchangeSubmitter,EthBigBetSubmitResult} from "./ethBigBetExecutor.js";
@@ -12,6 +13,8 @@ export async function submitBViaSharedEthClaim(input:{
  intent:EthBigBetOrderIntent;
  exchange:EthBigBetExchangeSubmitter;
  estimatedFeeCents:(contracts:number)=>number;
+ /** Inject only the disposable test provider; production defaults to Railway PostgreSQL. */
+ provider?:TransactionProvider;
  persistBeforePost:(record:{
    claimId:string;clientOrderId:string;contracts:number;budgetCents:number;
    priceCents:number;ticker:string;side:"yes"|"no";
@@ -27,7 +30,7 @@ export async function submitBViaSharedEthClaim(input:{
  // persisted separately. Never retry the POST just because the acknowledgment
  // failed; the global fence stays held until exchange reconciliation.
  const clientOrderId="eth-shared-B:"+input.intent.ticker;
- const outcome=await submitThroughSharedEthGate(sharedEthPgProvider,{
+ const outcome=await submitThroughSharedEthGate(input.provider??sharedEthPgProvider,{
   service:"B",ticker:input.intent.ticker,side:input.intent.side,clientOrderId
  },async (claim,id)=>{
   const size=ethContractsWithinBudget(claim.budgetCents,input.intent.limitPriceCents,input.estimatedFeeCents);
