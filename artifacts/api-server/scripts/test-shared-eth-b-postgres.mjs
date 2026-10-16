@@ -26,6 +26,12 @@ await build({
 });
 const {submitBViaSharedEthClaim}=await import(pathToFileURL(bAdapterFile).href);
 
+const bSettlementFile=join(temp,"b-settlement.mjs");
+await build({entryPoints:[resolve("src/lib/strategies/ethJumpSharedSettlement.ts")],bundle:true,platform:"node",format:"esm",outfile:bSettlementFile,packages:"external",plugins:[{name:"disposable-db-only",setup(b){
+ b.onResolve({filter:new RegExp("sharedEthPgProvider|@workspace/db")},()=>({path:"db-stub",namespace:"review-stub"}));
+ b.onLoad({filter:/.*/,namespace:"review-stub"},()=>({contents:"export const sharedEthPgProvider = null;",loader:"js"}));
+}}]});
+const {reconcileBSharedTerminal}=await import(pathToFileURL(bSettlementFile).href);
 const url=process.env.TEST_DATABASE_URL;
 if(!url)throw Error("TEST_DATABASE_URL must point to an isolated throwaway PostgreSQL database");
 const parsed=new URL(url);
@@ -115,6 +121,20 @@ try{
  const bRow=await pool.query("SELECT service,status,order_id FROM eth_shared_martingale_claims WHERE claim_id=$1",[bAccepted.claimId]);
  assert.equal(bRow.rows[0].service,"B");assert.equal(bRow.rows[0].status,"SUBMITTED");
  console.log("PASS: actual B adapter holds cross-service lock, sizes two contracts, persists first, and rejects duplicate POST");
+ const base={provider:txProvider,claimId:bAccepted.claimId,clientOrderId:"eth-shared-B:"+intent.ticker,
+ expectedClientOrderId:"eth-shared-B:"+intent.ticker,ticker:intent.ticker,side:"no",
+ exchangeOrderId:"B-EXCHANGE-1",exchangeTerminal:true,finalFillCount:2,
+ marketResult:"yes",settlementId:randomUUID()};
+ assert.equal(await reconcileBSharedTerminal({...base,exchangeTerminal:false}),"PENDING");
+ assert.equal(await reconcileBSharedTerminal({...base,finalFillCount:null}),"PENDING");
+ assert.equal(await reconcileBSharedTerminal({...base,marketResult:null}),"PENDING");
+ await assert.rejects(reconcileBSharedTerminal({...base,clientOrderId:"wrong"}),/mismatch/);
+ assert.equal(await reconcileBSharedTerminal(base),"FINALIZED");
+ assert.equal((await pool.query("SELECT step FROM eth_shared_martingale_state WHERE singleton=true")).rows[0].step,1);
+ const following=await claimFirstEthSignal(txProvider,make("H"));assert.equal(following.budgetCents,200);
+ assert.equal(await releaseUnsubmittedEthClaim(txProvider,following.claimId),true);
+ console.log("PASS: B terminal evidence requirement and authenticated-result-shaped loss advance");
+
  console.log("PASS: B/E competing callbacks never bypass unresolved shared claim");
  console.log("PASS: independent PostgreSQL connections serialize claims and advance stake after loss");
 }finally{
