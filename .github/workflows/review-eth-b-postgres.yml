@@ -48,7 +48,7 @@ jobs:
       - name: Compile actual B Jump runtime entrypoint
         run: |
           cd artifacts/api-server
-          ../../node_modules/.bin/esbuild src/lib/strategies/ethJumpLiveRunner.ts --bundle --packages=external --platform=node --format=esm --outfile=/tmp/eth-jump-review.mjs
+          /tmp/eth-b-gate/node_modules/.bin/esbuild src/lib/strategies/ethJumpLiveRunner.ts --bundle --packages=external --platform=node --format=esm --outfile=/tmp/eth-jump-review.mjs
       - name: Test mocked authenticated B reconciliation
         working-directory: /tmp/eth-b-gate
         run: node scripts/test-b-kalshi-reconciler.mjs
