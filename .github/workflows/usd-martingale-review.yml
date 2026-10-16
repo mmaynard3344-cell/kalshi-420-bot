@@ -1,0 +1,26 @@
+name: USD martingale review tests
+on:
+  push:
+    branches:
+      - review/usd-martingale-release-20261015
+  pull_request:
+    paths:
+      - 'artifacts/eurusd-martingale/**'
+      - '.github/workflows/usd-martingale-review.yml'
+jobs:
+  isolated-ladder:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@v2
+      - name: Compile standalone Railway review function without executing it
+        run: bun build artifacts/eurusd-martingale/railway-review-function.ts --target bun --outfile /tmp/usd-railway-review.js
+      - name: Smoke-run complete Railway function using disposable SQLite and no credentials
+        run: |
+          mkdir -p /tmp/usd-isolated
+          USD_ISOLATED_SMOKE=true USD_TEST_DB_PATH=/tmp/usd-isolated/ladder.sqlite FX_LIVE_ENABLED=false ORDER_EXECUTION_ENABLED=false bun run artifacts/eurusd-martingale/railway-review-function.ts
+      - name: Run no-order ladder and SQLite tests
+        run: node --experimental-sqlite --test artifacts/eurusd-martingale/*.test.mjs

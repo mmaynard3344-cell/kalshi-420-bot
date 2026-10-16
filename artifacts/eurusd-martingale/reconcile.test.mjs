@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {initializeUsdLadder,getUsdLadder} from './store.mjs';
+import {reconcileUsdLadder} from './reconcile.mjs';
+function fixture(){const raw=new DatabaseSync(':memory:');const db={exec:s=>raw.exec(s),query:s=>raw.prepare(s)};initializeUsdLadder(db,'2026-10-16T00:00:00.000Z');db.exec('CREATE TABLE fx_live_order_claims(ticker TEXT PRIMARY KEY,created_at TEXT,side TEXT,status TEXT,exchange_order_id TEXT)');return {db,raw}}
+test('filled loss is applied once',async()=>{const {db,raw}=fixture();try{db.query('INSERT INTO fx_live_order_claims VALUES(?,?,?,?,?)').run('m','2026-10-16T01:00:00Z','YES','submitted','id');const api={getOrder:async()=>({fill_count_fp:'1.00',status:'executed'}),getMarket:async()=>({result:'no'})};assert.equal((await reconcileUsdLadder(db,api)).state.step,1);assert.equal((await reconcileUsdLadder(db,api)).state.step,1)}finally{raw.close()}});
+test('zero fill does not advance and unverified fill blocks',async()=>{const {db,raw}=fixture();try{db.query('INSERT INTO fx_live_order_claims VALUES(?,?,?,?,?)').run('m','2026-10-16T01:00:00Z','YES','submitted','id');assert.equal((await reconcileUsdLadder(db,{getOrder:async()=>({fill_count_fp:'0.00',status:'canceled'}),getMarket:async()=>({})})).state.step,0);db.query('INSERT INTO fx_live_order_claims VALUES(?,?,?,?,?)').run('n','2026-10-16T01:30:00Z','NO','submitted','id2');assert.equal((await reconcileUsdLadder(db,{getOrder:async()=>({status:'executed'}),getMarket:async()=>({result:'no'})})).ready,false)}finally{raw.close()}});
