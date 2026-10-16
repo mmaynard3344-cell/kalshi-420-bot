@@ -510,6 +510,8 @@ async function submitGWithSharedReservation(
   if(balance==null||balance<size.totalCents)throw Error("insufficient exchange balance; leave claim locked pending reconciliation");
   // The G reconciler uses its durable order journal; link it to the globally
   // locked claim before the exchange request so crash recovery can identify it.
+  // The legacy G journal only accepts steps 0..2. The authoritative six-step
+  // rung lives exclusively in eth_shared_martingale_claims.
   const journalId="g-streak-reversal:"+market.ticker;
   const now=Date.now();
   const d=await db();
@@ -517,7 +519,7 @@ async function submitGWithSharedReservation(
     INSERT INTO eth_g_streak_reversal_orders
      (id,ticker,side,step,principal_cents,requested_contracts,filled_contracts,
       client_order_id,status,market_close_ms,exchange_index,created_at_ms,updated_at_ms)
-    VALUES (${journalId},${market.ticker},${side},${claim.step},${size.principalCents},${size.contracts},0,
+    VALUES (${journalId},${market.ticker},${side},0,${size.principalCents},${size.contracts},0,
       ${id},'submitting',${market.closeMs},${market.exchangeIndex},${now},${now})
     ON CONFLICT (ticker) DO NOTHING RETURNING id
   `);
