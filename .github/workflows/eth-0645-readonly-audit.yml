@@ -1,0 +1,30 @@
+name: Read-only ETH 0645 Kalshi audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [review/eth-g-six-step-ladder-20261015]
+    paths:
+      - .github/workflows/eth-0645-readonly-audit.yml
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Check credential presence (never print values)
+        env:
+          KALSHI_API_KEY_ID: ${{ secrets.KALSHI_API_KEY_ID }}
+          KALSHI_PRIVATE_KEY: ${{ secrets.KALSHI_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KALSHI_API_KEY_ID" ] || [ -z "$KALSHI_PRIVATE_KEY" ]; then
+            echo 'AUDIT_BLOCKED: Kalshi secrets not configured in GitHub Actions.'
+            exit 2
+          fi
+          echo 'Credentials are configured; executing read-only audit.'
+      - name: Fetch read-only order and fill audit
+        env:
+          KALSHI_API_KEY_ID: ${{ secrets.KALSHI_API_KEY_ID }}
+          KALSHI_PRIVATE_KEY: ${{ secrets.KALSHI_PRIVATE_KEY }}
+        run: bun run artifacts/api-server/scripts/audit-eth-0645-readonly.ts
