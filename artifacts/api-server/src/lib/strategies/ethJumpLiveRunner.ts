@@ -1,4 +1,6 @@
 import { logger } from "../logger.js";
+import {reconcileBSharedJournalCycle} from "./ethJumpSharedLifecycle.js";
+import {submitBViaSharedEthClaim} from "./ethJumpSharedAdapter.js";
 import type { Eth420CandidateMarket } from "./eth420SixStepCandidate.js";
 import { prepareEthJumpServiceIntent } from "./ethJumpServiceRuntime.js";
 import { createEthBigBetKalshiSubmitter } from "./ethBigBetKalshiExchange.js";
@@ -76,6 +78,41 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
   if (!intent) return finish("no_signal");
   if (input.exchangeIndex == null || !Number.isInteger(input.exchangeIndex) || input.exchangeIndex < 0) return finish("routing_unavailable", "invalid_exchange_index");
   try { await ensureStoreReady(); } catch { return finish("storage_unavailable", "execution_store_unavailable"); }
+  // A service must never fall back to its independent stake when the global
+  // ETH shared-ladder cutover is requested but this executor is not bridged.
+  // The shared claim, order identity, and exchange settlement must be wired
+  // together before this gate can be replaced by the shared execution adapter.
+  if(process.env["ETH_SHARED_MARTINGALE_ENABLED"]==="true"){
+    // The shared journal reconciles first. B submission remains fail-closed
+    // until the all-ETH coordinated cutover and production migration.
+    try {
+      const reconciliation=await reconcileBSharedJournalCycle();
+      logger.info({ticker:input.market.ticker,reconciliation},"B shared ETH journal reconciliation");
+    } catch(error) {
+      logger.error({ticker:input.market.ticker,error:String(error)},"B shared ETH reconciliation unavailable; no order submitted");
+      return finish("storage_unavailable","shared_reconciliation_unavailable");
+    }
+    // Explicit second activation gate: never enable this before every ETH
+    // executor has the same shared claim fence and migrations are verified.
+    if(process.env["ETH_B_SHARED_SUBMISSION_READY"]==="true"){
+      const exchange=createEthBigBetKalshiSubmitter(input.exchangeIndex);
+      if(!exchange)return finish("routing_unavailable","shared_exchange_unavailable");
+      try{
+        const submission=await submitBViaSharedEthClaim({
+          intent,exchange,
+          estimatedFeeCents:(contracts)=>Math.ceil(0.07*contracts*intent.limitPriceCents*(100-intent.limitPriceCents)/100),
+        });
+        logger.info({ticker:intent.ticker,kind:submission.kind},"B shared ETH submit result");
+        return finish(submission.kind==="held"?"submitted":submission.kind==="skipped"?"blocked_duplicate":"submission_unknown");
+      }catch(error){
+        logger.error({ticker:intent.ticker,error:String(error)},"B shared ETH submission held for reconciliation");
+        return finish("submission_unknown","shared_submission_error");
+      }
+    }
+    logger.error({ticker:input.market.ticker,service:"B"},
+      "ETH B shared cutover requested, but execution adapter not installed; fail closed");
+    return finish("disabled","shared_eth_adapter_not_installed");
+  }
   const requestedRiskCents = ethBigBetCapitalRiskCents(intent.wagerCents, intent.limitPriceCents);
   if (requestedRiskCents < 1) return finish("capital_unavailable", "invalid_requested_risk");
   const flagEnabled = isBkFreshBalanceCapitalPolicyEnabled();
