@@ -1,5 +1,6 @@
 import { logger } from "../logger.js";
 import {reconcileBSharedJournalCycle} from "./ethJumpSharedLifecycle.js";
+import {submitBViaSharedEthClaim} from "./ethJumpSharedAdapter.js";
 import type { Eth420CandidateMarket } from "./eth420SixStepCandidate.js";
 import { prepareEthJumpServiceIntent } from "./ethJumpServiceRuntime.js";
 import { createEthBigBetKalshiSubmitter } from "./ethBigBetKalshiExchange.js";
