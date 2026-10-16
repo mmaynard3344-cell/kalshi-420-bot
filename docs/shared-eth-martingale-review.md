@@ -26,3 +26,9 @@ Use a durable Postgres state row with `step`, `active_claim_id`, `version`, and 
 5. Typecheck, run unit/integration tests and prepare a review PR. Do not merge, deploy, or enable execution without user approval and green checks.
 
 These pure transition functions are **not** an execution interlock by themselves.
+
+## October 16 read-only USD comparison
+USD is on its own Railway Function/SQLite ladder (not covered by this ETH Postgres feature). Latest service deployment SUCCESS; FX_LADDER_REVIEW_GATE allowed=true step=4 budgetCents=1600; 11:03 ET USD NO order submitted, 11:17 ET ZERO_FILL settled without step change; 11:17 and 11:47 subsequent predictions NO_ORDER_SIGNAL. This supports correct zero-fill behavior, not an end-to-end proof of loss/win transition or IOC liquidity. Do not conflate prediction count with filled orders.
+
+## Outstanding before integration
+Review exact live service list and submission chokepoints, and write transaction-provider adapter plus tests using disposable Postgres. The SQL/TypeScript branch has no production imports or route registrations. Do not merge or deploy.
