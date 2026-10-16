@@ -288,13 +288,29 @@ async function settleOrder(order: GOrder, result: OutcomeSide): Promise<void> {
       SELECT claim_id FROM eth_g_shared_claim_links WHERE client_order_id=${order.clientOrderId}
     `))[0];
     if(!linked)throw Error("G shared settlement missing claim link");
-    if(!isTerminal(order.status))return;
-    const outcome=order.filledContracts<=0?"ZERO_FILL":order.side===result?"WIN":"LOSS";
+    if(!isTerminal(order.status)||!order.kalshiOrderId)return;
+    // Never trust the locally persisted fill count as final settlement proof.
+    // An authenticated terminal-order detail must match this exact claim.
+    const rawDetail=await kalshiAuthFetch<Record<string,unknown>>("GET",
+      "/portfolio/orders/"+encodeURIComponent(order.kalshiOrderId),
+      undefined,{readPriority:"safety"});
+    const wire=(rawDetail["order"]&&typeof rawDetail["order"]==="object"
+      ?rawDetail["order"]:rawDetail) as Record<string,unknown>;
+    if(wire["order_id"]!==order.kalshiOrderId
+      ||wire["client_order_id"]!==order.clientOrderId
+      ||wire["ticker"]!==order.ticker)return;
+    const verified=parseKalshiOrderResponse(rawDetail,order.requestedContracts);
+    if(!verified.orderStatus||!isTerminal(verified.orderStatus)
+      ||!verified.fillCountProvided
+      ||!Number.isSafeInteger(verified.fillCount)
+      ||verified.fillCount<0||verified.fillCount>order.requestedContracts)return;
+    const verifiedFills=verified.fillCount;
+    const outcome=verifiedFills===0?"ZERO_FILL":order.side===result?"WIN":"LOSS";
     await finalizeEthClaim(sharedEthPgProvider,String(linked["claim_id"]),
       "G:"+order.clientOrderId+":"+result,outcome);
     await d.execute(sql`
       UPDATE eth_g_streak_reversal_orders SET settlement_result=${result},
-        won=${order.filledContracts>0?order.side===result:null},settled_at_ms=${Date.now()},
+        won=${verifiedFills>0?order.side===result:null},filled_contracts=${verifiedFills},settled_at_ms=${Date.now()},
         updated_at_ms=${Date.now()} WHERE id=${order.id} AND settled_at_ms IS NULL
     `);
     return;
