@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - review/eth-g-shared-ladder-adapter
+  pull_request:
+    branches:
+      - deploy/eth-g-one-dollar-20261013
   workflow_dispatch:
 jobs:
   compile-g:
