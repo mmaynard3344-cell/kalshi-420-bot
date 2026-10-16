@@ -6,7 +6,7 @@ import {claimFirstEthSignal,finalizeEthClaim,type QueryClient,type TransactionPr
 // NOT PostgreSQL behavior. Disposable Postgres concurrency tests still required.
 class MemoryDB implements TransactionProvider {
  state={step:0,active_claim_id:null as string|null,version:0};
- claims=new Map<string,{status:string;settlement_id:string|null;step:number}>();
+ claims=new Map<string,{status:string;settlement_id:string|null;step:number;outcome:string|null}>();
  private queue:Promise<unknown>=Promise.resolve();
  transaction<T>(work:(client:QueryClient)=>Promise<T>):Promise<T>{
    const next=this.queue.then(async()=>{
@@ -14,8 +14,8 @@ class MemoryDB implements TransactionProvider {
        let rows:Record<string,unknown>[]=[];
        if(sql.startsWith("SELECT step, active_claim_id")||sql.startsWith("SELECT step,active_claim_id"))rows=[{...this.state}];
        else if(sql.startsWith("SELECT status,settlement_id,step")){const claim=this.claims.get(String(params[0]));if(claim)rows=[{...claim}];}
-       else if(sql.startsWith("INSERT INTO eth_shared_martingale_claims"))this.claims.set(String(params[0]),{status:"RESERVED",settlement_id:null,step:Number(params[4])});
-       else if(sql.startsWith("UPDATE eth_shared_martingale_claims")){const claim=this.claims.get(String(params[0]));if(!claim)throw Error("unknown claim");claim.status=String(params[1]);claim.settlement_id=String(params[3]);}
+       else if(sql.startsWith("INSERT INTO eth_shared_martingale_claims"))this.claims.set(String(params[0]),{status:"RESERVED",settlement_id:null,step:Number(params[4]),outcome:null});
+       else if(sql.startsWith("UPDATE eth_shared_martingale_claims")){const claim=this.claims.get(String(params[0]));if(!claim)throw Error("unknown claim");claim.status=String(params[1]);claim.settlement_id=String(params[3]);claim.outcome=String(params[2]);}
        else if(sql.startsWith("UPDATE eth_shared_martingale_state SET active_claim_id")){this.state.active_claim_id=String(params[0]);this.state.version++;}
        else if(sql.startsWith("UPDATE eth_shared_martingale_state SET step")){this.state.step=Number(params[0]);this.state.active_claim_id=null;this.state.version++;}
        else throw Error("Unexpected SQL "+sql);
@@ -43,6 +43,7 @@ describe("shared ETH claim state contract (in-memory only)",()=>{
    assert.deepEqual(await finalizeEthClaim(db,"a","settlement-a","LOSS"),{step:1,alreadyApplied:false});
    assert.deepEqual(await finalizeEthClaim(db,"a","settlement-a","LOSS"),{step:1,alreadyApplied:true});
    await assert.rejects(finalizeEthClaim(db,"a","settlement-other","LOSS"));
+   await assert.rejects(finalizeEthClaim(db,"a","settlement-a","WIN"));
    const next=await claimFirstEthSignal(db,request("b","G"));
    assert.equal(next?.budgetCents,200);
  });
