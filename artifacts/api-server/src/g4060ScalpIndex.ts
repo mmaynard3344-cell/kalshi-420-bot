@@ -344,6 +344,9 @@ async function reconcileOutstanding(): Promise<boolean> {
       order = await cancelIfPastClose(order);
       if (!isTerminal(order.status)) continue;
     }
+    // Shared claims require an authenticated exchange order identity before
+    // settlement. Never turn an unresolved POST into an assumed zero-fill.
+    if(process.env["ETH_G_SHARED_MARTINGALE_ENABLED"]==="true" && !order.kalshiOrderId)continue;
     if (!order.kalshiOrderId && (order.status === "submitting" || order.status === "submission_unknown")) continue;
     await settleOrder(order, result);
   }
