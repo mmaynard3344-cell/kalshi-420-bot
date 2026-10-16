@@ -10,7 +10,7 @@ try {
  await build({entryPoints:[resolve("src/lib/strategies/ethJumpSharedKalshiReconciler.ts")],
   platform:"node",format:"esm",bundle:true,outfile,
   plugins:[{name:"mock-kalshi",setup(b){
-    b.onResolve({filter:/kalshiAuth\\.js$|kalshi\\.js$|ethJumpSharedSettlement\\.js$/},args=>({path:args.path,namespace:"mock"}));
+    b.onResolve({filter:new RegExp("(kalshiAuth|kalshi|ethJumpSharedSettlement)\\.js$")},args=>({path:args.path,namespace:"mock"}));
     b.onLoad({filter:/.*/,namespace:"mock"},args=>{
       if(args.path.endsWith("kalshiAuth.js"))return {contents:"export const kalshiAuthFetch = async (...args) => globalThis.__bMock.auth(...args);",loader:"js"};
       if(args.path.endsWith("kalshi.js"))return {contents:"export const kalshiFetch = async (...args) => globalThis.__bMock.market(...args);",loader:"js"};
