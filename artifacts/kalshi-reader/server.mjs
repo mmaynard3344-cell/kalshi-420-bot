@@ -1201,7 +1201,7 @@ function serveStatic(req, res, url) {
 
 function serveSimpleTradeLog(req,res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res,405,'Method not allowed');
-  const html = String.raw\`<!doctype html>
+  const html = String.raw`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Shawshank Trades</title>
 <style>body{margin:0;background:#101827;color:#f2f5fa;font:15px system-ui,sans-serif}main{max-width:1200px;margin:auto;padding:24px}header{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}h1{font-size:25px;margin:0 0 8px}p{color:#bdc9d8}button,select{background:#1f3047;color:white;border:1px solid #4a5d74;border-radius:7px;padding:9px 12px}table{width:100%;border-collapse:collapse;min-width:810px}th,td{padding:11px 9px;text-align:left;border-bottom:1px solid #304056;white-space:nowrap}th{color:#b9c7da;font-size:12px;position:sticky;top:0;background:#101827}section{overflow:auto;margin-top:18px}.muted{color:#9facbf}.warn{color:#f5cc82}.err{color:#ff9b9b}a{color:#aaceff}small{color:#aab9cb}</style>
@@ -1237,7 +1237,7 @@ async function load(){
  finally{el('refresh').disabled=false}
 }
 el('refresh').addEventListener('click',load);el('market').addEventListener('change',draw);load();
-</script></body></html>\`;
+</script></body></html>`;
   return send(res,200,req.method === 'HEAD' ? '' : html,'text/html; charset=utf-8');
 }
 
