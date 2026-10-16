@@ -1339,39 +1339,38 @@ el('refresh').addEventListener('click',load);el('market').addEventListener('chan
 
 async function martingaleCyclesReadOnly(req,res) {
   if(req.method!=='GET'&&req.method!=='HEAD')return send(res,405,'Method not allowed');
-  const unavailable=(market,status)=>({market,step:null,maxSteps:null,nextWagerCents:null,status,source:'unverified',activeTicker:null});
+  const unknown=(market,status)=>({market,step:null,maxSteps:null,nextWagerCents:null,status,source:'unverified',activeTicker:null});
   const cycles=[
-    unavailable('USD','USD strategy cycle source not yet connected'),
-    unavailable('ETH','ETH shared ledger unavailable'),
-    unavailable('BTC','BTC strategy cycle source not yet connected')
+    unknown('USD','USD ladder stored in isolated Railway Function SQLite; telemetry bridge required'),
+    unknown('ETH','ETH shared ladder unavailable'),
+    unknown('BTC','BTC shared ladder unavailable')
   ];
-  try{
-    await withReadOnlyDb(async(client)=>{
-      const tables=await client.query("SELECT to_regclass('public.eth_shared_martingale_state') AS state, to_regclass('public.eth_shared_martingale_claims') AS claims");
-      if(!tables.rows[0]?.state||!tables.rows[0]?.claims)return;
-      const result=await client.query(
-        "SELECT s.step,s.active_claim_id,c.ticker,c.status FROM eth_shared_martingale_state s LEFT JOIN eth_shared_martingale_claims c ON c.claim_id=s.active_claim_id WHERE s.singleton=TRUE LIMIT 1"
-      );
-      const row=result.rows[0],step=Number(row?.step);
-      if(!Number.isInteger(step)||step<0||step>5)return;
-      const btcTable=await client.query("SELECT to_regclass('public.btc_shared_ladder') AS ladder");
-      if(btcTable.rows[0]?.ladder){
-        const btc=await client.query("SELECT step,pending_order_id,pending_settlement_id FROM btc_shared_ladder WHERE market='BTC' LIMIT 1");
-        const b=btc.rows[0],btcStep=Number(b?.step);
-        if(b&&Number.isInteger(btcStep)&&btcStep>=0&&btcStep<=5){
-          cycles[2]={market:'BTC',step:btcStep+1,maxSteps:6,nextWagerCents:[100,200,400,800,1600,3200][btcStep],
-            status:b.pending_order_id?'Order pending settlement':b.pending_settlement_id?'Settlement pending confirmation':'Ready for next signal',
-            source:'btc_shared_ladder PostgreSQL',activeTicker:null};
+  try {
+    await withReadOnlyDb(async client=>{
+      try {
+        const tables=await client.query("SELECT to_regclass('public.eth_shared_martingale_state') AS state, to_regclass('public.eth_shared_martingale_claims') AS claims");
+        if(tables.rows[0]?.state&&tables.rows[0]?.claims){
+          const result=await client.query("SELECT s.step,s.active_claim_id,c.ticker,c.status FROM eth_shared_martingale_state s LEFT JOIN eth_shared_martingale_claims c ON c.claim_id=s.active_claim_id WHERE s.singleton=TRUE LIMIT 1");
+          const row=result.rows[0],step=Number(row?.step);
+          if(row&&Number.isInteger(step)&&step>=0&&step<=5)
+            cycles[1]={market:'ETH',step:step+1,maxSteps:6,nextWagerCents:[100,200,400,800,1600,3200][step],
+              status:row.active_claim_id?'Waiting for settlement ('+(row.status||'pending')+')':'Ready for next signal',
+              source:'eth_shared_martingale_state',activeTicker:row.ticker||null};
         }
-      }
-      cycles[1]={market:'ETH',step:step+1,maxSteps:6,nextWagerCents:[100,200,400,800,1600,3200][step],
-        status:row.active_claim_id?'Waiting for settlement ('+(row.status||'pending')+')':'Ready for signal',
-        source:'shared PostgreSQL ledger',activeTicker:row.ticker||null};
+      }catch(error){console.error('ETH ladder status unavailable',String(error?.message??error));}
+      try {
+        const t=await client.query("SELECT to_regclass('public.btc_shared_ladder') AS ladder");
+        if(t.rows[0]?.ladder){
+          const r=await client.query("SELECT step,pending_order_id,pending_settlement_id FROM btc_shared_ladder WHERE market='BTC' LIMIT 1");
+          const row=r.rows[0],step=Number(row?.step);
+          if(row&&Number.isInteger(step)&&step>=0&&step<=5)
+            cycles[2]={market:'BTC',step:step+1,maxSteps:6,nextWagerCents:[100,200,400,800,1600,3200][step],
+              status:row.pending_order_id?'Order pending settlement':row.pending_settlement_id?'Settlement pending verification':'Ready for next signal',
+              source:'btc_shared_ladder',activeTicker:null};
+        }
+      }catch(error){console.error('BTC ladder status unavailable',String(error?.message??error));}
     });
-  }catch(error){
-    console.error('Martingale cycle read-only fetch failed',String(error?.message??error));
-    cycles[1].status='ETH database read failed';
-  }
+  }catch(error){console.error('Martingale read-only DB unavailable',String(error?.message??error));}
   return send(res,200,req.method==='HEAD'?'':JSON.stringify({generatedAtMs:Date.now(),cycles}),'application/json; charset=utf-8');
 }
 
