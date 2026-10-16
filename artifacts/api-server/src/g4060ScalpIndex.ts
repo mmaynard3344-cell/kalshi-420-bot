@@ -6,6 +6,9 @@ import { parseKalshiOrderResponse } from "./lib/orderResponseParser.js";
 import { fetchFreshKalshiBalanceForExchangeRead, kalshiBalanceCents } from "./lib/kalshiBalance.js";
 import { logger } from "./lib/logger.js";
 import { currentEthServiceRole } from "./lib/strategies/ethServiceRole.js";
+import { submitThroughSharedEthGate } from "./lib/sharedEthOrderGateway.js";
+import { sharedEthPgProvider } from "./lib/sharedEthPgProvider.js";
+import { ethContractsWithinBudget } from "./lib/sharedEthOrderSizing.js";
 
 const SERIES = "KXETH15M";
 const LIMIT_PRICE_CENTS = 50;
@@ -459,6 +462,38 @@ async function submitOrder(market: { ticker: string; closeMs: number; exchangeIn
   }
 }
 
+/**
+ * Review-only shared-ladder execution. The gate holds the global ETH claim through
+ * settlement; a separate authenticated settlement bridge MUST be installed before
+ * ETH_G_SHARED_MARTINGALE_ENABLED can be enabled. Fail closed otherwise.
+ */
+async function submitGWithSharedReservation(
+ market:{ticker:string;closeMs:number;exchangeIndex:number},side:OutcomeSide
+):Promise<void>{
+ if(process.env["ETH_SHARED_SETTLEMENT_BRIDGE_READY"]!=="true"){
+  logger.error({ticker:market.ticker},"Shared ETH G submission blocked: settlement bridge not installed");
+  return;
+ }
+ if(await orderForTicker(market.ticker))return;
+ const clientOrderId="g-shared-v1:"+market.ticker;
+ const attempt=await submitThroughSharedEthGate(sharedEthPgProvider,{
+  service:"G",ticker:market.ticker,side,clientOrderId
+ },async(claim,id)=>{
+  const size=ethContractsWithinBudget(claim.budgetCents,LIMIT_PRICE_CENTS,feeCents);
+  if(size.contracts===0)throw Error("Shared ETH wager cannot fund a contract including fees");
+  const balance=kalshiBalanceCents((await fetchFreshKalshiBalanceForExchangeRead(market.exchangeIndex)).value);
+  if(balance==null||balance<size.totalCents)throw Error("insufficient exchange balance; leave claim locked pending reconciliation");
+  return kalshiAuthFetch<Record<string,unknown>>("POST","/portfolio/events/orders",{
+   ticker:market.ticker,client_order_id:id,side:wireSide(side),
+   count:`${size.contracts}.00`,price:"0.5000",
+   time_in_force:"good_till_canceled",
+   self_trade_prevention_type:"taker_at_cross",exchange_index:market.exchangeIndex
+  });
+ });
+ logger.info({ticker:market.ticker,status:attempt.status,claimId:attempt.status==="SKIPPED_ACTIVE_CLAIM"?null:attempt.claim.claimId},
+  "G shared ETH claim gateway decision");
+}
+
 let busy = false;
 async function tick(): Promise<void> {
   if (busy) return;
@@ -489,7 +524,11 @@ async function tick(): Promise<void> {
 
     if (state.ladderSide == null) return;
     if (!await publishDirection(market.ticker, state.ladderSide, "g_ladder_direction")) return;
-    await submitOrder(market, state.ladderSide, state.step);
+    if(process.env["ETH_G_SHARED_MARTINGALE_ENABLED"]==="true"){
+      await submitGWithSharedReservation(market,state.ladderSide);
+    }else{
+      await submitOrder(market,state.ladderSide,state.step);
+    }
   } catch (err) {
     logger.warn({ err }, "G streak reversal tick failed");
   } finally {
