@@ -13,7 +13,7 @@ import { finalizeEthClaim } from "./lib/sharedEthClaimStore.js";
 
 const SERIES = "KXETH15M";
 const LIMIT_PRICE_CENTS = 50;
-const PRINCIPALS_CENTS = [200, 200, 200] as const;
+const PRINCIPALS_CENTS = [150, 150, 150] as const;
 const CONTRACTS = [3, 3, 3] as const;
 const POLL_MS = 2_000;
 const ENTRY_WINDOW_MS = 15 * 60_000;
