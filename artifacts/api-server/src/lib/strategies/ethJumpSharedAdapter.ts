@@ -21,7 +21,7 @@ export async function submitBViaSharedEthClaim(input:{
  | {kind:"held";claimId:string;result:EthBigBetSubmitResult}
  | {kind:"uncertain";claimId:string}
 >{
- if(input.intent.strategy!=="B")throw Error("ETH B adapter rejected another strategy");
+ if(input.intent.strategy!=="jump")throw Error("ETH B adapter rejected another strategy");
  if(!input.intent.ticker.startsWith("KXETH15M-"))throw Error("ETH B adapter requires ETH15M");
  // Deterministic exchange correlation key. The global claim ID is random and
  // persisted separately. Never retry the POST just because the acknowledgment
