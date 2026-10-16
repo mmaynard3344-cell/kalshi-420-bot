@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - review/eth-b-shared-ladder-adapter
+  pull_request:
+    branches:
+      - refactor/railway-wager-b
   workflow_dispatch:
 jobs:
   disposable-postgres:
