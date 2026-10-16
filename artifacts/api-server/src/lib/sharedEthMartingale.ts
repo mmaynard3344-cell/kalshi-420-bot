@@ -3,7 +3,7 @@
  * Step is zero-based. The first signal must atomically claim the single shared
  * ETH slot in the database; calling these pure functions is NOT a lock.
  */
-export const ETH_SHARED_STAKES_CENTS = [100,200,400,800,1600,3200] as const;
+export const ETH_SHARED_STAKES_CENTS = [200,400,800,1600,3200,6400] as const;
 export type EthSettlement = "WIN" | "LOSS" | "ZERO_FILL";
 export type EthSharedLadderState = Readonly<{
   step: number;
