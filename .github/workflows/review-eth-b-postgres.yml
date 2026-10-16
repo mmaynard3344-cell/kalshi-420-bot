@@ -1,0 +1,43 @@
+name: ETH B shared PostgreSQL gate
+on:
+  push:
+    branches:
+      - review/eth-b-shared-ladder-adapter
+  workflow_dispatch:
+jobs:
+  disposable-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: eth_b_gate_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eth_b_gate_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated test tools
+        run: |
+          mkdir -p /tmp/eth-b-gate/src/lib/strategies /tmp/eth-b-gate/scripts
+          cp artifacts/api-server/src/lib/sharedEthMartingale.ts artifacts/api-server/src/lib/sharedEthClaimStore.ts artifacts/api-server/src/lib/sharedEthOrderGateway.ts /tmp/eth-b-gate/src/lib/
+          cp artifacts/api-server/src/lib/strategies/ethJumpSharedAdapter.ts /tmp/eth-b-gate/src/lib/strategies/
+          cp artifacts/api-server/scripts/test-shared-eth-b-postgres.mjs /tmp/eth-b-gate/scripts/
+          printf '{"type":"module"}' > /tmp/eth-b-gate/package.json
+          cd /tmp/eth-b-gate
+          npm install --no-audit --no-fund pg esbuild
+      - name: Compile B adapter and shared gate
+        working-directory: /tmp/eth-b-gate
+        run: |
+          npx esbuild src/lib/strategies/ethJumpSharedAdapter.ts --bundle --packages=external --platform=node --format=esm --outfile=/tmp/eth-b-adapter.mjs
+      - name: Run PostgreSQL shared-claim gate
+        working-directory: /tmp/eth-b-gate
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/eth_b_gate_test
+        run: node scripts/test-shared-eth-b-postgres.mjs
