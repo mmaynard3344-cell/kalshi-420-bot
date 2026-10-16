@@ -141,7 +141,7 @@ async function initStore(): Promise<void> {
   await d.execute(sql`ALTER TABLE eth_g_streak_reversal_state DROP CONSTRAINT IF EXISTS eth_g_streak_reversal_state_step_check`);
   await d.execute(sql`ALTER TABLE eth_g_streak_reversal_state ADD CONSTRAINT eth_g_streak_reversal_state_step_check CHECK (step BETWEEN 0 AND 5)`);
   await d.execute(sql`ALTER TABLE eth_g_streak_reversal_orders DROP CONSTRAINT IF EXISTS eth_g_streak_reversal_orders_step_check`);
-  await d.execute(sql`ALTER TABLE eth_g_streak_reversal_orders ADD CONSTRAINT eth_g_streak_reversal_orders_step_check CHECK (step BETWEEN 0 AND 5)`;
+  await d.execute(sql`ALTER TABLE eth_g_streak_reversal_orders ADD CONSTRAINT eth_g_streak_reversal_orders_step_check CHECK (step BETWEEN 0 AND 5)`);
 
 }
 
