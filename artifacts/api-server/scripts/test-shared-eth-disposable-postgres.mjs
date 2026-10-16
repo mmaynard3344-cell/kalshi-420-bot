@@ -3,7 +3,15 @@
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
 import pg from "pg";
-import {claimFirstEthSignal,finalizeEthClaim} from "./sharedEthClaimStore";
+import {build} from "esbuild";
+import {mkdtemp,rm} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {join,resolve} from "node:path";
+import {pathToFileURL} from "node:url";
+const temp=await mkdtemp(join(tmpdir(),"eth-shared-pg-"));
+const outfile=join(temp,"claim-bundle.mjs");
+await build({entryPoints:[resolve("src/lib/sharedEthClaimStore.ts")],bundle:true,platform:"node",format:"esm",outfile,packages:"external"});
+const {claimFirstEthSignal,finalizeEthClaim}=await import(pathToFileURL(outfile).href);
 const url=process.env.TEST_DATABASE_URL;
 if(!url)throw Error("TEST_DATABASE_URL must point to an isolated throwaway PostgreSQL database");
 const parsed=new URL(url);
@@ -30,4 +38,5 @@ try{
  console.log("PASS: independent PostgreSQL connections serialize claims and advance stake after loss");
 }finally{
  await pool.end();
+ await rm(temp,{recursive:true,force:true});
 }
