@@ -6,6 +6,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 const ET = 'America/New_York';
 
+type MartingaleCycle = { market: 'ETH' | 'BTC' | 'USD'; step: number | null; maxSteps: number | null; nextWagerCents: number | null; status: string; source: string; activeTicker?: string | null };
+type MartingaleCyclesResponse = { generatedAtMs: number; cycles: MartingaleCycle[] };
+
 type CandidateOrder = {
   id: string;
   ticker: string;
@@ -260,6 +263,8 @@ export default function Operator() {
   const [market, setMarket] = useState<LiveMarket | null>(null);
   const [shadow, setShadow] = useState<ShadowPerformance | null>(null);
   const [btc, setBtc] = useState<BtcBlStatus | null>(null);
+  const [cycles, setCycles] = useState<MartingaleCyclesResponse | null>(null);
+  const [cyclesFresh, setCyclesFresh] = useState(false);
   const [historyFresh, setHistoryFresh] = useState(false);
   const [marketFresh, setMarketFresh] = useState(false);
   const [shadowFresh, setShadowFresh] = useState(false);
@@ -273,17 +278,19 @@ export default function Operator() {
       inFlight.current?.abort();
       const controller = new AbortController();
       inFlight.current = controller;
-      const [h, m, s, b] = await Promise.allSettled([
+      const [h, m, s, b, c] = await Promise.allSettled([
         getJson<CandidateHistory>('/api/trade/analytics/eth420-candidate-history?limit=500', controller.signal),
         getJson<LiveMarket>('/api/trade/analytics/eth420-live-market', controller.signal),
         getJson<ShadowPerformance>('/api/diagnostics/shadow-performance', controller.signal),
         getJson<BtcBlStatus>('/api/diagnostics/btc-bl-status', controller.signal),
+        getJson<MartingaleCyclesResponse>('/api/trade/analytics/martingale-cycles', controller.signal),
       ]);
       if (!active) return;
       if (h.status === 'fulfilled') { setHistory(h.value); setHistoryFresh(true); } else { setHistoryFresh(false); }
       if (m.status === 'fulfilled') { setMarket(m.value); setMarketFresh(true); } else { setMarketFresh(false); }
       if (s.status === 'fulfilled') { setShadow(s.value); setShadowFresh(true); } else { setShadowFresh(false); }
       if (b.status === 'fulfilled') { setBtc(b.value); setBtcFresh(true); } else { setBtcFresh(false); }
+      if (c.status === 'fulfilled') { setCycles(c.value); setCyclesFresh(true); } else { setCyclesFresh(false); }
     };
     void load();
     const dataTimer = window.setInterval(() => void load(), 10_000);
@@ -325,6 +332,24 @@ export default function Operator() {
       </header>
 
       <main className="p-4 sm:p-6 space-y-6">
+        <section className="border border-border bg-card p-4 sm:p-5">
+          <h2 className="font-semibold">Martingale cycle tracker</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Current persisted ladder step by market. Unknown or non-martingale strategies never display a guessed step. Refreshes every 10 seconds.</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {(['USD','ETH','BTC'] as const).map(marketName => {
+              const item = cyclesFresh ? cycles?.cycles.find(c => c.market === marketName) : null;
+              return <div key={marketName} className="border border-border p-4">
+                <div className="text-xs font-mono font-semibold">{marketName}</div>
+                <div className="mt-2 text-2xl font-mono font-bold">{item?.step != null ? `Step ${item.step} / ${item.maxSteps ?? '?'}` : 'Step unavailable'}</div>
+                <div className="mt-1 text-sm">{item?.nextWagerCents != null ? `Next $ ${(item.nextWagerCents/100).toFixed(2)}` : 'Next wager unknown'}</div>
+                <div className="mt-2 text-xs text-muted-foreground">{item?.status ?? 'No verified live state'}{item?.activeTicker ? ` · ${item.activeTicker}` : ''}</div>
+                <div className="mt-1 text-[10px] text-muted-foreground">Source: {item?.source ?? 'unavailable'}</div>
+              </div>;
+            })}
+          </div>
+          <p className="mt-2 text-[10px] text-muted-foreground">Read-only · As of {cyclesFresh && cycles?.generatedAtMs ? new Date(cycles.generatedAtMs).toLocaleTimeString() : 'unavailable'} · Step numbers shown as 1-based.</p>
+        </section>
+
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Metric label="Kalshi equity" value={moneyFromCents(equityCents)} detail={`Cash ${moneyFromCents(cashCents)} + portfolio ${moneyFromCents(balance?.portfolio_value)}${balance?.stale ? ' · stale snapshot' : ''}`} />
           <Metric label="Today realized P&L" value={moneyFromCents(today?.netRealizedPnlCents, true)} detail={today ? `${today.settledOrderCount} settled · ${today.winningOrderCount} wins / ${today.losingOrderCount} losses` : 'Candidate daily ledger unavailable'} tone={(today?.netRealizedPnlCents ?? 0) > 0 ? 'good' : (today?.netRealizedPnlCents ?? 0) < 0 ? 'bad' : 'normal'} />
