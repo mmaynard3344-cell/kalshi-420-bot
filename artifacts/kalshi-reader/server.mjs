@@ -1199,6 +1199,28 @@ function serveStatic(req, res, url) {
 }
 
 
+async function tradeResultsReadOnly(req,res,url) {
+  if(req.method!=='GET'&&req.method!=='HEAD')return send(res,405,'Method not allowed');
+  try{
+    const limit=Math.min(160,Math.max(1,Number(url.searchParams.get('limit'))||160));
+    const orders=await graceJson('/api/trade/orders?limit='+limit);
+    const tickers=[...new Set((orders.orders||[]).map(o=>String(o.ticker||'')).filter(t=>/^KX(?:ETH15M|BTC15M|EURUSD15M)-[A-Z0-9-]+$/.test(t)))].slice(0,limit);
+    const rows=[];
+    for(let i=0;i<tickers.length;i+=8){
+      const batch=await Promise.all(tickers.slice(i,i+8).map(async ticker=>{
+        try{
+          const response=await fetch('https://external-api.kalshi.com/trade-api/v2/markets/'+encodeURIComponent(ticker),{signal:AbortSignal.timeout(5000)});
+          if(!response.ok)return null;
+          const data=await response.json(), result=String(data.market?.result||'').toLowerCase();
+          return ['yes','no'].includes(result)?{ticker,result}:null;
+        }catch{return null;}
+      }));
+      rows.push(...batch.filter(Boolean));
+    }
+    return send(res,200,req.method==='HEAD'?'':JSON.stringify({rows}), 'application/json; charset=utf-8');
+  }catch(e){console.error('trade result read failed',e);return send(res,502,JSON.stringify({rows:[],error:'market results unavailable'}),'application/json; charset=utf-8');}
+}
+
 function serveSimpleTradeLog(req,res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res,405,'Method not allowed');
   const html = String.raw`<!doctype html>
@@ -1224,7 +1246,7 @@ function draw(){
 async function load(){
  el('refresh').disabled=true;el('status').textContent='Loading orders and fills…';
  try{
-  const [ro,rf,own]=await Promise.all([fetch('/api/trade/orders?limit=1000',{cache:'no-store'}),fetch('/api/trade/fills?limit=1000',{cache:'no-store'}),fetch('/api/diagnostics/service-ownership',{cache:'no-store'}).catch(()=>null)]);
+  const [ro,rf,own,settlements]=await Promise.all([fetch('/api/trade/orders?limit=1000',{cache:'no-store'}),fetch('/api/trade/fills?limit=1000',{cache:'no-store'}),fetch('/api/diagnostics/service-ownership',{cache:'no-store'}).catch(()=>null),fetch('/api/diagnostics/trade-results?limit=160',{cache:'no-store'}).catch(()=>null)]);
   if(!ro.ok||!rf.ok)throw Error('The trade feed returned an error');
   const [op,fp]=await Promise.all([ro.json(),rf.json()]);
   const orders=Array.isArray(op)?op:Array.isArray(op.orders)?op.orders:[];
@@ -1238,8 +1260,27 @@ async function load(){
     if(record.clientOrderId)ownersByClient.set(String(record.clientOrderId),record.service);
    }
   }
+  const settlementByTicker=new Map();
+  if(settlements?.ok){
+    const data=await settlements.json();
+    for(const record of (Array.isArray(data.rows)?data.rows:[])){
+      if(['yes','no'].includes(String(record.result).toLowerCase()))
+        settlementByTicker.set(String(record.ticker),String(record.result).toLowerCase());
+    }
+  }
   const byId=new Map();
-  for(const f of fills){const id=val(f,'order_id','orderId','kalshi_order_id');if(!id)continue;const key=String(id);const a=byId.get(key)||{qty:0};a.qty+=Number(val(f,'count','count_fp','filled_contracts','quantity')||0);byId.set(key,a)}
+  for(const f of fills){
+    const id=val(f,'order_id','orderId','kalshi_order_id');if(!id)continue;
+    const key=String(id),a=byId.get(key)||{qty:0,cost:0,fees:0,complete:true,side:null};
+    const qty=Number(val(f,'count_fp','count','filled_contracts','quantity'));
+    const side=String(val(f,'side','position_side')||'').toLowerCase();
+    const price=val(f,'yes_price_dollars','no_price_dollars','price_dollars');
+    const fee=val(f,'fee_cost_dollars','fee_dollars','fee_paid_dollars');
+    if(!Number.isFinite(qty)||qty<=0||price===null||fee===null||!Number.isFinite(Number(price))||!Number.isFinite(Number(fee)))a.complete=false;
+    else {a.cost+=qty*Number(price);a.fees+=Number(fee);}
+    if(side==='yes'||side==='no'){if(a.side&&a.side!==side)a.complete=false;else a.side=side;}
+    a.qty+=Number.isFinite(qty)?qty:0;byId.set(key,a);
+  }
   all=orders.map(o=>{
     const ticker=String(val(o,'ticker','market_ticker')||'');
     const id=val(o,'order_id','orderId','kalshi_order_id');
@@ -1252,12 +1293,17 @@ async function load(){
     let net=null;
     if(count>0&&moneyD!==null&&Number.isFinite(Number(moneyD)))net=Number(moneyD);
     else if(count>0&&moneyC!==null&&Number.isFinite(Number(moneyC)))net=Number(moneyC)/100;
+    const result=settlementByTicker.get(ticker);
+    const position=String(val(o,'position_side','direction')||fill?.side||'').toLowerCase();
+    if(net===null&&count>0&&fill?.complete&&fill.qty===count&&['yes','no'].includes(position)&&result){
+      net=(position===result?count:0)-fill.cost-fill.fees;
+    }
     const wl=count===0&&['canceled','cancelled','expired','rejected'].includes(status)?'NO FILL':net===null?'Pending':net>0?'WIN':net<0?'LOSS':'BREAK EVEN';
     return {
       time:val(o,'created_time','created_at','created_at_ms','time','submitted_at'),
       market:market(ticker),
       service:ownersByOrder.get(String(id))||ownersByClient.get(String(clientId))||val(o,'service','origin_service','strategy','strategy_name','service_name')||'Unattributed',
-      ticker,side:val(o,'position_side','direction','side'),
+      ticker,side:['yes','no'].includes(position)?position:'—',
       requested:val(o,'initial_count_fp','initial_count','count_fp','count','contracts'),
       filled:val(o,'fill_count_fp','fill_count','filled_contracts')??fill?.qty??'—',
       price:val(o,'yes_price_dollars','no_price_dollars','price','limit_price'),
@@ -1280,6 +1326,7 @@ el('refresh').addEventListener('click',load);el('market').addEventListener('chan
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  if (url.pathname === '/api/diagnostics/trade-results') return void tradeResultsReadOnly(req,res,url);
   if (url.pathname === '/trades') return void serveSimpleTradeLog(req, res);
   if (url.pathname === '/api/diagnostics/btc-bl-status') return void btcBlStatusDiagnostics(req, res);
   if (url.pathname === '/api/diagnostics/service-ownership') return void serviceOwnershipDiagnostics(req, res);
