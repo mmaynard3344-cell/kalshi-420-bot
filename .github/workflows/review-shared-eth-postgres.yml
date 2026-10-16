@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - review/shared-eth-martingale-first-signal
+  pull_request:
+    branches:
+      - dashboard-pnl-0827
   workflow_dispatch:
 jobs:
   disposable-postgres:
