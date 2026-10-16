@@ -1,4 +1,5 @@
 import { logger } from "../logger.js";
+import {reconcileBSharedJournalCycle} from "./ethJumpSharedLifecycle.js";
 import type { Eth420CandidateMarket } from "./eth420SixStepCandidate.js";
 import { prepareEthJumpServiceIntent } from "./ethJumpServiceRuntime.js";
 import { createEthBigBetKalshiSubmitter } from "./ethBigBetKalshiExchange.js";
@@ -81,6 +82,15 @@ export async function runEthJumpServiceWhenExplicitlyEnabled(input: {
   // The shared claim, order identity, and exchange settlement must be wired
   // together before this gate can be replaced by the shared execution adapter.
   if(process.env["ETH_SHARED_MARTINGALE_ENABLED"]==="true"){
+    // The shared journal reconciles first. B submission remains fail-closed
+    // until the all-ETH coordinated cutover and production migration.
+    try {
+      const reconciliation=await reconcileBSharedJournalCycle();
+      logger.info({ticker:input.market.ticker,reconciliation},"B shared ETH journal reconciliation");
+    } catch(error) {
+      logger.error({ticker:input.market.ticker,error:String(error)},"B shared ETH reconciliation unavailable; no order submitted");
+      return finish("storage_unavailable","shared_reconciliation_unavailable");
+    }
     logger.error({ticker:input.market.ticker,service:"B"},
       "ETH B shared cutover requested, but execution adapter not installed; fail closed");
     return finish("disabled","shared_eth_adapter_not_installed");
