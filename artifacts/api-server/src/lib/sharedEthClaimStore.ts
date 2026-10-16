@@ -52,7 +52,7 @@ export async function finalizeEthClaim(
     const state=rows[0];
     if(!state)throw new Error("ETH shared ladder missing");
     const claimRows=await tx.query<{status:string;settlement_id:string|null;step:number;outcome:EthSettlement|null}>(
-      "SELECT status,settlement_id,step FROM eth_shared_martingale_claims WHERE claim_id=$1 FOR UPDATE",
+      "SELECT status,settlement_id,step,outcome FROM eth_shared_martingale_claims WHERE claim_id=$1 FOR UPDATE",
       [claimId]
     );
     const claim=claimRows.rows[0];
