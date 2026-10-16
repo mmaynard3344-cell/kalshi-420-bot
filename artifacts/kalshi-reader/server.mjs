@@ -1273,9 +1273,9 @@ async function load(){
     const id=val(f,'order_id','orderId','kalshi_order_id');if(!id)continue;
     const key=String(id),a=byId.get(key)||{qty:0,cost:0,fees:0,complete:true,side:null};
     const qty=Number(val(f,'count_fp','count','filled_contracts','quantity'));
-    const side=String(val(f,'side','position_side')||'').toLowerCase();
-    const price=val(f,'yes_price_dollars','no_price_dollars','price_dollars');
-    const fee=val(f,'fee_cost_dollars','fee_dollars','fee_paid_dollars');
+    const side=String(val(f,'outcome_side','position_side','side')||'').toLowerCase();
+    const price=side==='no'?val(f,'no_price_dollars'):side==='yes'?val(f,'yes_price_dollars'):null;
+    const fee=val(f,'fee_cost','fee_cost_dollars','fee_dollars','fee_paid_dollars');
     if(!Number.isFinite(qty)||qty<=0||price===null||fee===null||!Number.isFinite(Number(price))||!Number.isFinite(Number(fee)))a.complete=false;
     else {a.cost+=qty*Number(price);a.fees+=Number(fee);}
     if(side==='yes'||side==='no'){if(a.side&&a.side!==side)a.complete=false;else a.side=side;}
@@ -1294,9 +1294,15 @@ async function load(){
     if(count>0&&moneyD!==null&&Number.isFinite(Number(moneyD)))net=Number(moneyD);
     else if(count>0&&moneyC!==null&&Number.isFinite(Number(moneyC)))net=Number(moneyC)/100;
     const result=settlementByTicker.get(ticker);
-    const position=String(val(o,'position_side','direction')||fill?.side||'').toLowerCase();
-    if(net===null&&count>0&&fill?.complete&&fill.qty===count&&['yes','no'].includes(position)&&result){
-      net=(position===result?count:0)-fill.cost-fill.fees;
+    const position=String(val(o,'outcome_side','position_side','direction')||fill?.side||'').toLowerCase();
+    if(net===null&&count>0&&['yes','no'].includes(position)&&result){
+      const orderCost=val(o,'taker_fill_cost_dollars');
+      const makerCost=val(o,'maker_fill_cost_dollars');
+      const orderFee=val(o,'taker_fees_dollars');
+      const makerFee=val(o,'maker_fees_dollars');
+      const hasOrderCosts=[orderCost,makerCost,orderFee,makerFee].every(v=>v!==null&&Number.isFinite(Number(v)));
+      if(hasOrderCosts)net=(position===result?count:0)-Number(orderCost)-Number(makerCost)-Number(orderFee)-Number(makerFee);
+      else if(fill?.complete&&fill.qty===count)net=(position===result?count:0)-fill.cost-fill.fees;
     }
     const wl=count===0&&['canceled','cancelled','expired','rejected'].includes(status)?'NO FILL':net===null?'Pending':net>0?'WIN':net<0?'LOSS':'BREAK EVEN';
     return {
