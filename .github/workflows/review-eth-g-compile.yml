@@ -32,6 +32,18 @@ jobs:
           const body=s.slice(start,end);
           if(!body.includes('ETH_G_SHARED_MARTINGALE_ENABLED') || !body.includes('!order.kalshiOrderId)continue') || body.indexOf('!order.kalshiOrderId)continue')>body.indexOf('await settleOrder(order, result)'))throw Error("G shared order identity fence missing before settlement");
           NODE
+      - name: Check G authenticated terminal-fill settlement fence
+        run: |
+          node - <<'NODE'
+          const fs=require("fs");
+          const s=fs.readFileSync("artifacts/api-server/src/g4060ScalpIndex.ts","utf8");
+          const start=s.indexOf("async function settleOrder(");
+          const end=s.indexOf("async function reconcileOutstanding()",start);
+          const x=s.slice(start,end);
+          for(const evidence of ["rawDetail","client_order_id","order_id","ticker","fillCountProvided","verifiedFills","finalizeEthClaim("])
+            if(!x.includes(evidence))throw Error("Missing G authenticated final-fill guard "+evidence);
+          if(x.indexOf("verifiedFills")>x.indexOf("finalizeEthClaim("))throw Error("G finalizing before verified fills");
+          NODE
       - name: Verify gateway does not turn on by default
         run: |
           node -e 'const fs=require("fs");const s=fs.readFileSync("artifacts/api-server/src/g4060ScalpIndex.ts","utf8");if(!s.includes("ETH_G_SHARED_MARTINGALE_ENABLED")||!s.includes("ETH_SHARED_SETTLEMENT_BRIDGE_READY"))process.exit(1)'
