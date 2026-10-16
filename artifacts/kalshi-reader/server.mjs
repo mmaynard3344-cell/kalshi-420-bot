@@ -1337,6 +1337,30 @@ el('refresh').addEventListener('click',load);el('market').addEventListener('chan
   return send(res,200,req.method === 'HEAD' ? '' : html,'text/html; charset=utf-8');
 }
 
+async function receiveUsdCycleSnapshot(req,res){
+ if(req.method!=='POST')return send(res,405,'Method not allowed');
+ const secret=process.env.USD_CYCLE_TELEMETRY_SECRET;
+ if(!secret||req.headers['x-usd-cycle-secret']!==secret)return send(res,403,'Forbidden');
+ let raw='';
+ try{
+  for await(const chunk of req){raw+=chunk.toString();if(raw.length>4096)throw Error('too_large');}
+  const v=JSON.parse(raw);
+  const step=Number(v.step),version=Number(v.version),timestamp=Number(v.observedAtMs);
+  if(!Number.isInteger(step)||step<0||step>5||!Number.isInteger(version)||version<0||
+    !Number.isFinite(timestamp)||Math.abs(Date.now()-timestamp)>300000||
+    typeof v.unresolved!=='boolean')return send(res,422,'Invalid cycle telemetry');
+  const pool=getDbPool();
+  if(!pool)return send(res,503,'Telemetry database unavailable');
+  await pool.query("CREATE TABLE IF NOT EXISTS usd_martingale_telemetry (id INTEGER PRIMARY KEY CHECK(id=1),step INTEGER NOT NULL, version INTEGER NOT NULL,unresolved BOOLEAN NOT NULL,observed_at_ms BIGINT NOT NULL)");
+  await pool.query(`INSERT INTO usd_martingale_telemetry(id,step,version,unresolved,observed_at_ms) VALUES(1,$1,$2,$3,$4)
+   ON CONFLICT(id) DO UPDATE SET step=EXCLUDED.step,version=EXCLUDED.version,
+   unresolved=EXCLUDED.unresolved,observed_at_ms=EXCLUDED.observed_at_ms
+   WHERE usd_martingale_telemetry.observed_at_ms<=EXCLUDED.observed_at_ms`,
+   [step,version,v.unresolved,timestamp]);
+  return send(res,200,JSON.stringify({ok:true}),'application/json; charset=utf-8');
+ }catch(err){console.error('USD telemetry ingest failed',String(err?.message??err));return send(res,503,'Telemetry update failed');}
+}
+
 async function martingaleCyclesReadOnly(req,res) {
   if(req.method!=='GET'&&req.method!=='HEAD')return send(res,405,'Method not allowed');
   const unknown=(market,status)=>({market,step:null,maxSteps:null,nextWagerCents:null,status,source:'unverified',activeTicker:null});
@@ -1347,6 +1371,22 @@ async function martingaleCyclesReadOnly(req,res) {
   ];
   try {
     await withReadOnlyDb(async client=>{
+      try{
+        const t=await client.query("SELECT to_regclass('public.usd_martingale_telemetry') AS telemetry");
+        if(t.rows[0]?.telemetry){
+          const r=await client.query("SELECT step,version,unresolved,observed_at_ms FROM usd_martingale_telemetry WHERE id=1");
+          const row=r.rows[0],step=Number(row?.step),seen=Number(row?.observed_at_ms);
+          if(row&&Number.isInteger(step)&&step>=0&&step<=5){
+            const age=Date.now()-seen;
+            cycles[0]={market:'USD',step:step+1,maxSteps:6,
+              nextWagerCents:[100,200,400,800,1600,3200][step],
+              status:age>25*60000?'Stale snapshot ('+Math.round(age/60000)+' min old)':
+               row.unresolved?'Outstanding order awaiting reconciliation':'Ready for next signal',
+              source:'USD Function SQLite snapshot',activeTicker:null};
+          }
+        }
+      }catch(error){console.error('USD telemetry read failed',String(error?.message??error));}
+
       try {
         const tables=await client.query("SELECT to_regclass('public.eth_shared_martingale_state') AS state, to_regclass('public.eth_shared_martingale_claims') AS claims");
         if(tables.rows[0]?.state&&tables.rows[0]?.claims){
@@ -1376,6 +1416,7 @@ async function martingaleCyclesReadOnly(req,res) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  if (url.pathname === '/api/telemetry/usd-martingale') return void receiveUsdCycleSnapshot(req,res);
   if (url.pathname === '/api/trade/analytics/martingale-cycles') return void martingaleCyclesReadOnly(req,res);
   if (url.pathname === '/api/diagnostics/trade-results') return void tradeResultsReadOnly(req,res,url);
   if (url.pathname === '/trades') return void serveSimpleTradeLog(req, res);
