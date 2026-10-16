@@ -32,7 +32,7 @@ jobs:
       - name: Install isolated test tools
         run: |
           mkdir -p /tmp/eth-shared-gate/src/lib /tmp/eth-shared-gate/scripts
-          cp artifacts/api-server/src/lib/sharedEthMartingale.ts artifacts/api-server/src/lib/sharedEthClaimStore.ts artifacts/api-server/src/lib/sharedEthOrderGateway.ts artifacts/api-server/src/lib/sharedEthMartingale.test.ts artifacts/api-server/src/lib/sharedEthClaimStore.test.ts /tmp/eth-shared-gate/src/lib/
+          cp artifacts/api-server/src/lib/sharedEthMartingale.ts artifacts/api-server/src/lib/sharedEthClaimStore.ts artifacts/api-server/src/lib/sharedEthOrderGateway.ts artifacts/api-server/src/lib/sharedEthOrderSizing.ts artifacts/api-server/src/lib/sharedEthOrderSizing.test.ts artifacts/api-server/src/lib/sharedEthMartingale.test.ts artifacts/api-server/src/lib/sharedEthClaimStore.test.ts /tmp/eth-shared-gate/src/lib/
           cp artifacts/api-server/scripts/test-shared-eth-disposable-postgres.mjs /tmp/eth-shared-gate/scripts/
           echo '{"type":"module"}' > /tmp/eth-shared-gate/package.json
           cd /tmp/eth-shared-gate
@@ -43,7 +43,8 @@ jobs:
           npx esbuild src/lib/sharedEthMartingale.test.ts --bundle --platform=node --format=esm --outfile=/tmp/eth-shared-gate/ladder-test.mjs
           npx esbuild src/lib/sharedEthClaimStore.test.ts --bundle --platform=node --format=esm --outfile=/tmp/eth-shared-gate/claim-test.mjs
           npx esbuild src/lib/sharedEthOrderGateway.ts --bundle --platform=node --format=esm --outfile=/tmp/eth-shared-gate/gateway.mjs
-          node --test ladder-test.mjs claim-test.mjs
+          npx esbuild src/lib/sharedEthOrderSizing.test.ts --bundle --platform=node --format=esm --outfile=/tmp/eth-shared-gate/sizing-test.mjs
+          node --test ladder-test.mjs claim-test.mjs sizing-test.mjs
       - name: Run real PostgreSQL concurrent-claim gate
         working-directory: /tmp/eth-shared-gate
         env:
