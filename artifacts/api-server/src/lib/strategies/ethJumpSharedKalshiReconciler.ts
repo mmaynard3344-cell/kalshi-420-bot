@@ -21,7 +21,7 @@ export async function reconcileBFromKalshi(input:{
  // An absent fill-count is *unknown*, never silently zero.
  const fills=order["fill_count"];
  const fillCount=typeof fills==="number"?fills:
-  typeof fills==="string"&&/^\\d+$/.test(fills)?Number(fills):null;
+  typeof fills==="string"&&/^\d+$/.test(fills)?Number(fills):null;
  if(fillCount===null||!Number.isSafeInteger(fillCount))return "PENDING";
  const marketRaw=await kalshiFetch<{market?:Record<string,unknown>}>(
    "/markets/"+encodeURIComponent(input.ticker));
