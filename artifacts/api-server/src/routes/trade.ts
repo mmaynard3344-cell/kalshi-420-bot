@@ -3029,6 +3029,49 @@ router.get("/trade/analytics/compact-shadow/status", async (_req, res) => {
   }
 });
 
+
+// Read-only persisted martingale cycle telemetry. Never infer a step from recent orders.
+router.get("/analytics/martingale-cycles", async (_req, res) => {
+  const unknown = (market: "ETH" | "BTC" | "USD", reason: string) => ({
+    market, step: null, maxSteps: null, nextWagerCents: null,
+    status: reason, source: "not verified", activeTicker: null,
+  });
+  const cycles = [
+    unknown("ETH", "Shared state unavailable"),
+    unknown("BTC", "Independent BTC ladder not instrumented"),
+    unknown("USD", "Independent USD ladder not instrumented"),
+  ];
+  try {
+    const {pool} = await import("@workspace/db");
+    const check = await pool.query(
+      "SELECT to_regclass('public.eth_shared_martingale_state') AS state, to_regclass('public.eth_shared_martingale_claims') AS claims"
+    );
+    if(check.rows[0]?.state && check.rows[0]?.claims) {
+      const state = await pool.query(
+        `SELECT s.step, s.active_claim_id, c.ticker, c.status
+         FROM eth_shared_martingale_state s
+         LEFT JOIN eth_shared_martingale_claims c ON c.claim_id=s.active_claim_id
+         WHERE s.singleton=TRUE LIMIT 1`
+      );
+      const row = state.rows[0];
+      if(row && Number.isInteger(Number(row.step)) && Number(row.step)>=0 && Number(row.step)<6) {
+        const index=Number(row.step);
+        cycles[0] = {
+          market: "ETH", step: index+1, maxSteps: 6,
+          nextWagerCents: [100,200,400,800,1600,3200][index],
+          status: row.active_claim_id ? `Claim ${row.status ?? "pending settlement"}` : "Ready for next signal",
+          source: "eth_shared_martingale_state",
+          activeTicker: row.ticker ?? null,
+        };
+      }
+    }
+  } catch (err) {
+    logger.warn({err}, "Read-only martingale cycle state unavailable");
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json({generatedAtMs:Date.now(),cycles});
+});
+
 export default router;
 
 let budgetWriteFailures = 0;
