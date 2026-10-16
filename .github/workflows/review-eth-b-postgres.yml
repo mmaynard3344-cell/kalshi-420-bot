@@ -30,7 +30,7 @@ jobs:
         run: |
           mkdir -p /tmp/eth-b-gate/src/lib/strategies /tmp/eth-b-gate/scripts
           cp artifacts/api-server/src/lib/sharedEthMartingale.ts artifacts/api-server/src/lib/sharedEthClaimStore.ts artifacts/api-server/src/lib/sharedEthOrderGateway.ts artifacts/api-server/src/lib/sharedEthPgProvider.ts artifacts/api-server/src/lib/sharedEthOrderSizing.ts /tmp/eth-b-gate/src/lib/
-          cp artifacts/api-server/src/lib/strategies/ethJumpSharedAdapter.ts artifacts/api-server/src/lib/strategies/ethJumpSharedSettlement.ts artifacts/api-server/src/lib/strategies/ethJumpSharedKalshiReconciler.ts artifacts/api-server/src/lib/strategies/ethJumpSharedLifecycle.ts /tmp/eth-b-gate/src/lib/strategies/
+          cp artifacts/api-server/src/lib/strategies/ethJumpSharedAdapter.ts artifacts/api-server/src/lib/strategies/ethJumpSharedSettlement.ts artifacts/api-server/src/lib/strategies/ethJumpSharedKalshiReconciler.ts artifacts/api-server/src/lib/strategies/ethJumpSharedLifecycle.ts artifacts/api-server/src/lib/strategies/ethJumpSharedClaimJournal.ts /tmp/eth-b-gate/src/lib/strategies/
           cp artifacts/api-server/scripts/test-shared-eth-b-postgres.mjs artifacts/api-server/scripts/test-b-kalshi-reconciler.mjs artifacts/api-server/scripts/test-b-shared-lifecycle.mjs /tmp/eth-b-gate/scripts/
           printf '{"type":"module"}' > /tmp/eth-b-gate/package.json
           cd /tmp/eth-b-gate
@@ -51,3 +51,7 @@ jobs:
       - name: Test B lifecycle fail-closed recovery
         working-directory: /tmp/eth-b-gate
         run: node scripts/test-b-shared-lifecycle.mjs
+
+      - name: Compile B durable order journal
+        working-directory: /tmp/eth-b-gate
+        run: npx esbuild src/lib/strategies/ethJumpSharedClaimJournal.ts --bundle --packages=external --platform=node --format=esm --outfile=/tmp/eth-b-journal.mjs
