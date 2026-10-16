@@ -35,3 +35,35 @@ jobs:
       - name: Verify gateway does not turn on by default
         run: |
           node -e 'const fs=require("fs");const s=fs.readFileSync("artifacts/api-server/src/g4060ScalpIndex.ts","utf8");if(!s.includes("ETH_G_SHARED_MARTINGALE_ENABLED")||!s.includes("ETH_SHARED_SETTLEMENT_BRIDGE_READY"))process.exit(1)'
+
+  disposable-g-ledger:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: eth_g_disposable_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eth_g_disposable_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Set up isolated G ledger test
+        run: |
+          mkdir -p /tmp/eth-g-ledger/src/lib /tmp/eth-g-ledger/scripts
+          cp artifacts/api-server/src/lib/sharedEthMartingale.ts artifacts/api-server/src/lib/sharedEthClaimStore.ts artifacts/api-server/src/lib/sharedEthOrderGateway.ts /tmp/eth-g-ledger/src/lib/
+          cp artifacts/api-server/scripts/test-shared-eth-disposable-postgres.mjs /tmp/eth-g-ledger/scripts/
+          printf '{"type":"module"}' > /tmp/eth-g-ledger/package.json
+          cd /tmp/eth-g-ledger
+          npm install --no-audit --no-fund pg esbuild
+      - name: Exercise G shared reservation, timeout, partial fill, settlement
+        working-directory: /tmp/eth-g-ledger
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/eth_g_disposable_test
+        run: node scripts/test-shared-eth-disposable-postgres.mjs
