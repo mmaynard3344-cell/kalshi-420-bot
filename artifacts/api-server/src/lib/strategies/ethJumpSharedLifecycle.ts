@@ -1,4 +1,5 @@
 import {reconcileBFromKalshi} from "./ethJumpSharedKalshiReconciler.js";
+import {listUnresolvedBSharedClaims} from "./ethJumpSharedClaimJournal.js";
 import type {TransactionProvider} from "../sharedEthClaimStore.js";
 
 export type BSharedPendingOrder={
@@ -21,4 +22,12 @@ export async function reconcilePendingBSharedOrders(input:{
   }catch{errors++; /* fail closed: keep the shared reservation */ }
  }
  return {finalized,pending,errors};
+}
+
+/** Review-only entrypoint for a future B scheduler. Uses the durable shared
+ * claim journal; callers must not start new shared orders after errors. */
+export async function reconcileBSharedJournalCycle(provider?:TransactionProvider){
+ return reconcilePendingBSharedOrders({
+  listPending:()=>listUnresolvedBSharedClaims(provider),provider
+ });
 }
