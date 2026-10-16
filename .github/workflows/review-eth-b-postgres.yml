@@ -45,6 +45,9 @@ jobs:
           TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/eth_b_gate_test
         run: node scripts/test-shared-eth-b-postgres.mjs
 
+      - name: Verify B shared submission import is wired
+        run: |
+          node -e 'const fs=require("fs");const x=fs.readFileSync("artifacts/api-server/src/lib/strategies/ethJumpLiveRunner.ts","utf8");if(!x.includes("import {submitBViaSharedEthClaim}") || !x.includes("await submitBViaSharedEthClaim("))process.exit(1)'
       - name: Compile actual B Jump runtime entrypoint
         run: |
           cd artifacts/api-server
