@@ -19,6 +19,9 @@ jobs:
         run: |
           npm install --prefix /tmp/eth-g-build --no-audit --no-fund esbuild
           /tmp/eth-g-build/node_modules/.bin/esbuild artifacts/api-server/src/g4060ScalpIndex.ts --bundle --packages=external --platform=node --format=esm --outfile=/tmp/eth-g-review.mjs
+      - name: Verify shared G settlement and order recovery wiring
+        run: |
+          node -e 'const fs=require("fs");const s=fs.readFileSync("artifacts/api-server/src/g4060ScalpIndex.ts","utf8");for(const x of ["submitThroughSharedEthGate(","finalizeEthClaim(","eth_g_shared_claim_links","refreshOrder(order)","reconcileOutstanding()","ETH_G_SHARED_MARTINGALE_ENABLED"])if(!s.includes(x))throw Error("G shared integration missing "+x)'
       - name: Verify gateway does not turn on by default
         run: |
           node -e 'const fs=require("fs");const s=fs.readFileSync("artifacts/api-server/src/g4060ScalpIndex.ts","utf8");if(!s.includes("ETH_G_SHARED_MARTINGALE_ENABLED")||!s.includes("ETH_SHARED_SETTLEMENT_BRIDGE_READY"))process.exit(1)'
