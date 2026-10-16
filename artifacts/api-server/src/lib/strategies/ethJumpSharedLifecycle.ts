@@ -12,8 +12,9 @@ export async function reconcilePendingBSharedOrders(input:{
  provider?:TransactionProvider;
 }):Promise<{finalized:number;pending:number;errors:number}>{
  let finalized=0,pending=0,errors=0;
- for(const order of await input.listPending()){
-  if(!order.claimId||!order.clientOrderId||!order.exchangeOrderId){pending++;continue;}
+ const orders=await input.listPending();
+ for(const order of orders){
+  if(!order.claimId||!order.clientOrderId||!order.exchangeOrderId||!order.ticker.startsWith("KXETH15M-")){pending++;continue;}
   try{
    const result=await reconcileBFromKalshi({...order,exchangeOrderId:order.exchangeOrderId,provider:input.provider});
    if(result==="FINALIZED")finalized++;else pending++;
