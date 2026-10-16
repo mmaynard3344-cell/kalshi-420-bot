@@ -1,5 +1,5 @@
 {
-  "asOf": "2026-10-14",
+  "asOf": "2026-10-16",
   "community": "Chandler Run",
   "location": "Gwinnett County, Georgia",
   "builder": "Taylor Morrison",
@@ -7,7 +7,7 @@
     "label": "October net contract goal",
     "target": 10,
     "weeklyTarget": 2.26,
-    "remainingWeeklyTarget": 3.89
+    "remainingWeeklyTarget": 4.38
   },
   "market": {
     "contractsYoY": -27.3,
@@ -30,6 +30,10 @@
       "sqft": 1967
     },
     {
+      "plan": "Tifton",
+      "sqft": 2340
+    },
+    {
       "plan": "Reynolds",
       "sqft": 2375
     }
@@ -39,19 +43,19 @@
       "address": "100 Epperly Way",
       "plan": "Oconee",
       "sqft": 1893,
-      "price": 409990,
+      "price": 419990,
       "delivery": "Ready now",
-      "position": "Interior",
-      "test": 399990
+      "test": 399990,
+      "position": "Interior"
     },
     {
       "address": "102 Epperly Way",
       "plan": "Oconee",
       "sqft": 1893,
-      "price": 409990,
+      "price": 458990,
       "delivery": "Ready now",
-      "position": "Interior",
-      "test": 399990
+      "test": 419990,
+      "position": "Interior"
     },
     {
       "address": "106 Epperly Way",
@@ -59,26 +63,8 @@
       "sqft": 1893,
       "price": 463990,
       "delivery": "Ready now",
-      "position": "End unit",
-      "test": 419990
-    },
-    {
-      "address": "6118 Wayburn Street",
-      "plan": "Forsyth",
-      "sqft": 1967,
-      "price": 462990,
-      "delivery": "Ready now",
-      "position": "End unit",
-      "test": 419990
-    },
-    {
-      "address": "6120 Wayburn Street",
-      "plan": "Forsyth",
-      "sqft": 1967,
-      "price": 459990,
-      "delivery": "October-November",
-      "position": "Premium / no rear neighbors",
-      "test": 419990
+      "test": 429990,
+      "position": "End unit"
     }
   ],
   "documentedSales": [
@@ -231,62 +217,50 @@
     "trackedInventoryClearance": [
       {
         "horizonDays": 30,
-        "requiredMonthlySales": 5
+        "requiredMonthlySales": 3
       },
       {
         "horizonDays": 60,
-        "requiredMonthlySales": 2.5
+        "requiredMonthlySales": 1.5
       },
       {
         "horizonDays": 90,
-        "requiredMonthlySales": 1.67
+        "requiredMonthlySales": 1.0
       }
     ],
-    "note": "Calculated county ratio: 3,597 active / 659 September closings = 5.46. This is not published months of supply or townhome/community absorption. Clearance bars are planning scenarios for five official cards, assuming no additions or cancellations."
+    "note": "Calculated county ratio: 3,597 active / 659 September closings = 5.46. This is not published months of supply or townhome/community absorption. Clearance bars are planning scenarios for the three current official cards, assuming no additions or cancellations."
   },
   "pricingTests": [
     {
       "segment": "100 Epperly Way / Oconee",
-      "current": 409990,
+      "current": 419990,
       "test": 399990,
       "action": "Interior"
     },
     {
       "segment": "102 Epperly Way / Oconee",
-      "current": 409990,
-      "test": 399990,
+      "current": 458990,
+      "test": 419990,
       "action": "Interior"
     },
     {
       "segment": "106 Epperly Way / Oconee",
       "current": 463990,
-      "test": 419990,
+      "test": 429990,
       "action": "End unit"
     },
     {
-      "segment": "6118 Wayburn Street / Forsyth",
-      "current": 462990,
-      "test": 419990,
-      "action": "End unit"
-    },
-    {
-      "segment": "6120 Wayburn Street / Forsyth",
-      "current": 459990,
-      "test": 419990,
-      "action": "Premium / no rear neighbors"
-    },
-    {
-      "segment": "Future Tifton / Reynolds",
+      "segment": "Future Tifton / Forsyth / Reynolds",
       "current": null,
-      "test": 439990,
-      "action": "Address-dependent; no released address assumed"
+      "test": null,
+      "action": "Address-dependent; reconcile release list first"
     }
   ],
   "incentive": {
     "budgetPerHome": 10000,
-    "description": "Analyst budget only. Current builder rate, APR, credits, expiration and stacking terms are unavailable."
+    "description": "Analyst budget only. Official pages advertise event/financing leads, but current rate, APR, credits, expiration, eligibility and stacking terms are unavailable."
   },
-  "caution": "Five official available-home cards do not establish ten released homes. No guarantee of ten contracts; contracts are not closings. 6122 Wayburn portal sold badge remains unverified.",
+  "caution": "Three current official address cards do not establish ten released homes. No guarantee of ten contracts; contracts are not closings. Forsyth public-page status conflicts remain unresolved.",
   "competitorHomes": [
     {
       "community": "Fern Parc",
@@ -380,23 +354,23 @@
     }
   ],
   "financing": {
-    "date": "2026-10-08",
+    "date": "2026-10-15",
     "rate30": 7.4,
-    "rate15": 6.73,
-    "previous30": 7.28,
-    "previous15": 6.6,
-    "price": 429990,
+    "rate15": 6.71,
+    "previous30": 7.4,
+    "previous15": 6.73,
+    "price": 419990,
     "downPercent": 20,
-    "payment": 2382,
+    "payment": 2326,
     "illustrativeRate": 5.99,
-    "illustrativePayment": 2060
+    "illustrativePayment": 2012
   },
   "changeLog": [
-    "Official builder page now exposes five homes. 6118 Wayburn at $462,990 is newly captured; 6122 Wayburn is removed from current official inventory.",
-    "100 and 102 Epperly remain $409,990; official cards disclose prior prices of $456,990 and $458,990. 6120 is $459,990, down $440 from $460,430.",
-    "6122 Wayburn has a portal-only sold badge dated October 13 at $429,990. It is not added to verified gross closings because primary detail was unavailable.",
-    "No new primary same-community closing was verified. Six-record gross closing median remains $399,990 and mean $412,495.",
-    "Ten-net-contract pace updates to 3.89 per week for October 14-31 if all ten remain; five visible official homes do not establish ten released homes."
+    "Current official community page now exposes three Oconees, down from five cards on October 14; 6118 and 6120 Wayburn are absent. A cached official result still references 6120/6122, so Forsyth status is unresolved and no sale or cancellation is inferred.",
+    "100 Epperly increased $10,000 to $419,990 while its displayed original price remains $456,990; 102 increased $49,000 to $458,990; 106 remains $463,990.",
+    "Tifton is now an official Chandler plan at a $453,990 community start. Chandler therefore shows four plan families, but no released Tifton address is assumed.",
+    "No new primary same-community gross closing was verified. The October 13 portal sold badge for 6122 remains unverified and conflicts with a cached builder card.",
+    "Freddie Mac October 15 benchmark is 7.40% / 6.71%. If all ten October net contracts remain, October 16-31 requires 4.38 per week; actual progress and release capacity are unknown."
   ],
   "sources": [
     {
@@ -712,9 +686,69 @@
       "url": "https://www.gamls.com/statistics/marketsnapshot/county/Hall",
       "status": "Re-read October 14; September 2026: 214 closings, 167 contracts, $408,500 median, 345 new, 1,155 active.",
       "id": "P46"
+    },
+    {
+      "title": "Taylor Morrison Chandler Run community page",
+      "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run",
+      "status": "Read October 16: three official Oconee cards; community start $419,990; Tifton added at $453,990.",
+      "id": "P47"
+    },
+    {
+      "title": "Homes.com Rosewood Farm",
+      "url": "https://www.homes.com/new-homes/community/rosewood-farm/wzh962e8q1vte/",
+      "status": "Updated/read October 16: three exposed cards; 102/96 Wilder $365,990; six-home headline not treated as release count.",
+      "id": "P48"
+    },
+    {
+      "title": "Homes.com Weatherfield Townhomes",
+      "url": "https://www.homes.com/new-homes/community/weatherfield-townhomes/yzy58xpr9gpec/",
+      "status": "Updated/read October 16: three exposed cards unchanged; four-home headline not treated as release count.",
+      "id": "P49"
+    },
+    {
+      "title": "Homes.com Somerset at Veterans Memorial",
+      "url": "https://www.homes.com/new-homes/community/somerset-at-veterans-memorial/es6nt1zm54mym/",
+      "status": "Updated/read October 16: two cards unchanged; near closeout/final opportunities, not sold out.",
+      "id": "P50"
+    },
+    {
+      "title": "Homes.com Alder Creek",
+      "url": "https://www.homes.com/new-homes/community/alder-creek/4fsmhc8l0l533/",
+      "status": "Updated/read October 16: three exposed cards unchanged; eight-home headline not treated as release count.",
+      "id": "P51"
+    },
+    {
+      "title": "Freddie Mac PMMS",
+      "url": "https://www.freddiemac.com/pmms",
+      "status": "Read October 16; October 15 weekly release: 30-year 7.40%, 15-year 6.71%.",
+      "id": "P52"
+    },
+    {
+      "title": "Georgia MLS Gwinnett snapshot",
+      "url": "https://www.gamls.com/statistics/marketsnapshot/county/Gwinnett",
+      "status": "Read October 16; September 2026 unchanged: 659 closings, 523 contracts, $410,000 median, 1,288 new, 3,597 active.",
+      "id": "P53"
+    },
+    {
+      "title": "Georgia MLS Cobb snapshot",
+      "url": "https://www.gamls.com/statistics/marketsnapshot/county/Cobb",
+      "status": "Read October 16; September revised: 620 closings, 442 contracts, $417,750 median, 1,082 new, 2,799 active.",
+      "id": "P54"
+    },
+    {
+      "title": "Georgia MLS Forsyth snapshot",
+      "url": "https://www.gamls.com/statistics/marketsnapshot/county/Forsyth",
+      "status": "Read October 16; September revised: 212 closings, 153 contracts, $579,950 median, 448 new, 1,267 active; duplicated header noted.",
+      "id": "P55"
+    },
+    {
+      "title": "Georgia MLS Hall snapshot",
+      "url": "https://www.gamls.com/statistics/marketsnapshot/county/Hall",
+      "status": "Read October 16; September unchanged: 214 closings, 167 contracts, $408,500 median, 345 new, 1,155 active.",
+      "id": "P56"
     }
   ],
-  "previousAsOf": "2026-10-12",
+  "previousAsOf": "2026-10-14",
   "history": [
     {
       "asOf": "2026-10-10",
@@ -770,7 +804,7 @@
         "218 Maycrest resale verified: $390,000 closed September 25; portal list-price/sold-date conflict corrected.",
         "Forsyth closings correctly identified at 6137 and 6133 Wayburn; six gross closings now shown.",
         "September county statistics revised: 658 closings and $409,000 median; ratio recalculated to 5.47.",
-        "Trinity has no visible active resale. Creekside address asks now $449,900–$455,695.",
+        "Trinity has no visible active resale. Creekside address asks now $449,900\u2013$455,695.",
         "Freddie Mac October 8 benchmark: 7.40% / 6.73%; no change from October 8 report."
       ]
     },
@@ -829,7 +863,64 @@
         "September Gwinnett statistics and October 8 Freddie Mac rates unchanged. If all ten October net contracts remain, October 12-31 requires 3.50 per week; actual progress unknown.",
         "Fern Parc active asks unchanged. Walton 1971 duplicates excluded; two Waterside address benchmarks added. Creekside exact cards could not be refreshed."
       ]
+    },
+    {
+      "asOf": "2026-10-14",
+      "trackedActives": [
+        {
+          "address": "100 Epperly Way",
+          "plan": "Oconee",
+          "sqft": 1893,
+          "price": 409990,
+          "delivery": "Ready now",
+          "position": "Interior",
+          "test": 399990
+        },
+        {
+          "address": "102 Epperly Way",
+          "plan": "Oconee",
+          "sqft": 1893,
+          "price": 409990,
+          "delivery": "Ready now",
+          "position": "Interior",
+          "test": 399990
+        },
+        {
+          "address": "106 Epperly Way",
+          "plan": "Oconee",
+          "sqft": 1893,
+          "price": 463990,
+          "delivery": "Ready now",
+          "position": "End unit",
+          "test": 419990
+        },
+        {
+          "address": "6118 Wayburn Street",
+          "plan": "Forsyth",
+          "sqft": 1967,
+          "price": 462990,
+          "delivery": "Ready now",
+          "position": "End unit",
+          "test": 419990
+        },
+        {
+          "address": "6120 Wayburn Street",
+          "plan": "Forsyth",
+          "sqft": 1967,
+          "price": 459990,
+          "delivery": "October-November",
+          "position": "Premium / no rear neighbors",
+          "test": 419990
+        }
+      ],
+      "changeLog": [
+        "Official builder page now exposes five homes. 6118 Wayburn at $462,990 is newly captured; 6122 Wayburn is removed from current official inventory.",
+        "100 and 102 Epperly remain $409,990; official cards disclose prior prices of $456,990 and $458,990. 6120 is $459,990, down $440 from $460,430.",
+        "6122 Wayburn has a portal-only sold badge dated October 13 at $429,990. It is not added to verified gross closings because primary detail was unavailable.",
+        "No new primary same-community closing was verified. Six-record gross closing median remains $399,990 and mean $412,495.",
+        "Ten-net-contract pace updates to 3.89 per week for October 14-31 if all ten remain; five visible official homes do not establish ten released homes."
+      ]
     }
   ],
-  "competitionNote": "Five unique homes appear on the official builder available-homes page: four ready now and one October-November. Syndicated pages also expose 101/104 Epperly and 96 Epperly as active-looking records; they are not on the official roll and require status reconciliation. The portal headline of nine homes is not a release count or absorption measure."
+  "competitionNote": "The current official community page and builder-syndicated portal expose three Oconee address cards. A separately indexed official available-homes result still shows 6120 and 6122 Wayburn, but the live community page no longer lists them; 6118 also disappeared. Their status is unresolved\u2014no sale, cancellation or absorption is inferred. Portal headlines and cached cards are not released-home counts."
 }

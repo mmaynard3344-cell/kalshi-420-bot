@@ -1,18 +1,18 @@
 {
-  "asOf": "2026-10-14",
+  "asOf": "2026-10-16",
   "title": "Taylor Morrison Atlanta Townhome CMAs",
   "scope": "Atlanta townhome roster: six active builder-community tabs reconfirmed through official community and available-home pages, plus Henson Square and Auburn Glen Towns as sold-out references. The full Atlanta directory did not expose a complete machine-readable townhome roster on October 14, so no additional community was added without substantiation. Detached-home collections and nationwide scope are excluded.",
   "financing": {
-    "date": "2026-10-08",
+    "date": "2026-10-15",
     "rate30": 7.4,
-    "rate15": 6.73,
-    "previous30": 7.28,
-    "previous15": 6.6,
-    "price": 429990,
+    "rate15": 6.71,
+    "previous30": 7.4,
+    "previous15": 6.73,
+    "price": 419990,
     "downPercent": 20,
-    "payment": 2382,
+    "payment": 2326,
     "illustrativeRate": 5.99,
-    "illustrativePayment": 2060
+    "illustrativePayment": 2012
   },
   "markets": {
     "Gwinnett": {
@@ -26,33 +26,33 @@
       "medianYoY": -0.5,
       "newListingsYoY": 5.7,
       "activeYoY": 14.9,
-      "note": "September 2026 county-wide residential; read October 14. Not townhome or community absorption."
+      "note": "September 2026 county-wide residential; re-read October 16. Not townhome or community absorption."
     },
     "Cobb": {
-      "closings": 617,
+      "closings": 620,
       "contracts": 442,
       "active": 2799,
-      "median": 418500,
+      "median": 417750,
       "newListings": 1082,
-      "closingsYoY": -7.6,
+      "closingsYoY": -7.2,
       "contractsYoY": -26.9,
-      "medianYoY": 0.7,
+      "medianYoY": 0.5,
       "newListingsYoY": -15.3,
       "activeYoY": 15.5,
-      "note": "September 2026 county-wide residential; read October 14. Not townhome or community absorption."
+      "note": "September 2026 county-wide residential; re-read October 16. Georgia MLS revised the October 14 capture. Not townhome or community absorption."
     },
     "Forsyth": {
-      "closings": 211,
+      "closings": 212,
       "contracts": 153,
       "active": 1267,
-      "median": 574900,
+      "median": 579950,
       "newListings": 448,
-      "closingsYoY": -12.8,
+      "closingsYoY": -12.4,
       "contractsYoY": -17.3,
-      "medianYoY": -8.0,
+      "medianYoY": -7.2,
       "newListingsYoY": -10.6,
       "activeYoY": 11.5,
-      "note": "September 2026 county-wide residential; read October 14. Public page header repeats Forsyth; use as county context, not a valuation anchor."
+      "note": "September 2026 county-wide residential; re-read October 16. Georgia MLS revised the October 14 capture; duplicated county header remains. Not townhome or community absorption."
     },
     "Hall": {
       "closings": 214,
@@ -65,7 +65,7 @@
       "medianYoY": -3.4,
       "newListingsYoY": -8.2,
       "activeYoY": 6.4,
-      "note": "September 2026 county-wide residential; rechecked October 14. Not townhome or community absorption."
+      "note": "September 2026 county-wide residential; re-read October 16. Not townhome or community absorption."
     }
   },
   "communities": [
@@ -75,7 +75,7 @@
       "city": "Tucker",
       "county": "Gwinnett",
       "status": "Active builder sales",
-      "start": 409990,
+      "start": 419990,
       "hoa": 125,
       "hoaBasis": "Official builder payment calculator: $125/month. Historical $1,500 initiation charge remains unverified in current governing documents.",
       "plans": [
@@ -88,38 +88,42 @@
           "sqft": 1967
         },
         {
+          "plan": "Tifton",
+          "sqft": 2340
+        },
+        {
           "plan": "Reynolds",
           "sqft": 2375
         }
       ],
-      "product": "Three-story townhomes, two-car garages. Oconee / Forsyth / Reynolds; unit position and options matter.",
+      "product": "Three-story townhomes, two-car garages. Oconee / Forsyth / Tifton / Reynolds; unit position and options matter.",
       "inventory": [
         {
           "address": "100 Epperly Way",
           "plan": "Oconee",
           "sqft": 1893,
-          "price": 409990,
+          "price": 419990,
           "delivery": "Ready now",
           "test": 399990,
           "previous": 456990,
-          "basis": "Official builder available-home card; $47,000 displayed reduction",
+          "basis": "Official builder current community card; displayed $37,000 reduction; Open House this Weekend",
           "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run/available-homes/100-epperly-way",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14",
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16",
           "position": "Interior"
         },
         {
           "address": "102 Epperly Way",
           "plan": "Oconee",
           "sqft": 1893,
-          "price": 409990,
+          "price": 458990,
           "delivery": "Ready now",
-          "test": 399990,
-          "previous": 458990,
-          "basis": "Official builder available-home card; $49,000 displayed reduction",
+          "test": 419990,
+          "previous": null,
+          "basis": "Official builder current community card; Open House this Weekend",
           "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run/available-homes/102-epperly-way",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14",
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16",
           "position": "Interior"
         },
         {
@@ -128,41 +132,13 @@
           "sqft": 1893,
           "price": 463990,
           "delivery": "Ready now",
-          "test": 419990,
+          "test": 429990,
           "previous": null,
-          "basis": "Official builder available-home card",
-          "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run/available-homes/106-epperly-way",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14",
+          "basis": "Official builder current home card; end unit / backs to amenities",
+          "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run/floor-plans/oconee/home-available-now-at-106-epperly-way",
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16",
           "position": "End unit"
-        },
-        {
-          "address": "6118 Wayburn Street",
-          "plan": "Forsyth",
-          "sqft": 1967,
-          "price": 462990,
-          "delivery": "Ready now",
-          "test": 419990,
-          "previous": null,
-          "basis": "Official builder available-home card; newly captured address",
-          "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run/available-homes/6118-wayburn-street",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14",
-          "position": "End unit"
-        },
-        {
-          "address": "6120 Wayburn Street",
-          "plan": "Forsyth",
-          "sqft": 1967,
-          "price": 459990,
-          "delivery": "October-November",
-          "test": 419990,
-          "previous": 460430,
-          "basis": "Official builder available-home card; $440 displayed reduction; no rear neighbors",
-          "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run/available-homes/6120-wayburn-street",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14",
-          "position": "Premium / no rear neighbors"
         }
       ],
       "sales": [
@@ -223,87 +199,87 @@
       ],
       "competitors": [
         {
-          "name": "Fern Parc • 4349 Fern River Bend #31",
+          "name": "Fern Parc \u2022 4349 Fern River Bend #31",
           "price": 409950,
           "sqft": 1909,
           "basis": "Current builder asking card",
           "url": "https://rhghomes.com/find-a-home/fern-parc/",
-          "note": "Five active asks displayed October 14; four pending cards also shown. Counts do not establish absorption."
+          "note": "Five active asks displayed October 16; two pending cards also shown. Counts do not establish absorption."
         },
         {
-          "name": "Fern Parc • 4355 Fern River Bend #34",
+          "name": "Fern Parc \u2022 4355 Fern River Bend #34",
           "price": 414950,
           "sqft": 1909,
           "basis": "Current builder asking card",
           "url": "https://rhghomes.com/find-a-home/fern-parc/",
-          "note": "Five active asks displayed October 14; four pending cards also shown. Counts do not establish absorption."
+          "note": "Five active asks displayed October 16; two pending cards also shown. Counts do not establish absorption."
         },
         {
-          "name": "Fern Parc • 4353 Fern River Bend #33",
+          "name": "Fern Parc \u2022 4353 Fern River Bend #33",
           "price": 419950,
           "sqft": 1909,
           "basis": "Current builder asking card",
           "url": "https://rhghomes.com/find-a-home/fern-parc/",
-          "note": "Five active asks displayed October 14; four pending cards also shown. Counts do not establish absorption."
+          "note": "Five active asks displayed October 16; two pending cards also shown. Counts do not establish absorption."
         },
         {
-          "name": "Fern Parc • 4253 Fern River Trail #12",
+          "name": "Fern Parc \u2022 4253 Fern River Trail #12",
           "price": 434950,
           "sqft": 1909,
           "basis": "Current builder asking card",
           "url": "https://rhghomes.com/find-a-home/fern-parc/",
-          "note": "Five active asks displayed October 14; four pending cards also shown. Counts do not establish absorption."
+          "note": "Five active asks displayed October 16; two pending cards also shown. Counts do not establish absorption."
         },
         {
-          "name": "Fern Parc • 4357 Fern River Bend #35",
+          "name": "Fern Parc \u2022 4357 Fern River Bend #35",
           "price": 439950,
           "sqft": 1918,
           "basis": "Current builder asking card",
           "url": "https://rhghomes.com/find-a-home/fern-parc/",
-          "note": "Five active asks displayed October 14; four pending cards also shown. Counts do not establish absorption."
+          "note": "Five active asks displayed October 16; two pending cards also shown. Counts do not establish absorption."
         },
         {
-          "name": "Walton Townes • 1963 Walton Court",
+          "name": "Walton Townes \u2022 1963 Walton Court",
           "price": 460000,
           "sqft": 1726,
           "basis": "Current builder asking card",
           "url": "https://www.crawfordcreekcommunities.com/new-homes/tucker/walton-townes/",
-          "note": "Four unique current cards captured October 14. Earlier 1961/1969 cards are no longer exposed; status is not inferred."
+          "note": "Four unique current cards rechecked October 16; duplicate cards excluded. Counts do not establish absorption."
         },
         {
-          "name": "Walton Townes • 1971 Walton Court",
+          "name": "Walton Townes \u2022 1971 Walton Court",
           "price": 463050,
           "sqft": 1696,
           "basis": "Current builder asking card",
           "url": "https://www.crawfordcreekcommunities.com/new-homes/tucker/walton-townes/",
-          "note": "Four unique current cards captured October 14. Earlier 1961/1969 cards are no longer exposed; status is not inferred."
+          "note": "Four unique current cards rechecked October 16; duplicate cards excluded. Counts do not establish absorption."
         },
         {
-          "name": "Walton Townes • 1975 Walton Court",
+          "name": "Walton Townes \u2022 1975 Walton Court",
           "price": 462500,
           "sqft": 1726,
           "basis": "Current builder asking card",
           "url": "https://www.crawfordcreekcommunities.com/new-homes/tucker/walton-townes/",
-          "note": "Four unique current cards captured October 14. Earlier 1961/1969 cards are no longer exposed; status is not inferred."
+          "note": "Four unique current cards rechecked October 16; duplicate cards excluded. Counts do not establish absorption."
         },
         {
-          "name": "Walton Townes • 1977 Walton Court",
+          "name": "Walton Townes \u2022 1977 Walton Court",
           "price": 475000,
           "sqft": 1726,
           "basis": "Current builder asking card",
           "url": "https://www.crawfordcreekcommunities.com/new-homes/tucker/walton-townes/",
-          "note": "Four unique current cards captured October 14. Earlier 1961/1969 cards are no longer exposed; status is not inferred."
+          "note": "Four unique current cards rechecked October 16; duplicate cards excluded. Counts do not establish absorption."
         },
         {
-          "name": "Towns at Creekside • 2564 States Avenue",
+          "name": "Towns at Creekside \u2022 2564 States Avenue",
           "price": 449900,
           "sqft": 1810,
           "basis": "Current asking card",
           "url": "https://www.lennar.com/new-homes/georgia/atlanta/doraville/towns-at-creekside",
-          "note": "Only one current address card exposed October 14; prior 2562 status is unverified."
+          "note": "One current address card rechecked October 16; no absorption inferred."
         },
         {
-          "name": "Rosewood Farm • 102 Wilder Ridge Way",
+          "name": "Rosewood Farm \u2022 102 Wilder Ridge Way",
           "price": 349990,
           "sqft": 1967,
           "basis": "Current asking card",
@@ -311,7 +287,7 @@
           "note": "Current October 14 syndicated builder card."
         },
         {
-          "name": "Rosewood Farm • 96 Wilder Ridge Way",
+          "name": "Rosewood Farm \u2022 96 Wilder Ridge Way",
           "price": 349990,
           "sqft": 1967,
           "basis": "Current asking card",
@@ -319,7 +295,7 @@
           "note": "Current October 14 syndicated builder card."
         },
         {
-          "name": "Rosewood Farm • 611 Rosehill Lane",
+          "name": "Rosewood Farm \u2022 611 Rosehill Lane",
           "price": 406490,
           "sqft": 1967,
           "basis": "Current asking card",
@@ -327,7 +303,7 @@
           "note": "Current October 14 syndicated builder card."
         },
         {
-          "name": "Waterside • 4573 Deanston Court #390",
+          "name": "Waterside \u2022 4573 Deanston Court #390",
           "price": 649900,
           "sqft": 2201,
           "basis": "Current asking card",
@@ -335,7 +311,7 @@
           "note": "Current builder card; upper-tier benchmark outside Chandler entry-value peer set."
         },
         {
-          "name": "Waterside • 4563 Deanston Court #387",
+          "name": "Waterside \u2022 4563 Deanston Court #387",
           "price": 656925,
           "sqft": 2201,
           "basis": "Current asking card",
@@ -621,23 +597,53 @@
           "title": "Homes.com Chandler Run community portal",
           "url": "https://www.homes.com/new-homes/community/chandler-run/x1f7qt20n6xe0/",
           "status": "Updated/read October 14: portal headline nine; three visible cards; 6122 sold badge dated October 13. Portal sold badge excluded from verified closings."
+        },
+        {
+          "title": "Taylor Morrison Chandler Run community page",
+          "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run",
+          "status": "Read October 16: three official Oconee cards; community start $419,990; Tifton added at $453,990."
+        },
+        {
+          "title": "Freddie Mac PMMS",
+          "url": "https://www.freddiemac.com/pmms",
+          "status": "Read October 16; October 15 weekly release: 30-year 7.40%, 15-year 6.71%."
+        },
+        {
+          "title": "Georgia MLS Gwinnett snapshot",
+          "url": "https://www.gamls.com/statistics/marketsnapshot/county/Gwinnett",
+          "status": "Read October 16; September 2026 unchanged: 659 closings, 523 contracts, $410,000 median, 1,288 new, 3,597 active."
+        },
+        {
+          "title": "Georgia MLS Cobb snapshot",
+          "url": "https://www.gamls.com/statistics/marketsnapshot/county/Cobb",
+          "status": "Read October 16; September revised: 620 closings, 442 contracts, $417,750 median, 1,082 new, 2,799 active."
+        },
+        {
+          "title": "Georgia MLS Forsyth snapshot",
+          "url": "https://www.gamls.com/statistics/marketsnapshot/county/Forsyth",
+          "status": "Read October 16; September revised: 212 closings, 153 contracts, $579,950 median, 448 new, 1,267 active; duplicated header noted."
+        },
+        {
+          "title": "Georgia MLS Hall snapshot",
+          "url": "https://www.gamls.com/statistics/marketsnapshot/county/Hall",
+          "status": "Read October 16; September unchanged: 214 closings, 167 contracts, $408,500 median, 345 new, 1,155 active."
         }
       ],
-      "confidence": "High for current official builder asks/positions/deliveries; moderate for historical closings; low for portal sold badges and unreconciled syndicated actives.",
-      "inventoryNote": "Five unique homes appear on the official builder available-homes page: four ready now and one October-November. Syndicated pages also expose 101/104 Epperly and 96 Epperly as active-looking records; they are not on the official roll and require status reconciliation. The portal headline of nine homes is not a release count or absorption measure.",
+      "confidence": "High for the three current official builder cards; moderate for historical closings; low for cached Forsyth cards, portal sold badges and unreconciled syndicated actives.",
+      "inventoryNote": "The current official community page and builder-syndicated portal expose three Oconee address cards. A separately indexed official available-homes result still shows 6120 and 6122 Wayburn, but the live community page no longer lists them; 6118 also disappeared. Their status is unresolved\u2014no sale, cancellation or absorption is inferred. Portal headlines and cached cards are not released-home counts.",
       "thesis": "For the original ten October net-contract objective, the official five-home roll cannot alone support ten contracts. Use $399,990 for the two interior Oconee tests and $419,990 for end/premium Oconee-Forsyth tests, conditional on options, margin and release capacity; pair with verified finance terms rather than an opaque headline incentive.",
       "recommendations": [
-        "Test 100 and 102 Epperly at $399,990; each is $10,000 below the current $409,990 ask and aligns with the six-sale gross median rounded to $399,990.",
-        "Test 106 Epperly, 6118 Wayburn and 6120 Wayburn at $419,990 only after option, lot-position and margin review. Preserve a documented premium where buyers value end-unit or no-rear-neighbor position.",
-        "Five conditional tests total $2,059,950, $411,990 average: $147,000 / 6.7% below the $2,206,950 observed ask total. This is not an achieved ASP or approved price action.",
-        "Reconcile official-builder inventory against 101/104/96 Epperly syndicated records before assigning release capacity. Do not count 6122 Wayburn as a closing without primary gross-sale confirmation.",
-        "If all ten October net contracts remain as of October 14, the remaining 18 calendar days imply 3.89 net contracts per week. With illustrative 10% cancellation and 15% qualified-visit conversion, 12 gross contracts and 80 qualified visits would be required; actual traffic and cancellation rates remain unknown."
+        "For the documented entry home, test 100 Epperly at $399,990 after margin review: $20,000 below today\u2019s ask and aligned with the six-sale gross median rounded to $399,990.",
+        "Test 102 Epperly at $419,990 and 106 Epperly at $429,990, subject to matched option and position review. This compresses the current $39,000-$44,000 premiums over the entry ask without assuming the homes are identical.",
+        "The three documented tests total $1,249,970, $416,657 average: $92,000 / 6.9% below the $1,342,970 current official ask total. This is a conditional merchandising test, not achieved ASP or an instruction to change listings.",
+        "Do not build a ten-contract plan from three visible cards. Reconcile 6118/6120/6122 and obtain a verified release list of at least ten contractable homes before setting a unit-by-unit ladder.",
+        "If all ten October net contracts remain as of October 16, the remaining 16 calendar days imply 4.38 net contracts per week. At illustrative 10% cancellation and 15% qualified-visit conversion, 12 gross contracts and 80 qualified visits would be required; these are sensitivities, not forecasts."
       ],
       "gaps": [
         "Month-to-date net contracts, cancellations, qualified traffic, release plan and certificates of occupancy are unavailable.",
-        "No October 14 primary same-community gross closing was verified. The 6122 Wayburn portal sold badge is a lead only.",
+        "6118/6120/6122 Wayburn status conflicts across current and cached public pages; no outcome is inferred.",
         "Actual contract concessions, lender rate/APR/points, stacking, net proceeds and lot-option costs are unavailable.",
-        "101/104/96 Epperly appear active in syndicated feeds but not the official available-home roll; current status must be reconciled."
+        "No October 16 primary same-community gross closing was verified."
       ],
       "leads": [
         "6122 Wayburn is labeled sold October 13 at $429,990 by a portal. Primary Georgia MLS detail timed out October 14; exclude from verified gross closings.",
@@ -645,11 +651,11 @@
         "96 Epperly $479,990 appears in a fresh syndicated community feed but not the official available-home page."
       ],
       "changes": [
-        "Official builder page now exposes five homes. 6118 Wayburn at $462,990 is newly captured; 6122 Wayburn is removed from current official inventory.",
-        "100 and 102 Epperly remain $409,990; official cards disclose prior prices of $456,990 and $458,990. 6120 is $459,990, down $440 from $460,430.",
-        "6122 Wayburn has a portal-only sold badge dated October 13 at $429,990. It is not added to verified gross closings because primary detail was unavailable.",
-        "No new primary same-community closing was verified. Six-record gross closing median remains $399,990 and mean $412,495.",
-        "Ten-net-contract pace updates to 3.89 per week for October 14-31 if all ten remain; five visible official homes do not establish ten released homes."
+        "Current official community page now exposes three Oconees, down from five cards on October 14; 6118 and 6120 Wayburn are absent. A cached official result still references 6120/6122, so Forsyth status is unresolved and no sale or cancellation is inferred.",
+        "100 Epperly increased $10,000 to $419,990 while its displayed original price remains $456,990; 102 increased $49,000 to $458,990; 106 remains $463,990.",
+        "Tifton is now an official Chandler plan at a $453,990 community start. Chandler therefore shows four plan families, but no released Tifton address is assumed.",
+        "No new primary same-community gross closing was verified. The October 13 portal sold badge for 6122 remains unverified and conflicts with a cached builder card.",
+        "Freddie Mac October 15 benchmark is 7.40% / 6.71%. If all ten October net contracts remain, October 16-31 requires 4.38 per week; actual progress and release capacity are unknown."
       ],
       "benchmarks": [
         {
@@ -733,8 +739,8 @@
           "basis": "Coming soon; advertised $700,000s tier, not an address ask"
         }
       ],
-      "asOf": "2026-10-14",
-      "incentive": "Official/portal pages advertise limited-time or eligible QMI financing through Taylor Morrison Home Funding, but current rate, APR, points, credit, deadline and stacking terms were not exposed. Treat as an unpriced lead, not a buyer concession.",
+      "asOf": "2026-10-16",
+      "incentive": "Official pages promote a Lattes & Listings event and eligible-QMI financing through Taylor Morrison Home Funding; a syndicated page references a limited-time reduced rate. Current note rate, APR, points, credit, deadline, eligibility and stacking terms were not exposed. Treat these as unpriced leads, not concessions.",
       "market": {
         "closings": 659,
         "contracts": 523,
@@ -870,7 +876,7 @@
             "218 Maycrest resale verified: $390,000 closed September 25; portal list-price/sold-date conflict corrected.",
             "Forsyth closings correctly identified at 6137 and 6133 Wayburn; six gross closings now shown.",
             "September county statistics revised: 658 closings and $409,000 median; ratio recalculated to 5.47.",
-            "Trinity has no visible active resale. Creekside address asks now $449,900–$455,695.",
+            "Trinity has no visible active resale. Creekside address asks now $449,900\u2013$455,695.",
             "Freddie Mac October 8 benchmark: 7.40% / 6.73%; no change from October 8 report.",
             "Portfolio expansion: six active Atlanta townhome communities plus two sold-out reference tabs; current builder count conflicts retained."
           ]
@@ -1006,10 +1012,148 @@
             "September Gwinnett statistics and October 8 Freddie Mac rates unchanged. If all ten October net contracts remain, October 12-31 requires 3.50 per week; actual progress unknown.",
             "Fern Parc active asks unchanged. Walton 1971 duplicates excluded; two Waterside address benchmarks added. Creekside exact cards could not be refreshed."
           ]
+        },
+        {
+          "asOf": "2026-10-14",
+          "inventory": [
+            {
+              "address": "100 Epperly Way",
+              "plan": "Oconee",
+              "sqft": 1893,
+              "price": 409990,
+              "delivery": "Ready now",
+              "test": 399990,
+              "previous": 456990,
+              "basis": "Official builder available-home card; $47,000 displayed reduction",
+              "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run/available-homes/100-epperly-way",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14",
+              "position": "Interior"
+            },
+            {
+              "address": "102 Epperly Way",
+              "plan": "Oconee",
+              "sqft": 1893,
+              "price": 409990,
+              "delivery": "Ready now",
+              "test": 399990,
+              "previous": 458990,
+              "basis": "Official builder available-home card; $49,000 displayed reduction",
+              "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run/available-homes/102-epperly-way",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14",
+              "position": "Interior"
+            },
+            {
+              "address": "106 Epperly Way",
+              "plan": "Oconee",
+              "sqft": 1893,
+              "price": 463990,
+              "delivery": "Ready now",
+              "test": 419990,
+              "previous": null,
+              "basis": "Official builder available-home card",
+              "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run/available-homes/106-epperly-way",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14",
+              "position": "End unit"
+            },
+            {
+              "address": "6118 Wayburn Street",
+              "plan": "Forsyth",
+              "sqft": 1967,
+              "price": 462990,
+              "delivery": "Ready now",
+              "test": 419990,
+              "previous": null,
+              "basis": "Official builder available-home card; newly captured address",
+              "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run/available-homes/6118-wayburn-street",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14",
+              "position": "End unit"
+            },
+            {
+              "address": "6120 Wayburn Street",
+              "plan": "Forsyth",
+              "sqft": 1967,
+              "price": 459990,
+              "delivery": "October-November",
+              "test": 419990,
+              "previous": 460430,
+              "basis": "Official builder available-home card; $440 displayed reduction; no rear neighbors",
+              "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run/available-homes/6120-wayburn-street",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14",
+              "position": "Premium / no rear neighbors"
+            }
+          ],
+          "sales": [
+            {
+              "address": "218 Maycrest Path",
+              "plan": "Oconee resale",
+              "sqft": 1893,
+              "price": 390000,
+              "date": "Sep. 25, 2026",
+              "basis": "Primary MLS closing",
+              "url": "https://www.georgiamls.com/218-maycrest-path-tucker-ga-30084/10824116"
+            },
+            {
+              "address": "6138 Wayburn Street",
+              "plan": "Reynolds",
+              "sqft": 2375,
+              "price": 435000,
+              "date": "Sep. 28, 2026",
+              "basis": "Primary MLS closing",
+              "url": "https://www.georgiamls.com/6138-wayburn-street-tucker-ga-30084/10769188"
+            },
+            {
+              "address": "6137 Wayburn Street",
+              "plan": "Forsyth",
+              "sqft": 1967,
+              "price": 399990,
+              "date": "Feb. 9, 2026",
+              "basis": "Primary MLS closing",
+              "url": "https://www.georgiamls.com/6137-wayburn-street-tucker-ga-30084/10665045"
+            },
+            {
+              "address": "98 Epperly Way",
+              "plan": "Oconee",
+              "sqft": 1893,
+              "price": 399990,
+              "date": "May 8, 2026",
+              "basis": "Primary MLS closing",
+              "url": "https://www.georgiamls.com/98-epperly-way-tucker-ga-30084/10708668"
+            },
+            {
+              "address": "6121 Wayburn Street",
+              "plan": "Reynolds",
+              "sqft": 2375,
+              "price": 450000,
+              "date": "May 14, 2026",
+              "basis": "Historical closing; MLS / portal history",
+              "url": "https://www.redfin.com/GA/Tucker/6121-Wayburn-St-30084/home/196178461"
+            },
+            {
+              "address": "6133 Wayburn Street",
+              "plan": "Forsyth",
+              "sqft": 1967,
+              "price": 399990,
+              "date": "May 15, 2026",
+              "basis": "Primary MLS closing",
+              "url": "https://www.georgiamls.com/6133-wayburn-street-tucker-ga-30084/10665044"
+            }
+          ],
+          "changes": [
+            "Official builder page now exposes five homes. 6118 Wayburn at $462,990 is newly captured; 6122 Wayburn is removed from current official inventory.",
+            "100 and 102 Epperly remain $409,990; official cards disclose prior prices of $456,990 and $458,990. 6120 is $459,990, down $440 from $460,430.",
+            "6122 Wayburn has a portal-only sold badge dated October 13 at $429,990. It is not added to verified gross closings because primary detail was unavailable.",
+            "No new primary same-community closing was verified. Six-record gross closing median remains $399,990 and mean $412,495.",
+            "Ten-net-contract pace updates to 3.89 per week for October 14-31 if all ten remain; five visible official homes do not establish ten released homes."
+          ]
         }
       ],
-      "previousAsOf": "2026-10-12",
-      "researchAttemptDate": "2026-10-14"
+      "previousAsOf": "2026-10-14",
+      "researchAttemptDate": "2026-10-16"
     },
     {
       "id": "rosewood-farm",
@@ -1017,14 +1161,14 @@
       "city": "Lawrenceville",
       "county": "Gwinnett",
       "status": "Active builder sales",
-      "start": 349990,
+      "start": 365990,
       "hoa": 107.08333333333333,
       "hoaBasis": "Georgia MLS 96 Wilder Ridge: $1,285 annual / 12; confirm scope and initiation fees.",
       "plans": [
         {
           "plan": "Forsyth",
           "sqft": 1967,
-          "start": 349990
+          "start": 365990
         },
         {
           "plan": "Reynolds",
@@ -1042,36 +1186,36 @@
           "delivery": "Available now (portal)",
           "test": 379990,
           "previous": null,
-          "basis": "Builder-syndicated asking card, updated October 14",
+          "basis": "Builder-syndicated asking card, updated October 16",
           "url": "https://www.homes.com/new-homes/community/rosewood-farm/wzh962e8q1vte/",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         },
         {
           "address": "102 Wilder Ridge Way",
           "plan": "Forsyth",
           "sqft": 1967,
-          "price": 349990,
+          "price": 365990,
           "delivery": "November 30 (portal)",
-          "test": 349990,
+          "test": 359990,
           "previous": null,
-          "basis": "Builder-syndicated asking card, updated October 14",
+          "basis": "Builder-syndicated asking card, updated October 16",
           "url": "https://www.homes.com/new-homes/community/rosewood-farm/wzh962e8q1vte/",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         },
         {
           "address": "96 Wilder Ridge Way",
           "plan": "Forsyth",
           "sqft": 1967,
-          "price": 349990,
+          "price": 365990,
           "delivery": "November 30 (portal)",
-          "test": 349990,
+          "test": 359990,
           "previous": null,
-          "basis": "Builder-syndicated asking card, updated October 14",
+          "basis": "Builder-syndicated asking card, updated October 16",
           "url": "https://www.georgiamls.com/96-wilder-ridge-way-lawrenceville-ga-30044/10847360",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         }
       ],
       "sales": [
@@ -1087,7 +1231,7 @@
       ],
       "competitors": [
         {
-          "name": "Beacon at Old Peachtree • 2845 Beacon Bend Crossing",
+          "name": "Beacon at Old Peachtree \u2022 2845 Beacon Bend Crossing",
           "price": 369990,
           "sqft": null,
           "basis": "Primary MLS new asking listing",
@@ -1095,7 +1239,7 @@
           "note": "Quinn three-story; December completion. Exact address area not on primary page. Annual HOA $2,400. Incentives mentioned, terms unverified. October 12: Exact current price/status unavailable; October 10 or older evidence retained."
         },
         {
-          "name": "Dreycott Townhomes • 2707 Dreycott Lane",
+          "name": "Dreycott Townhomes \u2022 2707 Dreycott Lane",
           "price": 449990,
           "sqft": 2340,
           "basis": "Secondary cross-market asking price",
@@ -1103,7 +1247,7 @@
           "note": "Different submarket, plan and/or delivery; unadjusted comparison only. October 12: Exact current price/status unavailable; October 10 or older evidence retained."
         },
         {
-          "name": "Chandler Run • 100 Epperly Way",
+          "name": "Chandler Run \u2022 100 Epperly Way",
           "price": 409990,
           "sqft": 1893,
           "basis": "Secondary cross-market asking price",
@@ -1141,9 +1285,9 @@
       "inventoryNote": "Three unique cards captured from a six-home portal headline. The gap does not establish hidden inventory, sales or cancellations.",
       "thesis": "Protect the $349,990 entry offer. The ready Forsyth asks $56,500 more than the two November Forsyth addresses; explain that premium before applying a broad cut.",
       "recommendations": [
-        "Hold the two $349,990 Forsyth asks as the entry-price test. Confirm completion and which homes are released for contract.",
-        "For 611 Rosehill, test $379,990 only if options, end-unit status and lot value do not support the $406,490 ask. Proposed reduction: $26,500 (6.5%).",
-        "Reynolds plan start is $437,990, not an address ask. A $419,990–$429,990 future-address test is provisional: the $412,000 closing is from 2025 and cannot establish current value by itself."
+        "Use $359,990 as a conditional entry test for 102 and 96 Wilder Ridge after options, completion and margin review; do not automatically restore the prior $349,990 price.",
+        "For 611 Rosehill, retain the $379,990 conditional test only if options and position do not support the $406,490 ask. Proposed reduction: $26,500 (6.5%).",
+        "Do not treat the portal sold badges as verified closings or use the six-home headline as released inventory."
       ],
       "gaps": [
         "No recent primary-MLS same-community closing was verified in this run.",
@@ -1153,11 +1297,11 @@
         "609 Rosehill, 100 Wilder Ridge and 94 Wilder Ridge portal sold badges were not independently verified; excluded from closed-sale statistics."
       ],
       "changes": [
-        "Three captured asks remain unchanged: 611 Rosehill $406,490; 102 and 96 Wilder $349,990 each.",
-        "Portal headline remains six homes but only three unique address cards are exposed; no release count or absorption is inferred.",
-        "New portal sold badges remain unverified primary evidence and are not added to gross closings."
+        "102 and 96 Wilder Ridge each increased $16,000 to $365,990; 611 Rosehill remains $406,490.",
+        "Portal headline remains six move-in-ready homes but only three address cards are exposed. No release count or absorption is inferred.",
+        "Portal added October 6 sold badges at 609 Rosehill, 100 Wilder Ridge and 94 Wilder Ridge; these remain excluded from verified gross closings pending primary confirmation."
       ],
-      "asOf": "2026-10-14",
+      "asOf": "2026-10-16",
       "incentive": "Current builder rate, APR, points/credits, expiration and stacking terms are unverified. Advertised leads are not actual concessions. Analyst price tests exclude an assumed incentive.",
       "market": {
         "closings": 659,
@@ -1285,10 +1429,70 @@
             "No change to three captured asks or November 30 portal deliveries; page underlying update remains October 10.",
             "No new primary same-community closing verified; older Reynolds history remains context only."
           ]
+        },
+        {
+          "asOf": "2026-10-14",
+          "inventory": [
+            {
+              "address": "611 Rosehill Lane",
+              "plan": "Forsyth",
+              "sqft": 1967,
+              "price": 406490,
+              "delivery": "Available now (portal)",
+              "test": 379990,
+              "previous": null,
+              "basis": "Builder-syndicated asking card, updated October 14",
+              "url": "https://www.homes.com/new-homes/community/rosewood-farm/wzh962e8q1vte/",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            },
+            {
+              "address": "102 Wilder Ridge Way",
+              "plan": "Forsyth",
+              "sqft": 1967,
+              "price": 349990,
+              "delivery": "November 30 (portal)",
+              "test": 349990,
+              "previous": null,
+              "basis": "Builder-syndicated asking card, updated October 14",
+              "url": "https://www.homes.com/new-homes/community/rosewood-farm/wzh962e8q1vte/",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            },
+            {
+              "address": "96 Wilder Ridge Way",
+              "plan": "Forsyth",
+              "sqft": 1967,
+              "price": 349990,
+              "delivery": "November 30 (portal)",
+              "test": 349990,
+              "previous": null,
+              "basis": "Builder-syndicated asking card, updated October 14",
+              "url": "https://www.georgiamls.com/96-wilder-ridge-way-lawrenceville-ga-30044/10847360",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            }
+          ],
+          "sales": [
+            {
+              "address": "71 Wilder Ridge Way",
+              "plan": "Reynolds",
+              "sqft": 2375,
+              "price": 412000,
+              "date": "2025-09-30",
+              "basis": "MLS-syndicated historical closing; older than 12 months",
+              "url": "https://www.redfin.com/GA/Lawrenceville/71-Wilder-Ridge-Way-30044/home/196178094"
+            }
+          ],
+          "changes": [
+            "Three captured asks remain unchanged: 611 Rosehill $406,490; 102 and 96 Wilder $349,990 each.",
+            "Portal headline remains six homes but only three unique address cards are exposed; no release count or absorption is inferred.",
+            "New portal sold badges remain unverified primary evidence and are not added to gross closings."
+          ]
         }
       ],
-      "previousAsOf": "2026-10-12",
-      "researchAttemptDate": "2026-10-14"
+      "previousAsOf": "2026-10-14",
+      "researchAttemptDate": "2026-10-16"
     },
     {
       "id": "dreycott-townhomes",
@@ -1322,10 +1526,10 @@
           "delivery": "December 2026-January 2027",
           "test": 389990,
           "previous": null,
-          "basis": "Official builder card; limited-time price reduction, prior ask not exposed",
+          "basis": "Official builder card rechecked October 16; limited-time price reduction, prior ask not exposed",
           "url": "https://www.taylormorrison.com/ga/atlanta/lawrenceville/dreycott-townhomes/available-homes/2696-dreycott-lane",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         },
         {
           "address": "2692 Dreycott Lane",
@@ -1335,10 +1539,10 @@
           "delivery": "December 2026-January 2027",
           "test": 399990,
           "previous": null,
-          "basis": "Official builder card; special incentive referenced, terms unavailable",
+          "basis": "Official builder card rechecked October 16; special incentive referenced, terms unavailable",
           "url": "https://www.taylormorrison.com/ga/atlanta/lawrenceville/dreycott-townhomes/available-homes/2692-dreycott-lane",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         },
         {
           "address": "2704 Dreycott Lane",
@@ -1348,10 +1552,10 @@
           "delivery": "December 2026-January 2027",
           "test": 399990,
           "previous": null,
-          "basis": "Official builder card; first-floor guest bedroom",
+          "basis": "Official builder card rechecked October 16; first-floor guest bedroom",
           "url": "https://www.taylormorrison.com/ga/atlanta/lawrenceville/dreycott-townhomes/available-homes/2704-dreycott-lane",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         },
         {
           "address": "2707 Dreycott Lane",
@@ -1361,10 +1565,10 @@
           "delivery": "November-December 2026",
           "test": 439990,
           "previous": 471990,
-          "basis": "Official builder card; $22,000 displayed reduction",
+          "basis": "Official builder card rechecked October 16; $22,000 displayed reduction",
           "url": "https://www.taylormorrison.com/ga/atlanta/lawrenceville/dreycott-townhomes/available-homes/2707-dreycott-lane",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         },
         {
           "address": "2711 Dreycott Lane",
@@ -1374,10 +1578,10 @@
           "delivery": "November-December 2026",
           "test": 449990,
           "previous": null,
-          "basis": "Official builder card; appliances included",
+          "basis": "Official builder card rechecked October 16; appliances included",
           "url": "https://www.taylormorrison.com/ga/atlanta/lawrenceville/dreycott-townhomes/available-homes/2711-dreycott-lane",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         },
         {
           "address": "2703 Dreycott Lane",
@@ -1387,10 +1591,10 @@
           "delivery": "November-December 2026",
           "test": 449990,
           "previous": null,
-          "basis": "Official builder card; end unit",
+          "basis": "Official builder card rechecked October 16; end unit",
           "url": "https://www.taylormorrison.com/ga/atlanta/lawrenceville/dreycott-townhomes/available-homes/2703-dreycott-lane",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         }
       ],
       "sales": [
@@ -1406,7 +1610,7 @@
       ],
       "competitors": [
         {
-          "name": "Beacon at Old Peachtree • 2845 Beacon Bend Crossing",
+          "name": "Beacon at Old Peachtree \u2022 2845 Beacon Bend Crossing",
           "price": 369990,
           "sqft": null,
           "basis": "Primary MLS new asking listing",
@@ -1414,7 +1618,7 @@
           "note": "Quinn three-story; December completion. Exact address area not on primary page. Annual HOA $2,400. Incentives mentioned, terms unverified. October 12: Exact current price/status unavailable; October 10 or older evidence retained."
         },
         {
-          "name": "Rosewood Farm • 102 Wilder Ridge Way",
+          "name": "Rosewood Farm \u2022 102 Wilder Ridge Way",
           "price": 349990,
           "sqft": 1967,
           "basis": "Secondary cross-market asking price",
@@ -1422,7 +1626,7 @@
           "note": "Different submarket, plan and/or delivery; unadjusted comparison only. October 12: Read October 12; underlying update October 10. Three captured asks/deliveries unchanged."
         },
         {
-          "name": "Chandler Run • 100 Epperly Way",
+          "name": "Chandler Run \u2022 100 Epperly Way",
           "price": 409990,
           "sqft": 1893,
           "basis": "Secondary cross-market asking price",
@@ -1481,7 +1685,7 @@
       ],
       "confidence": "Moderate for Tifton; Oconee plan-start conflict resolved, but no verified Oconee closing or net concessions.",
       "inventoryNote": "Six unique official builder available-home cards captured October 14. This is a point-in-time displayed roster, not sales pace or release history.",
-      "thesis": "A $432,500 September Tifton closing makes the $470,990–$485,990 asks difficult to defend without documented option or position premiums.",
+      "thesis": "A $432,500 September Tifton closing makes the $470,990\u2013$485,990 asks difficult to defend without documented option or position premiums.",
       "recommendations": [
         "Hold 2696 at the $389,990 Oconee price lead; test 2692 and 2704 at $399,990 subject to options and margin.",
         "Test 2707 Tifton at $439,990 and 2711/2703 at $449,990, preserving end-unit/option premiums only where buyer response supports them.",
@@ -1495,11 +1699,12 @@
         "2716 Dreycott Oconee sold-price sources conflict ($403,000 / $409,500 / $404,990); excluded from verified closing evidence."
       ],
       "changes": [
-        "Official builder page now exposes six homes; 2696 and 2692 Oconee cards are newly captured evidence, not proved new releases.",
-        "2707 remains $449,990 versus displayed prior $471,990; 2703/2711 and 2704 asks remain as previously captured.",
-        "No new primary same-community gross closing was verified. Numeric incentive terms remain unavailable."
+        "Six official address cards remain at $389,990-$485,990 with no substantiated price change.",
+        "2707 Dreycott now carries an Open House this Weekend label; its displayed $22,000 reduction remains.",
+        "2692 special-incentive and 2696 limited-time-reduction labels remain unpriced; no numeric concession is assumed.",
+        "No new primary same-community gross closing was verified."
       ],
-      "asOf": "2026-10-14",
+      "asOf": "2026-10-16",
       "incentive": "2692 references a special incentive and 2696 a limited-time price reduction; rate, APR, credits, deadline, eligibility and stacking terms were not exposed.",
       "market": {
         "closings": 659,
@@ -1653,10 +1858,109 @@
             "Portal headline rose five to six, but only three Tifton cards exposed. This is not an absorption or release calculation.",
             "Four address asks unchanged where available; 2704 / 2711 primary rechecked, 2707 / 2703 supported by portal. No new gross closing verified."
           ]
+        },
+        {
+          "asOf": "2026-10-14",
+          "inventory": [
+            {
+              "address": "2696 Dreycott Lane",
+              "plan": "Oconee",
+              "sqft": 1893,
+              "price": 389990,
+              "delivery": "December 2026-January 2027",
+              "test": 389990,
+              "previous": null,
+              "basis": "Official builder card; limited-time price reduction, prior ask not exposed",
+              "url": "https://www.taylormorrison.com/ga/atlanta/lawrenceville/dreycott-townhomes/available-homes/2696-dreycott-lane",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            },
+            {
+              "address": "2692 Dreycott Lane",
+              "plan": "Oconee",
+              "sqft": 1893,
+              "price": 410990,
+              "delivery": "December 2026-January 2027",
+              "test": 399990,
+              "previous": null,
+              "basis": "Official builder card; special incentive referenced, terms unavailable",
+              "url": "https://www.taylormorrison.com/ga/atlanta/lawrenceville/dreycott-townhomes/available-homes/2692-dreycott-lane",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            },
+            {
+              "address": "2704 Dreycott Lane",
+              "plan": "Oconee",
+              "sqft": 1893,
+              "price": 437990,
+              "delivery": "December 2026-January 2027",
+              "test": 399990,
+              "previous": null,
+              "basis": "Official builder card; first-floor guest bedroom",
+              "url": "https://www.taylormorrison.com/ga/atlanta/lawrenceville/dreycott-townhomes/available-homes/2704-dreycott-lane",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            },
+            {
+              "address": "2707 Dreycott Lane",
+              "plan": "Tifton",
+              "sqft": 2340,
+              "price": 449990,
+              "delivery": "November-December 2026",
+              "test": 439990,
+              "previous": 471990,
+              "basis": "Official builder card; $22,000 displayed reduction",
+              "url": "https://www.taylormorrison.com/ga/atlanta/lawrenceville/dreycott-townhomes/available-homes/2707-dreycott-lane",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            },
+            {
+              "address": "2711 Dreycott Lane",
+              "plan": "Tifton",
+              "sqft": 2340,
+              "price": 470990,
+              "delivery": "November-December 2026",
+              "test": 449990,
+              "previous": null,
+              "basis": "Official builder card; appliances included",
+              "url": "https://www.taylormorrison.com/ga/atlanta/lawrenceville/dreycott-townhomes/available-homes/2711-dreycott-lane",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            },
+            {
+              "address": "2703 Dreycott Lane",
+              "plan": "Tifton",
+              "sqft": 2340,
+              "price": 485990,
+              "delivery": "November-December 2026",
+              "test": 449990,
+              "previous": null,
+              "basis": "Official builder card; end unit",
+              "url": "https://www.taylormorrison.com/ga/atlanta/lawrenceville/dreycott-townhomes/available-homes/2703-dreycott-lane",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            }
+          ],
+          "sales": [
+            {
+              "address": "2734 Dreycott Lane",
+              "plan": "Tifton",
+              "sqft": 2340,
+              "price": 432500,
+              "date": "2026-09-28",
+              "basis": "Primary MLS closing",
+              "url": "https://www.georgiamls.com/2734-dreycott-lane-lawrenceville-ga-30043/10742746"
+            }
+          ],
+          "changes": [
+            "Official builder page now exposes six homes; 2696 and 2692 Oconee cards are newly captured evidence, not proved new releases.",
+            "2707 remains $449,990 versus displayed prior $471,990; 2703/2711 and 2704 asks remain as previously captured.",
+            "No new primary same-community gross closing was verified. Numeric incentive terms remain unavailable."
+          ]
         }
       ],
-      "previousAsOf": "2026-10-12",
-      "researchAttemptDate": "2026-10-14"
+      "previousAsOf": "2026-10-14",
+      "researchAttemptDate": "2026-10-16"
     },
     {
       "id": "weatherfield-townhomes",
@@ -1689,10 +1993,10 @@
           "delivery": "Ready now (portal)",
           "test": 369990,
           "previous": 411780,
-          "basis": "Builder-syndicated asking card; page updated October 12 and re-read October 14",
+          "basis": "Builder-syndicated asking card; page updated October 16",
           "url": "https://www.georgiamls.com/3695-sagecrest-drive-buford-ga-30519/10767379",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-12 page update"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         },
         {
           "address": "3703 Sagecrest Drive",
@@ -1702,10 +2006,10 @@
           "delivery": "Ready now (portal)",
           "test": 369990,
           "previous": 412380,
-          "basis": "Builder-syndicated asking card; page updated October 12 and re-read October 14",
+          "basis": "Builder-syndicated asking card; page updated October 16",
           "url": "https://www.homes.com/new-homes/community/weatherfield-townhomes/yzy58xpr9gpec/",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-12 page update"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         },
         {
           "address": "3632 Aveline Street",
@@ -1715,10 +2019,10 @@
           "delivery": "November 30 (portal)",
           "test": 329990,
           "previous": 369930,
-          "basis": "Builder-syndicated asking card; page updated October 12 and re-read October 14",
+          "basis": "Builder-syndicated asking card; page updated October 16",
           "url": "https://www.homes.com/new-homes/community/weatherfield-townhomes/yzy58xpr9gpec/",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-12 page update"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         }
       ],
       "sales": [
@@ -1734,7 +2038,7 @@
       ],
       "competitors": [
         {
-          "name": "Beacon at Old Peachtree • 2845 Beacon Bend Crossing",
+          "name": "Beacon at Old Peachtree \u2022 2845 Beacon Bend Crossing",
           "price": 369990,
           "sqft": null,
           "basis": "Primary MLS new asking listing",
@@ -1742,7 +2046,7 @@
           "note": "Quinn three-story; December completion. Exact address area not on primary page. Annual HOA $2,400. Incentives mentioned, terms unverified. October 12: Exact current price/status unavailable; October 10 or older evidence retained."
         },
         {
-          "name": "Towns at Ivy Creek • 3050 Humdala Place #229",
+          "name": "Towns at Ivy Creek \u2022 3050 Humdala Place #229",
           "price": 385910,
           "sqft": 1831,
           "basis": "FMLS-syndicated asking price",
@@ -1750,7 +2054,7 @@
           "note": "Listing date October 1; feed read October 10. Buford / Gwinnett, a different county. October 12: Exact current price/status unavailable; October 10 or older evidence retained."
         },
         {
-          "name": "Rosewood Farm • 102 Wilder Ridge Way",
+          "name": "Rosewood Farm \u2022 102 Wilder Ridge Way",
           "price": 349990,
           "sqft": 1967,
           "basis": "Secondary cross-market asking price",
@@ -1758,7 +2062,7 @@
           "note": "Different submarket, plan and/or delivery; unadjusted comparison only. October 12: Read October 12; underlying update October 10. Three captured asks/deliveries unchanged."
         },
         {
-          "name": "Dreycott Townhomes • 2707 Dreycott Lane",
+          "name": "Dreycott Townhomes \u2022 2707 Dreycott Lane",
           "price": 449990,
           "sqft": 2340,
           "basis": "Secondary cross-market asking price",
@@ -1821,11 +2125,11 @@
         "3683 / 3691 portal sold labels remain unverified and excluded."
       ],
       "changes": [
-        "Three exposed address cards remain unchanged: 3695/3703 Sagecrest $380,990 and 3632 Aveline $329,990.",
-        "Portal headline says four homes but only three unique address cards are exposed; no release count or absorption is inferred.",
-        "Hall County September context remains the correct county benchmark; no new same-community primary closing was verified."
+        "Three exposed address asks remain unchanged: 3695/3703 Sagecrest $380,990 and 3632 Aveline $329,990.",
+        "Portal headline remains four move-in-ready homes but exposes three cards. The missing address is not inferred as sold or unavailable.",
+        "Weatherfield remains analyzed with Hall County\u2014not Gwinnett\u2014September context. No new verified same-community closing was found."
       ],
-      "asOf": "2026-10-14",
+      "asOf": "2026-10-16",
       "incentive": "Current builder rate, APR, points/credits, expiration and stacking terms are unverified. Advertised leads are not actual concessions. Analyst price tests exclude an assumed incentive.",
       "market": {
         "closings": 214,
@@ -1953,10 +2257,70 @@
             "Three portal asks unchanged; underlying October 10 update retained. Ezra $329,990 awaits primary reconciliation.",
             "Hall September context newly retrieved: 214 closings, 167 contracts, $408,500 median, 1,155 active. No new primary community closing verified."
           ]
+        },
+        {
+          "asOf": "2026-10-14",
+          "inventory": [
+            {
+              "address": "3695 Sagecrest Drive",
+              "plan": "Kenna",
+              "sqft": 1888,
+              "price": 380990,
+              "delivery": "Ready now (portal)",
+              "test": 369990,
+              "previous": 411780,
+              "basis": "Builder-syndicated asking card; page updated October 12 and re-read October 14",
+              "url": "https://www.georgiamls.com/3695-sagecrest-drive-buford-ga-30519/10767379",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-12 page update"
+            },
+            {
+              "address": "3703 Sagecrest Drive",
+              "plan": "Kenna",
+              "sqft": 1888,
+              "price": 380990,
+              "delivery": "Ready now (portal)",
+              "test": 369990,
+              "previous": 412380,
+              "basis": "Builder-syndicated asking card; page updated October 12 and re-read October 14",
+              "url": "https://www.homes.com/new-homes/community/weatherfield-townhomes/yzy58xpr9gpec/",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-12 page update"
+            },
+            {
+              "address": "3632 Aveline Street",
+              "plan": "Ezra",
+              "sqft": 1800,
+              "price": 329990,
+              "delivery": "November 30 (portal)",
+              "test": 329990,
+              "previous": 369930,
+              "basis": "Builder-syndicated asking card; page updated October 12 and re-read October 14",
+              "url": "https://www.homes.com/new-homes/community/weatherfield-townhomes/yzy58xpr9gpec/",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-12 page update"
+            }
+          ],
+          "sales": [
+            {
+              "address": "3699 Sagecrest Drive",
+              "plan": "Kenna",
+              "sqft": 1888,
+              "price": 375990,
+              "date": "2026-09-09",
+              "basis": "Primary MLS closing",
+              "url": "https://www.georgiamls.com/3699-sagecrest-drive-buford-ga-30519/10767425"
+            }
+          ],
+          "changes": [
+            "Three exposed address cards remain unchanged: 3695/3703 Sagecrest $380,990 and 3632 Aveline $329,990.",
+            "Portal headline says four homes but only three unique address cards are exposed; no release count or absorption is inferred.",
+            "Hall County September context remains the correct county benchmark; no new same-community primary closing was verified."
+          ]
         }
       ],
-      "previousAsOf": "2026-10-12",
-      "researchAttemptDate": "2026-10-14"
+      "previousAsOf": "2026-10-14",
+      "researchAttemptDate": "2026-10-16"
     },
     {
       "id": "somerset",
@@ -1984,10 +2348,10 @@
           "delivery": "Ready now (portal)",
           "test": 379990,
           "previous": 397990,
-          "basis": "Builder-syndicated asking card, updated October 14",
+          "basis": "Builder-syndicated asking card; page updated October 16",
           "url": "https://www.homes.com/new-homes/community/somerset-at-veterans-memorial/es6nt1zm54mym/",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         },
         {
           "address": "5760 Schelton Place SE",
@@ -1997,10 +2361,10 @@
           "delivery": "Ready now (portal)",
           "test": 379990,
           "previous": null,
-          "basis": "Builder-syndicated asking card, updated October 14",
+          "basis": "Builder-syndicated asking card; page updated October 16",
           "url": "https://www.homes.com/new-homes/community/somerset-at-veterans-memorial/es6nt1zm54mym/",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16"
         }
       ],
       "sales": [
@@ -2016,7 +2380,7 @@
       ],
       "competitors": [
         {
-          "name": "Wilkins Walk • 767 Kaufman Drive",
+          "name": "Wilkins Walk \u2022 767 Kaufman Drive",
           "price": 389900,
           "sqft": 1804,
           "basis": "Current builder ask",
@@ -2024,7 +2388,7 @@
           "note": "Current October 14 address card."
         },
         {
-          "name": "Wilkins Walk • 763 Kaufman Drive",
+          "name": "Wilkins Walk \u2022 763 Kaufman Drive",
           "price": 399900,
           "sqft": 1804,
           "basis": "Current builder ask",
@@ -2032,7 +2396,7 @@
           "note": "Current October 14 address card."
         },
         {
-          "name": "Wilkins Walk • 4827 Floydwood Lane",
+          "name": "Wilkins Walk \u2022 4827 Floydwood Lane",
           "price": 403156,
           "sqft": 1824,
           "basis": "Current builder ask",
@@ -2040,7 +2404,7 @@
           "note": "Current October 14 address card."
         },
         {
-          "name": "Mableton Station • 6191 Honeybell Court",
+          "name": "Mableton Station \u2022 6191 Honeybell Court",
           "price": 369990,
           "sqft": null,
           "basis": "Current builder ask",
@@ -2048,7 +2412,7 @@
           "note": "Current October 14 address card; area unavailable."
         },
         {
-          "name": "Mableton Station • 6206 Honeybell Court",
+          "name": "Mableton Station \u2022 6206 Honeybell Court",
           "price": 399480,
           "sqft": null,
           "basis": "Current builder ask",
@@ -2093,12 +2457,11 @@
         "5826 and 5822 Schelton October 6 sold badges: excluded pending primary closing amount/date confirmation."
       ],
       "changes": [
-        "Two asks remain unchanged: 5818 Schelton $379,990 and 5760 Schelton $389,990.",
-        "Community is now explicitly labeled near closeout / final opportunities; it is not labeled sold out.",
-        "New portal sold badge at 5829 Schelton remains unverified primary evidence and is not added to gross closings.",
-        "Cobb September figures revised to 617 closings and $418,500 median after a successful October 14 recheck."
+        "Two current asks remain unchanged: 5818 Schelton $379,990 and 5760 Schelton $389,990.",
+        "Community remains explicitly near closeout / final opportunities; it is not labeled sold out.",
+        "Cobb September figures were revised to 620 closings and a $417,750 median. No new primary same-community closing was verified."
       ],
-      "asOf": "2026-10-14",
+      "asOf": "2026-10-16",
       "incentive": "Current builder rate, APR, points/credits, expiration and stacking terms are unverified. Advertised leads are not actual concessions. Analyst price tests exclude an assumed incentive.",
       "market": {
         "closings": 617,
@@ -2202,10 +2565,58 @@
             "Two current portal asks unchanged, cards now updated October 12.",
             "5821 syndicated closing history reconfirmed; 5826 / 5822 new portal sold badges excluded pending primary verification."
           ]
+        },
+        {
+          "asOf": "2026-10-14",
+          "inventory": [
+            {
+              "address": "5818 Schelton Place SE",
+              "plan": "Forsyth",
+              "sqft": 1967,
+              "price": 379990,
+              "delivery": "Ready now (portal)",
+              "test": 379990,
+              "previous": 397990,
+              "basis": "Builder-syndicated asking card, updated October 14",
+              "url": "https://www.homes.com/new-homes/community/somerset-at-veterans-memorial/es6nt1zm54mym/",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            },
+            {
+              "address": "5760 Schelton Place SE",
+              "plan": "Forsyth",
+              "sqft": 1967,
+              "price": 389990,
+              "delivery": "Ready now (portal)",
+              "test": 379990,
+              "previous": null,
+              "basis": "Builder-syndicated asking card, updated October 14",
+              "url": "https://www.homes.com/new-homes/community/somerset-at-veterans-memorial/es6nt1zm54mym/",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            }
+          ],
+          "sales": [
+            {
+              "address": "5821 Schelton Place SE",
+              "plan": "Forsyth",
+              "sqft": 1967,
+              "price": 379990,
+              "date": "2026-09-23",
+              "basis": "MLS-syndicated closing history; primary unavailable",
+              "url": "https://www.homes.com/property/5821-schelton-place-se-mableton-ga/r4k05x5rqr5j0/?t=sold"
+            }
+          ],
+          "changes": [
+            "Two asks remain unchanged: 5818 Schelton $379,990 and 5760 Schelton $389,990.",
+            "Community is now explicitly labeled near closeout / final opportunities; it is not labeled sold out.",
+            "New portal sold badge at 5829 Schelton remains unverified primary evidence and is not added to gross closings.",
+            "Cobb September figures revised to 617 closings and $418,500 median after a successful October 14 recheck."
+          ]
         }
       ],
-      "previousAsOf": "2026-10-12",
-      "researchAttemptDate": "2026-10-14"
+      "previousAsOf": "2026-10-14",
+      "researchAttemptDate": "2026-10-16"
     },
     {
       "id": "alder-creek",
@@ -2238,10 +2649,10 @@
           "delivery": "QMI card; actual completion unverified",
           "test": 479990,
           "previous": 527990,
-          "basis": "Current NewHomeSource Dawson townhome card; read October 14",
+          "basis": "Builder-syndicated current address card; updated October 16",
           "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16 builder-syndicated portal"
         },
         {
           "address": "623 Oak Bluff Drive",
@@ -2251,10 +2662,10 @@
           "delivery": "Ready now",
           "test": 479990,
           "previous": 524990,
-          "basis": "Current NewHomeSource Dawson townhome card; read October 14",
+          "basis": "Builder-syndicated current address card; updated October 16",
           "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16 builder-syndicated portal"
         },
         {
           "address": "608 Alder Creek Way",
@@ -2264,10 +2675,10 @@
           "delivery": "Portal September 30 date has passed; readiness unverified",
           "test": null,
           "previous": 510990,
-          "basis": "Current NewHomeSource Dawson townhome card; read October 14",
+          "basis": "Builder-syndicated current address card; updated October 16",
           "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "2026-10-16 builder-syndicated portal"
         },
         {
           "address": "743 Meadow Ridge Lane",
@@ -2277,10 +2688,10 @@
           "delivery": "QMI card; completion month unavailable",
           "test": null,
           "previous": null,
-          "basis": "Current NewHomeSource Dawson townhome card; read October 14",
+          "basis": "Carried NewHomeSource townhome card; current status requires reconciliation",
           "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "Carried NewHomeSource card; current portal does not expose this address"
         },
         {
           "address": "747 Meadow Ridge Lane",
@@ -2290,10 +2701,10 @@
           "delivery": "QMI card; completion month unavailable",
           "test": null,
           "previous": null,
-          "basis": "Current NewHomeSource Dawson townhome card; read October 14",
+          "basis": "Carried NewHomeSource townhome card; current status requires reconciliation",
           "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "Carried NewHomeSource card; current portal does not expose this address"
         },
         {
           "address": "751 Meadow Ridge Lane",
@@ -2303,24 +2714,24 @@
           "delivery": "QMI card; completion month unavailable",
           "test": null,
           "previous": null,
-          "basis": "Current NewHomeSource Dawson townhome card; read October 14",
+          "basis": "Carried NewHomeSource townhome card; current status requires reconciliation",
           "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
-          "researchAttemptDate": "2026-10-14",
-          "lastVerifiedDate": "2026-10-14"
+          "researchAttemptDate": "2026-10-16",
+          "lastVerifiedDate": "Carried NewHomeSource card; current portal does not expose this address"
         }
       ],
       "sales": [],
       "competitors": [
         {
-          "name": "Brackley • 112 Brackley Drive",
+          "name": "Brackley \u2022 112 Brackley Drive",
           "price": 495000,
           "sqft": 2004,
-          "basis": "Historical external closing • February 26, 2026",
+          "basis": "Historical external closing \u2022 February 26, 2026",
           "url": "https://www.realtor.com/realestateandhomes-detail/112-Brackley-Dr_Cumming_GA_30040_M93913-00225",
           "note": "Not a current ask; older portal still called it available. Smaller than Alder Creek. October 12: Exact current price/status unavailable; October 10 or older evidence retained."
         },
         {
-          "name": "Rosewood Farm • 102 Wilder Ridge Way",
+          "name": "Rosewood Farm \u2022 102 Wilder Ridge Way",
           "price": 349990,
           "sqft": 1967,
           "basis": "Secondary cross-market asking price",
@@ -2328,7 +2739,7 @@
           "note": "Different submarket, plan and/or delivery; unadjusted comparison only. October 12: Read October 12; underlying update October 10. Three captured asks/deliveries unchanged."
         },
         {
-          "name": "Dreycott Townhomes • 2707 Dreycott Lane",
+          "name": "Dreycott Townhomes \u2022 2707 Dreycott Lane",
           "price": 449990,
           "sqft": 2340,
           "basis": "Secondary cross-market asking price",
@@ -2362,7 +2773,7 @@
         }
       ],
       "confidence": "Low to moderate for asking coverage: six explicitly townhome Dawson cards; no verified same-community closing or full delivery schedule.",
-      "inventoryNote": "Six Dawson address cards captured via NewHomeSource. Eight QMI headline includes two Reynolds cards marked single family, excluded pending classification. This does not prove full released/contractable inventory or completion.",
+      "inventoryNote": "Three current builder-syndicated Dawson cards plus three carried NewHomeSource Dawson cards. The portal eight-home headline does not identify all addresses or prove contractable inventory; carried Meadow Ridge status is unresolved.",
       "thesis": "A below-$480,000 Dawson test is a provisional demand experiment. The available evidence is too weak to call it a supported market value.",
       "recommendations": [
         "If refreshed availability, options and margin permit, retain the conditional $479,990 tests for 623 ($10,000 below ask) and 627 ($13,000 below ask). New Dawson cards receive no price test until delivery and options are verified.",
@@ -2380,12 +2791,11 @@
         "663 / 671 Hickory Grove Reynolds QMI cards at $499,990 / $515,990 are marked single family; excluded pending primary townhome classification."
       ],
       "changes": [
-        "Six Dawson townhome cards remain exposed at $489,990-$495,990; no asking-price change substantiated.",
-        "663 and 671 Hickory Grove Reynolds cards remain labeled single family and stay excluded pending townhome classification.",
-        "Fixed-rate offer remains advertised through October 31 for eligible QMI homes using Taylor Morrison Home Funding; numeric terms remain unavailable.",
-        "Forsyth September figures revised to 211 closings and $574,900 median after a successful October 14 recheck."
+        "Three current builder-syndicated Dawson cards remain $489,990-$492,990; three Meadow Ridge cards are carried from NewHomeSource and require status reconciliation.",
+        "Portal headline says eight move-in-ready homes but exposes three cards. It is not used as absorption or release evidence.",
+        "Forsyth September figures were revised to 212 closings and a $579,950 median. No same-community primary closing was newly verified."
       ],
-      "asOf": "2026-10-14",
+      "asOf": "2026-10-16",
       "incentive": "Advertised lead: conventional fixed-rate program through October 31, 2026, on eligible QMI homes in select communities using Taylor Morrison Home Funding. Rate, APR, points, credits, purchase/close-by requirement and stacking remain unavailable. Not an actual buyer concession.",
       "market": {
         "closings": 211,
@@ -2535,10 +2945,100 @@
             "Advertised conventional fixed-rate lead has October 31 deadline and requires Taylor Morrison Home Funding; rate, APR, credits and stacking are not exposed.",
             "Original asks unchanged across available sources; no same-community closing newly verified."
           ]
+        },
+        {
+          "asOf": "2026-10-14",
+          "inventory": [
+            {
+              "address": "627 Oak Bluff Drive",
+              "plan": "Dawson",
+              "sqft": 2359,
+              "price": 492990,
+              "delivery": "QMI card; actual completion unverified",
+              "test": 479990,
+              "previous": 527990,
+              "basis": "Current NewHomeSource Dawson townhome card; read October 14",
+              "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            },
+            {
+              "address": "623 Oak Bluff Drive",
+              "plan": "Dawson",
+              "sqft": 2359,
+              "price": 489990,
+              "delivery": "Ready now",
+              "test": 479990,
+              "previous": 524990,
+              "basis": "Current NewHomeSource Dawson townhome card; read October 14",
+              "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            },
+            {
+              "address": "608 Alder Creek Way",
+              "plan": "Dawson",
+              "sqft": 2359,
+              "price": 489990,
+              "delivery": "Portal September 30 date has passed; readiness unverified",
+              "test": null,
+              "previous": 510990,
+              "basis": "Current NewHomeSource Dawson townhome card; read October 14",
+              "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            },
+            {
+              "address": "743 Meadow Ridge Lane",
+              "plan": "Dawson",
+              "sqft": 2359,
+              "price": 489990,
+              "delivery": "QMI card; completion month unavailable",
+              "test": null,
+              "previous": null,
+              "basis": "Current NewHomeSource Dawson townhome card; read October 14",
+              "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            },
+            {
+              "address": "747 Meadow Ridge Lane",
+              "plan": "Dawson",
+              "sqft": 2359,
+              "price": 495990,
+              "delivery": "QMI card; completion month unavailable",
+              "test": null,
+              "previous": null,
+              "basis": "Current NewHomeSource Dawson townhome card; read October 14",
+              "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            },
+            {
+              "address": "751 Meadow Ridge Lane",
+              "plan": "Dawson",
+              "sqft": 2359,
+              "price": 495990,
+              "delivery": "QMI card; completion month unavailable",
+              "test": null,
+              "previous": null,
+              "basis": "Current NewHomeSource Dawson townhome card; read October 14",
+              "url": "https://www.newhomesource.com/community/ga/cumming/alder-creek-by-taylor-morrison/215841",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14"
+            }
+          ],
+          "sales": [],
+          "changes": [
+            "Six Dawson townhome cards remain exposed at $489,990-$495,990; no asking-price change substantiated.",
+            "663 and 671 Hickory Grove Reynolds cards remain labeled single family and stay excluded pending townhome classification.",
+            "Fixed-rate offer remains advertised through October 31 for eligible QMI homes using Taylor Morrison Home Funding; numeric terms remain unavailable.",
+            "Forsyth September figures revised to 211 closings and $574,900 median after a successful October 14 recheck."
+          ]
         }
       ],
-      "previousAsOf": "2026-10-12",
-      "researchAttemptDate": "2026-10-14"
+      "previousAsOf": "2026-10-14",
+      "researchAttemptDate": "2026-10-16"
     },
     {
       "id": "henson-square",
@@ -2588,7 +3088,7 @@
       "sales": [],
       "competitors": [
         {
-          "name": "Beacon at Old Peachtree • 2845 Beacon Bend Crossing",
+          "name": "Beacon at Old Peachtree \u2022 2845 Beacon Bend Crossing",
           "price": 369990,
           "sqft": 1999,
           "basis": "Primary MLS new asking listing",
@@ -2596,7 +3096,7 @@
           "note": "Current active search/page signal; displayed $6,000 reduction. Page detail updated October 12."
         },
         {
-          "name": "Rosewood Farm • 102 Wilder Ridge Way",
+          "name": "Rosewood Farm \u2022 102 Wilder Ridge Way",
           "price": 349990,
           "sqft": 1967,
           "basis": "Secondary cross-market asking price",
@@ -2604,7 +3104,7 @@
           "note": "Different submarket, plan and/or delivery; unadjusted comparison only. October 12: Read October 12; underlying update October 10. Three captured asks/deliveries unchanged."
         },
         {
-          "name": "Dreycott Townhomes • 2707 Dreycott Lane",
+          "name": "Dreycott Townhomes \u2022 2707 Dreycott Lane",
           "price": 449990,
           "sqft": 2340,
           "basis": "Secondary cross-market asking price",
@@ -2642,7 +3142,7 @@
       "inventoryNote": "Builder sold out. Two resale addresses sampled, not an exhaustive resale inventory and not two builder homes.",
       "thesis": "Keep Henson as a larger-plan resale benchmark for Lawrenceville. It does not supply new builder homes for the ten-contract objective.",
       "recommendations": [
-        "No builder launch or volume price is assigned to a sold-out community. Active resale asks of $440,000–$445,000 are competition evidence, not proven closing values.",
+        "No builder launch or volume price is assigned to a sold-out community. Active resale asks of $440,000\u2013$445,000 are competition evidence, not proven closing values.",
         "315 Sammon advertises up to $22,500 in assistance/grants through a lender for qualified buyers. This is an advertised eligibility lead, not a seller concession or verified grant award."
       ],
       "gaps": [
@@ -2651,11 +3151,10 @@
       ],
       "leads": [],
       "changes": [
-        "320 Cornett remains $440,000 active on a page with October 12 underlying update.",
-        "315 Sammon remains $445,000 in current search results versus $450,000 prior; detailed page snapshot is older, so status confidence is moderate.",
-        "Beacon at Old Peachtree benchmark is $369,990 after a displayed $6,000 reduction; no new Henson gross closing was verified."
+        "Sold-out resale/reference status retained; no builder inventory was added.",
+        "Two resale asks are carried pending a fresh detailed-status confirmation; no new primary same-community closing was verified."
       ],
-      "asOf": "2026-10-14",
+      "asOf": "2026-10-16",
       "incentive": "Current builder rate, APR, points/credits, expiration and stacking terms are unverified. Advertised leads are not actual concessions. Analyst price tests exclude an assumed incentive.",
       "market": {
         "closings": 659,
@@ -2739,10 +3238,47 @@
             "320 Cornett remains active at $440,000 on October 12 feed; 315 Sammon $445,000 carried because primary detailed fetch failed.",
             "No newly verified closing or builder availability; sold-out resale reference retained."
           ]
+        },
+        {
+          "asOf": "2026-10-14",
+          "inventory": [
+            {
+              "address": "320 Cornett Way",
+              "plan": "Reported 4-bedroom resale",
+              "sqft": 2432,
+              "price": 440000,
+              "delivery": "Existing resale; occupancy unverified",
+              "test": null,
+              "previous": null,
+              "basis": "FMLS-syndicated active ask; September listing; October 12 source status in register",
+              "url": "https://www.coldwellbankerhomes.com/ga/lawrenceville/320-cornett-way/pid_73845264/",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-12 underlying listing update; re-read 2026-10-14"
+            },
+            {
+              "address": "315 Sammon Way",
+              "plan": "Auburn end-unit resale",
+              "sqft": 2443,
+              "price": 445000,
+              "delivery": "Existing resale; ready per listing",
+              "test": null,
+              "previous": 450000,
+              "basis": "Georgia MLS active resale ask; October 12 source status in register",
+              "url": "https://www.georgiamls.com/315-sammon-way-lawrenceville-ga-30046/10734405",
+              "researchAttemptDate": "2026-10-14",
+              "lastVerifiedDate": "2026-10-14 current search signal; detailed page snapshot older"
+            }
+          ],
+          "sales": [],
+          "changes": [
+            "320 Cornett remains $440,000 active on a page with October 12 underlying update.",
+            "315 Sammon remains $445,000 in current search results versus $450,000 prior; detailed page snapshot is older, so status confidence is moderate.",
+            "Beacon at Old Peachtree benchmark is $369,990 after a displayed $6,000 reduction; no new Henson gross closing was verified."
+          ]
         }
       ],
-      "previousAsOf": "2026-10-12",
-      "researchAttemptDate": "2026-10-14"
+      "previousAsOf": "2026-10-14",
+      "researchAttemptDate": "2026-10-16"
     },
     {
       "id": "auburn-glen-towns",
@@ -2807,11 +3343,10 @@
         "Other sold badges (3071/3069/3076 Hudson Glen) remain excluded without verified gross closing evidence."
       ],
       "changes": [
-        "Official Taylor Morrison page reconfirms sold out; retain as a resale/reference tab.",
-        "A portal aggregate suggests two townhouses at a $471,495 average but does not expose exact current addresses; no active inventory is added.",
-        "No new primary same-community closing was verified; 3191 Eastham remains syndicated historical evidence only."
+        "Official sold-out resale/reference status retained.",
+        "No current exact resale address was substantiated and no new primary same-community closing was verified."
       ],
-      "asOf": "2026-10-14",
+      "asOf": "2026-10-16",
       "incentive": "Current builder rate, APR, points/credits, expiration and stacking terms are unverified. Advertised leads are not actual concessions. Analyst price tests exclude an assumed incentive.",
       "market": {
         "closings": 659,
@@ -2854,10 +3389,30 @@
             "Sold-out portal description retained; no active builder or resale ask added.",
             "3191 Eastham historical status conflict resolved in the portal structured record/history: $399,990 closed March 26. Labeled syndicated history; primary confirmation unavailable."
           ]
+        },
+        {
+          "asOf": "2026-10-14",
+          "inventory": [],
+          "sales": [
+            {
+              "address": "3191 Eastham Run Drive",
+              "plan": "Reynolds (historical)",
+              "sqft": 2375,
+              "price": 399990,
+              "date": "2026-03-26",
+              "basis": "MLS-syndicated structured closed status + history; primary unavailable",
+              "url": "https://www.homes.com/property/3191-eastham-run-dr-dacula-ga/09z90pj40z8g3/"
+            }
+          ],
+          "changes": [
+            "Official Taylor Morrison page reconfirms sold out; retain as a resale/reference tab.",
+            "A portal aggregate suggests two townhouses at a $471,495 average but does not expose exact current addresses; no active inventory is added.",
+            "No new primary same-community closing was verified; 3191 Eastham remains syndicated historical evidence only."
+          ]
         }
       ],
-      "previousAsOf": "2026-10-12",
-      "researchAttemptDate": "2026-10-14"
+      "previousAsOf": "2026-10-14",
+      "researchAttemptDate": "2026-10-16"
     }
   ],
   "sources": [
@@ -2890,15 +3445,65 @@
       "title": "Georgia MLS Hall snapshot",
       "url": "https://www.gamls.com/statistics/marketsnapshot/county/Hall",
       "status": "Re-read October 14; September 2026: 214 closings, 167 contracts, $408,500 median, 345 new, 1,155 active."
+    },
+    {
+      "title": "Taylor Morrison Chandler Run community page",
+      "url": "https://www.taylormorrison.com/ga/atlanta/tucker/chandler-run",
+      "status": "Read October 16: three official Oconee cards; community start $419,990; Tifton added at $453,990."
+    },
+    {
+      "title": "Homes.com Rosewood Farm",
+      "url": "https://www.homes.com/new-homes/community/rosewood-farm/wzh962e8q1vte/",
+      "status": "Updated/read October 16: three exposed cards; 102/96 Wilder $365,990; six-home headline not treated as release count."
+    },
+    {
+      "title": "Homes.com Weatherfield Townhomes",
+      "url": "https://www.homes.com/new-homes/community/weatherfield-townhomes/yzy58xpr9gpec/",
+      "status": "Updated/read October 16: three exposed cards unchanged; four-home headline not treated as release count."
+    },
+    {
+      "title": "Homes.com Somerset at Veterans Memorial",
+      "url": "https://www.homes.com/new-homes/community/somerset-at-veterans-memorial/es6nt1zm54mym/",
+      "status": "Updated/read October 16: two cards unchanged; near closeout/final opportunities, not sold out."
+    },
+    {
+      "title": "Homes.com Alder Creek",
+      "url": "https://www.homes.com/new-homes/community/alder-creek/4fsmhc8l0l533/",
+      "status": "Updated/read October 16: three exposed cards unchanged; eight-home headline not treated as release count."
+    },
+    {
+      "title": "Freddie Mac PMMS",
+      "url": "https://www.freddiemac.com/pmms",
+      "status": "Read October 16; October 15 weekly release: 30-year 7.40%, 15-year 6.71%."
+    },
+    {
+      "title": "Georgia MLS Gwinnett snapshot",
+      "url": "https://www.gamls.com/statistics/marketsnapshot/county/Gwinnett",
+      "status": "Read October 16; September 2026 unchanged: 659 closings, 523 contracts, $410,000 median, 1,288 new, 3,597 active."
+    },
+    {
+      "title": "Georgia MLS Cobb snapshot",
+      "url": "https://www.gamls.com/statistics/marketsnapshot/county/Cobb",
+      "status": "Read October 16; September revised: 620 closings, 442 contracts, $417,750 median, 1,082 new, 2,799 active."
+    },
+    {
+      "title": "Georgia MLS Forsyth snapshot",
+      "url": "https://www.gamls.com/statistics/marketsnapshot/county/Forsyth",
+      "status": "Read October 16; September revised: 212 closings, 153 contracts, $579,950 median, 448 new, 1,267 active; duplicated header noted."
+    },
+    {
+      "title": "Georgia MLS Hall snapshot",
+      "url": "https://www.gamls.com/statistics/marketsnapshot/county/Hall",
+      "status": "Read October 16; September unchanged: 214 closings, 167 contracts, $408,500 median, 345 new, 1,155 active."
     }
   ],
   "changeLog": [
-    "October 14 vs October 12: Chandler official roster remains five but 6118 Wayburn $462,990 is newly captured and 6122 Wayburn leaves the official roll; its October 13 portal sold badge remains unverified.",
-    "Dreycott official roster expands the captured evidence set from four to six with 2696 and 2692 Dreycott Oconee cards. This is not inferred absorption or release history.",
-    "Somerset is now explicitly near closeout / final opportunities, not sold out. Henson Square and Auburn Glen Towns remain sold-out resale/reference tabs.",
-    "Gwinnett, Cobb and Forsyth September figures were refreshed/corrected; Hall is unchanged. Freddie Mac latest remains October 8 at 7.40% / 6.73%.",
-    "No new primary same-community Chandler gross closing was verified. Asking prices, sold badges, incentives, verified closings and analyst tests remain separate.",
-    "Official Atlanta directory did not yield a complete roster view; no new Atlanta townhome community was added without substantiation."
+    "October 16 vs October 14: Chandler current official/community cards contract from five to three; 100 rises to $419,990 and 102 to $458,990. Cached Forsyth cards conflict, so removals are not called sales, cancellations or absorption.",
+    "Rosewood entry asks at 102 and 96 Wilder Ridge rise $16,000 each to $365,990. Dreycott, Weatherfield, Somerset and the current Alder cards show no substantiated ask change.",
+    "Chandler adds Tifton to the official plan set at a $453,990 start. Plan starts remain separate from address asks and no released Tifton home is assumed.",
+    "Freddie Mac October 15 PMMS is 7.40% / 6.71%; Georgia MLS revised Cobb to 620 closings / $417,750 median and Forsyth to 212 / $579,950. Gwinnett and Hall are unchanged.",
+    "No new primary Chandler gross closing was verified. New portal sold badges across communities remain excluded pending primary confirmation.",
+    "Official Atlanta research did not substantiate a new townhome community; six active communities and two sold-out resale/reference tabs remain."
   ],
   "methodology": [
     "Public asking prices are not accepted contract prices. Closings shown are gross recorded prices; actual concessions and net proceeds are unknown.",
@@ -2907,7 +3512,7 @@
     "Price tests are analyst recommendations conditional on options, position, margin, released inventory and measured buyer response. They do not guarantee ten sales.",
     "Research attempted October 14, 2026. Source registers distinguish successful current fields, older underlying updates, portal badges and failed rechecks. Carried records are not silently relabeled current."
   ],
-  "previousAsOf": "2026-10-12",
+  "previousAsOf": "2026-10-14",
   "refreshHistory": [
     {
       "asOf": "2026-10-10",
@@ -2924,6 +3529,16 @@
         "No new same-community closing independently verified; September 25 Maycrest $390,000 record reconfirmed.",
         "September Gwinnett statistics and October 8 Freddie Mac rates unchanged. If all ten October net contracts remain, October 12-31 requires 3.50 per week; actual progress unknown.",
         "Fern Parc active asks unchanged. Walton 1971 duplicates excluded; two Waterside address benchmarks added. Creekside exact cards could not be refreshed."
+      ]
+    },
+    {
+      "asOf": "2026-10-14",
+      "changeLog": [
+        "Official builder page now exposes five homes. 6118 Wayburn at $462,990 is newly captured; 6122 Wayburn is removed from current official inventory.",
+        "100 and 102 Epperly remain $409,990; official cards disclose prior prices of $456,990 and $458,990. 6120 is $459,990, down $440 from $460,430.",
+        "6122 Wayburn has a portal-only sold badge dated October 13 at $429,990. It is not added to verified gross closings because primary detail was unavailable.",
+        "No new primary same-community closing was verified. Six-record gross closing median remains $399,990 and mean $412,495.",
+        "Ten-net-contract pace updates to 3.89 per week for October 14-31 if all ten remain; five visible official homes do not establish ten released homes."
       ]
     }
   ]
