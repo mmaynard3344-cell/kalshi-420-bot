@@ -9,8 +9,8 @@ import { currentEthServiceRole } from "./lib/strategies/ethServiceRole.js";
 
 const SERIES = "KXETH15M";
 const LIMIT_PRICE_CENTS = 50;
-const PRINCIPALS_CENTS = [100, 100, 100] as const;
-const CONTRACTS = [2, 2, 2] as const;
+const PRINCIPALS_CENTS = [100, 200, 400, 800, 1600, 3200] as const;
+const CONTRACTS = [2, 4, 8, 16, 32, 64] as const;
 const POLL_MS = 2_000;
 const ENTRY_WINDOW_MS = 15 * 60_000;
 const CANCEL_AFTER_CLOSE_MS = 1_000;
@@ -93,7 +93,7 @@ async function initStore(): Promise<void> {
     CREATE TABLE IF NOT EXISTS eth_g_streak_reversal_state (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       ladder_side TEXT CHECK (ladder_side IN ('yes','no')),
-      step INTEGER NOT NULL DEFAULT 0 CHECK (step BETWEEN 0 AND 2),
+      step INTEGER NOT NULL DEFAULT 0 CHECK (step BETWEEN 0 AND 5),
       last_trigger_key TEXT,
       updated_at_ms BIGINT NOT NULL
     )
@@ -107,7 +107,7 @@ async function initStore(): Promise<void> {
       id TEXT PRIMARY KEY,
       ticker TEXT NOT NULL UNIQUE,
       side TEXT NOT NULL CHECK (side IN ('yes','no')),
-      step INTEGER NOT NULL CHECK (step BETWEEN 0 AND 2),
+      step INTEGER NOT NULL CHECK (step BETWEEN 0 AND 5),
       principal_cents INTEGER NOT NULL,
       requested_contracts INTEGER NOT NULL,
       filled_contracts INTEGER NOT NULL DEFAULT 0,
@@ -136,6 +136,13 @@ async function initStore(): Promise<void> {
       reason TEXT NOT NULL
     )
   `);
+
+  // Preserve existing ETH G state and expand both legacy step constraints.
+  await d.execute(sql`ALTER TABLE eth_g_streak_reversal_state DROP CONSTRAINT IF EXISTS eth_g_streak_reversal_state_step_check`);
+  await d.execute(sql`ALTER TABLE eth_g_streak_reversal_state ADD CONSTRAINT eth_g_streak_reversal_state_step_check CHECK (step BETWEEN 0 AND 5)`);
+  await d.execute(sql`ALTER TABLE eth_g_streak_reversal_orders DROP CONSTRAINT IF EXISTS eth_g_streak_reversal_orders_step_check`);
+  await d.execute(sql`ALTER TABLE eth_g_streak_reversal_orders ADD CONSTRAINT eth_g_streak_reversal_orders_step_check CHECK (step BETWEEN 0 AND 5)`;
+
 }
 
 function newEntriesEnabled(): boolean {
@@ -289,7 +296,7 @@ async function settleOrder(order: GOrder, result: OutcomeSide): Promise<void> {
       `);
       return;
     }
-    if (order.step < 2) {
+    if (order.step < 5) {
       await tx.execute(sql`
         UPDATE eth_g_streak_reversal_state
         SET ladder_side=${order.side}, step=${order.step + 1}, updated_at_ms=${Date.now()} WHERE id=1
