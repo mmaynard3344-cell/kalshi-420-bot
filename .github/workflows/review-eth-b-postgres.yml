@@ -26,7 +26,7 @@ jobs:
       - name: Install isolated test tools
         run: |
           mkdir -p /tmp/eth-b-gate/src/lib/strategies /tmp/eth-b-gate/scripts
-          cp artifacts/api-server/src/lib/sharedEthMartingale.ts artifacts/api-server/src/lib/sharedEthClaimStore.ts artifacts/api-server/src/lib/sharedEthOrderGateway.ts /tmp/eth-b-gate/src/lib/
+          cp artifacts/api-server/src/lib/sharedEthMartingale.ts artifacts/api-server/src/lib/sharedEthClaimStore.ts artifacts/api-server/src/lib/sharedEthOrderGateway.ts artifacts/api-server/src/lib/sharedEthPgProvider.ts artifacts/api-server/src/lib/sharedEthOrderSizing.ts /tmp/eth-b-gate/src/lib/
           cp artifacts/api-server/src/lib/strategies/ethJumpSharedAdapter.ts /tmp/eth-b-gate/src/lib/strategies/
           cp artifacts/api-server/scripts/test-shared-eth-b-postgres.mjs /tmp/eth-b-gate/scripts/
           printf '{"type":"module"}' > /tmp/eth-b-gate/package.json
