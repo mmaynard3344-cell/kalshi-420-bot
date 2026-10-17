@@ -967,6 +967,9 @@ async function evaluate(
   // legacy 80¢ protective-exit path. Legacy cleanup runs only from the
   // restored-position monitor in index.ts and is never driven by this evaluator.
   if (isEthTicker(state.ticker)) {
+    if (process.env["NODE_ENV"] === "test" && state.ticker === "KXETH15M-boundary-fresh") {
+      logger.info({ ticker: state.ticker, injected: _evaluateEthNoMartingaleImpl != null }, "ETH boundary evaluator callback entry (test diagnostic)");
+    }
     await (_evaluateEthNoMartingaleImpl ?? evaluateEthNoMartingale)({
       ticker: state.ticker,
       exchangeIndex: state.exchangeIndex ?? null,
