@@ -1,7 +1,6 @@
 import { build } from 'esbuild';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,9 +11,8 @@ if (process.env.NODE_ENV !== 'test'
   throw new Error('Refusing transfer DB test: dedicated localhost disposable shard_transfer_test database required');
 }
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const temp = mkdtempSync(join(tmpdir(), 'shard-transfer-db-'));
+const outfile = join(root, 'node_modules', '.shard-transfer-db-test.mjs');
 try {
-  const outfile = join(temp, 'integration-test.mjs');
   await build({
     entryPoints: [join(root, 'src/lib/shardTransferLedgerRepository.test.ts')],
     outfile, bundle: true, platform: 'node', format: 'esm', target: 'node22',
@@ -24,5 +22,5 @@ try {
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
 } finally {
-  rmSync(temp, {recursive:true,force:true});
+  rmSync(outfile, {force:true});
 }
