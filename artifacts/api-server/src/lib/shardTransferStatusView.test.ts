@@ -8,6 +8,7 @@ test("accepted transfer is never shown as arrived", () => {
 });
 test("unknown transfer requires reconciliation; completed is distinct", () => {
  assert.equal(describeShardTransferStatus({state:"unknown"}).requiresReconciliation,true);
- assert.equal(describeShardTransferStatus({state:"completed"}).fundsArrived,true);
+ assert.equal(describeShardTransferStatus({state:"completed"}).fundsArrived,false);
+ assert.equal(describeShardTransferStatus({state:"completed",exchange_transfer_id:"verified-id"}).fundsArrived,true);
  assert.throws(()=>describeShardTransferStatus({state:"arrived"}),/Unrecognized/);
 });
