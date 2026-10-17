@@ -15,6 +15,9 @@ for (const [fragment, description] of [
 ]) assert.ok(section.includes(fragment), description);
 assert.ok(strategy.includes("await exactTwoStreakDecision(market.openMs)"), "fresh entry checks settled streak");
 assert.ok(strategy.includes("decision.key === state.lastTriggerKey"), "prevent trigger replay");
+assert.ok(strategy.includes("claim.service !== \"G\""), "external service settlement clears G latch");
+assert.ok(strategy.includes("claim.ticker !== lastG[\"ticker\"]"), "stale or unrelated claim cannot carry G direction");
+assert.ok(strategy.includes("G stale shared direction reset"), "cross-service recovery logging present");
 function transition(state, outcome, sharedStep) {
   if (outcome === "ZERO_FILL") return state;
   if (outcome === "WIN" || (outcome === "LOSS" && sharedStep === 0)) return {side:null,step:0};
