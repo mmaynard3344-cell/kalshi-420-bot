@@ -1,16 +1,15 @@
-import { kalshiAuthFetch } from "./kalshiAuth.js";
 import { SHARD_TRANSFER_CREATE_PATH } from "./shardTransferApiContract.js";
 import type { buildShardTransferPayload } from "./shardTransferPayload.js";
 
+export type TransferPost = (method: string, path: string, body: unknown) => Promise<unknown>;
+
 /**
- * Single-attempt authenticated Kalshi transfer transport.
- * This module never submits on import. Caller MUST first enforce separate
- * operator auth, durable claim, and the default-off transfer gate.
- * The existing Kalshi auth client does not retry POST requests.
+ * A transport adapter with no side effects on import.
+ * The caller supplies the signed Kalshi client only after authentication,
+ * durable reservation and the manual-transfer gate are independently enforced.
+ * This module is safe to test without initializing the trading runtime.
  */
-export function createShardTransferKalshiTransport(
-  post: (method: string, path: string, body: unknown) => Promise<unknown> = kalshiAuthFetch,
-) {
+export function createShardTransferKalshiTransport(post: TransferPost) {
   return async (payload: ReturnType<typeof buildShardTransferPayload>): Promise<unknown> =>
     post("POST", SHARD_TRANSFER_CREATE_PATH, payload);
 }
