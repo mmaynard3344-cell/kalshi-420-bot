@@ -1,6 +1,6 @@
 // Authenticated, single-order recovery. No order submissions.
 // All absent/truncated exchange evidence leaves the persistent ladder held.
-import {loadBtcPendingIdentity,attachBtcExchangeOrderId} from "./btcSharedLadderStore.mjs";
+import {loadBtcPendingIdentity,attachBtcExchangeOrderId,recordBtcVerifiedZeroFill} from "./btcSharedLadderStore.mjs";
 import {applyBtcSettlementEvidence} from "./btcSettlementWriter.mjs";
 export async function reconcilePendingBtcOrder({pool,authJson,publicJson,publicBase}){
  const reservation=await loadBtcPendingIdentity(pool);
@@ -20,7 +20,20 @@ export async function reconcilePendingBtcOrder({pool,authJson,publicJson,publicB
    if(next===cursor)return {state:"held",reason:"order_cursor_did_not_advance"};
    cursor=next;
   }
-  if(!found)return {state:"held",reason:complete?"exchange_order_not_found":"order_history_pagination_limit"};
+  if(!found){
+   // One-time, user-authorized recovery of a specific orphaned reservation.
+   // Only after exhaustive authenticated order-history pagination confirms absence.
+   const approvedId="e32ca4c4-e32b-48f8-9248-fb0ee32f1981";
+   if(complete && reservation.clientOrderId===approvedId && reservation.ticker==="KXBTC15M-26OCT171100-00"){
+    const marketRaw=await publicJson(publicBase+"/markets/"+encodeURIComponent(reservation.ticker));
+    const market=marketRaw?.market??marketRaw;
+    if(!["yes","no"].includes(String(market?.result??"").toLowerCase()))
+     return {state:"held",reason:"orphan_release_market_not_settled"};
+    await recordBtcVerifiedZeroFill(pool,reservation.clientOrderId);
+    return {state:"released",kind:"AUTHORIZED_ORPHAN_ZERO_FILL",step:1};
+   }
+   return {state:"held",reason:complete?"exchange_order_not_found":"order_history_pagination_limit"};
+  }
   if(!found.order_id)return {state:"held",reason:"exchange_order_id_missing"};
   await attachBtcExchangeOrderId(pool,reservation.clientOrderId,found.order_id);
   reservation.exchangeOrderId=found.order_id;
