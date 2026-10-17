@@ -306,7 +306,7 @@ async function settleOrder(order: GOrder, result: OutcomeSide): Promise<void> {
       ||verified.fillCount<0||verified.fillCount>order.requestedContracts)return;
     const verifiedFills=verified.fillCount;
     const outcome=verifiedFills===0?"ZERO_FILL":order.side===result?"WIN":"LOSS";
-    await finalizeEthClaim(sharedEthPgProvider,String(linked["claim_id"]),
+    const sharedSettlement = await finalizeEthClaim(sharedEthPgProvider,String(linked["claim_id"]),
       "G:"+order.clientOrderId+":"+result,outcome);
     // Keep G's local six-rung directional latch synchronized with the shared
     // claim's verified outcome. This transaction makes the journal settlement
@@ -320,24 +320,21 @@ async function settleOrder(order: GOrder, result: OutcomeSide): Promise<void> {
         RETURNING id
       `);
       if (rows(settled).length !== 1 || outcome === "ZERO_FILL") return;
-      if (outcome === "WIN") {
+      if (outcome === "WIN" || (outcome === "LOSS" && sharedSettlement.step === 0)) {
         await tx.execute(sql`
           UPDATE eth_g_streak_reversal_state SET ladder_side=NULL, step=0,
             updated_at_ms=${Date.now()} WHERE id=1 AND ladder_side=${order.side}
         `);
-        logger.info({ ticker:order.ticker }, "G shared win: direction cleared");
+        logger.info({ ticker:order.ticker }, "G shared cycle complete: direction cleared");
       } else {
-        // G's step is its own consecutive-loss counter, independent of
-        // shared ETH claim sizing. After six verified G losses, require a
-        // fresh exact-two streak instead of repeating the same direction.
+        // Shared ETH owns the six-rung cycle; local step is diagnostic only.
         await tx.execute(sql`
           UPDATE eth_g_streak_reversal_state
-          SET ladder_side=CASE WHEN step >= 5 THEN NULL ELSE ladder_side END,
-              step=CASE WHEN step >= 5 THEN 0 ELSE step+1 END,
-              updated_at_ms=${Date.now()}
+          SET step=${sharedSettlement.step}, updated_at_ms=${Date.now()}
           WHERE id=1 AND ladder_side=${order.side}
         `);
-        logger.info({ ticker:order.ticker }, "G shared loss: directional rung advanced or exhausted");
+        logger.info({ticker:order.ticker, sharedStep:sharedSettlement.step},
+          "G shared loss: direction retained until shared cycle resets");
       }
     });
     return;
