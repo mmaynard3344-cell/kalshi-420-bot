@@ -963,6 +963,9 @@ async function evaluate(
 ): Promise<void> {
   const _timing: EvalTiming = timing ?? { tickReceivedMs: Date.now() };
   _timing.evalStartMs = Date.now();
+  if (process.env["NODE_ENV"] === "test" && state.ticker === "KXETH15M-boundary-fresh") {
+    console.error("ETH_EVAL_DIAGNOSTIC", JSON.stringify({ ticker: state.ticker, isEth: isEthTicker(state.ticker), injected: _evaluateEthNoMartingaleImpl != null }));
+  }
   // New ETH martingale positions are deliberately not routed through the
   // legacy 80¢ protective-exit path. Legacy cleanup runs only from the
   // restored-position monitor in index.ts and is never driven by this evaluator.
