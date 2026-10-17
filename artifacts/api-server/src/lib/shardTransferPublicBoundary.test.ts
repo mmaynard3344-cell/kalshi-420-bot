@@ -29,3 +29,13 @@ test("operator endpoints cannot be reached through dashboard's public read proxy
   assert.match(routes, /router\.get\("\/trade\/shard-transfer\/:requestId", requireTradeAuth/);
   assert.match(routes, /router\.get\("\/trade\/shard-transfer\/:requestId"[\s\S]*?verifyShardTransferOperatorToken/);
 });
+
+test("public browser bundle never carries the operator token or calls transfer submission", () => {
+  const repoRoot = resolve(process.cwd(), "../..");
+  const dashboard = readFileSync(resolve(repoRoot, "artifacts/kalshi-reader/src/pages/LiveMartingale.tsx"), "utf8");
+  const proxy = readFileSync(resolve(repoRoot, "artifacts/kalshi-reader/server.mjs"), "utf8");
+  assert.doesNotMatch(dashboard, /SHARD_TRANSFER_OPERATOR_TOKEN|x-shard-transfer-operator-token/);
+  assert.doesNotMatch(dashboard, /fetch\s*\(\s*['"`]\/api\/trade\/shard-transfer/);
+  assert.doesNotMatch(proxy, /SHARD_TRANSFER_OPERATOR_TOKEN|x-shard-transfer-operator-token/);
+  assert.match(dashboard, /disabled=\{true\}|disabled(?:\s|>)/);
+});
