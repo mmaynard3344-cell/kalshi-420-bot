@@ -80,6 +80,7 @@ import { getExchangeDiscoverySweepStatus } from "../lib/fillReconciler.js";
 import { timingSafeEqual } from "crypto";
 import { verifyShardTransferOperatorToken } from "../lib/shardTransferOperatorAuth.js";
 import { validateShardTransferHttpBoundary } from "../lib/shardTransferRequestBoundary.js";
+import { previewManualShardTransfer } from "../lib/shardTransferDryRun.js";
 import { readShardTransfer } from "../lib/shardTransferLedgerRepository.js";
 import { ethMartingaleLedgerToCSV } from "../lib/csvExport.js";
 import { getAccountHistoryFingerprint } from "../lib/kalshiAccountFingerprint.js";
@@ -1395,6 +1396,28 @@ router.get("/trade/account-fingerprint", requireTradeAuth, async (_req, res) => 
  * authentication are built and validated. Do not enable by setting environment
  * variables alone: this route deliberately performs no Kalshi POST.
  */
+router.post("/trade/shard-transfer/preview", requireTradeAuth, (req, res) => {
+  if (!verifyShardTransferOperatorToken(
+    req.header("x-shard-transfer-operator-token"),
+    process.env["SHARD_TRANSFER_OPERATOR_TOKEN"],
+    VALID_TRADE_TOKENS,
+  ) || !validateShardTransferHttpBoundary({
+    contentType: req.header("content-type"),
+    origin: req.header("origin"),
+    expectedOrigin: process.env["SHARD_TRANSFER_ALLOWED_ORIGIN"],
+    fetchSite: req.header("sec-fetch-site"),
+    contentLength: req.header("content-length"),
+  })) {
+    res.status(403).json({ error: "Transfer preview authorization or request rejected", transfer_submitted: false });
+    return;
+  }
+  try {
+    res.json(previewManualShardTransfer(req.body));
+  } catch {
+    res.status(400).json({ error: "Invalid transfer request", transfer_submitted: false });
+  }
+});
+
 router.post("/trade/shard-transfer", requireTradeAuth, (req, res) => {
   // Separately require a strong operator secret, distinct from the dashboard
   // trade token. This is only a security gate; submission stays disabled.
