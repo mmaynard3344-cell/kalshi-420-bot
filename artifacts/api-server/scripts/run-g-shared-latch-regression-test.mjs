@@ -20,6 +20,30 @@ assert.ok(strategy.includes("claim.ticker !== lastG[\"ticker\"]"), "stale or unr
 assert.ok(strategy.includes("G stale shared direction reset"), "cross-service recovery logging present");
 assert.ok(strategy.includes("expectedSharedVersion = version"), "G snapshots shared version");
 assert.ok(strategy.includes("market,state.ladderSide,expectedSharedVersion"), "G passes version to claim gateway");
+// Regression guard: no recovery rung may bypass the fresh G signal gate.
+const gateStart=strategy.indexOf("const stored = await publishedDirection(market.ticker);", strategy.indexOf("async function tick()"));
+const decisionStart=strategy.indexOf("const decision = await exactTwoStreakDecision(market.openMs);",gateStart);
+const submissionStart=strategy.indexOf("await submitGWithSharedReservation(",decisionStart);
+assert.ok(gateStart>0 && decisionStart>gateStart && submissionStart>decisionStart,"fresh signal executes before shared claim submission");
+const gate=strategy.slice(gateStart,submissionStart);
+assert.ok(gate.includes('decision.kind === "none"'),"no-signal market is skipped");
+assert.ok(gate.includes('decision.kind === "unknown"'),"unsettled result defers trade");
+assert.ok(gate.includes("decision.side !== state.ladderSide"),"recovery only allowed on fresh matching-side signal");
+assert.ok(gate.includes("decision.key === state.lastTriggerKey"),"signal replay is rejected");
+assert.ok(gate.includes('g_signal_opposes_active_ladder'),"opposite signal skips without resetting ladder");
+assert.ok(gate.includes('await setState(state.ladderSide, state.step, decision.key)'),"same-side signal preserves rung");
+function canEnter(decision, state) {
+  if(decision.kind!=="signal" || decision.key===state.lastTriggerKey) return false;
+  if(state.ladderSide!==null && decision.side!==state.ladderSide) return false;
+  return true;
+}
+const carried={ladderSide:"yes",step:5,lastTriggerKey:"old"};
+assert.equal(canEnter({kind:"none"},carried),false);
+assert.equal(canEnter({kind:"unknown"},carried),false);
+assert.equal(canEnter({kind:"signal",side:"no",key:"new"},carried),false);
+assert.equal(canEnter({kind:"signal",side:"yes",key:"old"},carried),false);
+assert.equal(canEnter({kind:"signal",side:"yes",key:"new"},carried),true);
+assert.equal(carried.step,5,"skipped markets do not advance sixth rung");
 const store=readFileSync(fileURLToPath(new URL("../src/lib/sharedEthClaimStore.ts", import.meta.url)), "utf8");
 const gateway=readFileSync(fileURLToPath(new URL("../src/lib/sharedEthOrderGateway.ts", import.meta.url)), "utf8");
 assert.ok(store.includes("Number(state.version) !== req.expectedVersion"), "claim rejects changed shared version under lock");
