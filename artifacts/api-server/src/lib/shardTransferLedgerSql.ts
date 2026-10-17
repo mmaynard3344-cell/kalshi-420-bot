@@ -48,3 +48,34 @@ SET state = 'unknown', updated_at = now()
 WHERE request_id = $1::uuid AND state = 'submitting'
 RETURNING request_id;
 `;
+
+/** Read request state for an operator, without reserving or submitting funds. */
+export const GET_SHARD_TRANSFER_SQL = `
+SELECT request_id, source_shard, destination_shard, amount_cents,
+       state, exchange_transfer_id, created_at, updated_at
+FROM operator_shard_transfers
+WHERE request_id = $1::uuid;
+`;
+
+/**
+ * Exchange settlement may be marked complete only from a submitted/unknown
+ * request with a known exchange transfer identifier.
+ */
+export const MARK_SHARD_TRANSFER_COMPLETED_SQL = `
+UPDATE operator_shard_transfers
+SET state = 'completed', updated_at = now()
+WHERE request_id = $1::uuid
+  AND exchange_transfer_id = $2::text
+  AND exchange_transfer_id IS NOT NULL
+  AND state IN ('submitted', 'unknown')
+RETURNING request_id;
+`;
+
+/** Unknown may become failed only after explicit authoritative reconciliation. */
+export const MARK_SHARD_TRANSFER_RECONCILED_FAILED_SQL = `
+UPDATE operator_shard_transfers
+SET state = 'failed', updated_at = now()
+WHERE request_id = $1::uuid AND state IN ('unknown', 'submitted')
+  AND exchange_transfer_id = $2::text
+RETURNING request_id;
+`;
