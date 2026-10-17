@@ -1,4 +1,9 @@
 import http from "node:http";
+import { readFile } from "node:fs/promises";
+import { submitReservedBtcOrder } from "./btcLadderOrderAdapter.mjs";
+import { loadPendingBtcReservation } from "./btcLadderRecovery.mjs";
+import { reconcilePendingBtcOrder } from "./btcAuthenticatedRecovery.mjs";
+import { recordBtcFilled, recordBtcVerifiedZeroFill, recordBtcVerifiedSettlement } from "./btcSharedLadderStore.mjs";
 import { createHash, createSign } from "node:crypto";
 import { evaluatePortfolio, SERVICES, WINDOW_MS, HISTORY_MS } from "./signals.mjs";
 import { bootstrapHistory, parseFact, selectCurrent, parseCandles, publicJson, PUBLIC_BASE } from "./client.mjs";
@@ -6,7 +11,26 @@ import { bootstrapHistory, parseFact, selectCurrent, parseCandles, publicJson, P
 const LIVE_ENABLED = process.env.BTC_LIVE_ENABLED === "true" && process.env.TRADING_ENABLED === "true";
 const ORDER_EXECUTION_ENABLED =
   process.env.ORDER_EXECUTION_ENABLED === "true";
-const STAKE_CENTS = 100;
+const STAKE_CENTS = 200;
+// Never enable this while authenticated settlement reconciliation remains unintegrated.
+const BTC_SHARED_LADDER_REVIEW = process.env.BTC_SHARED_LADDER_REVIEW === "true";
+let btcLadderPool = null;
+let btcLadderMigrationReady = false;
+let btcLadderStartupChecked = false;
+let btcLadderStartupState = null;
+async function getBtcLadderPool() {
+  if (!process.env.DATABASE_URL) throw Error("btc_ladder_database_missing");
+  if (!btcLadderPool) {
+    const { default: pg } = await import("pg");
+    btcLadderPool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
+  }
+  if (!btcLadderMigrationReady) {
+    const schema = await readFile(new URL("./btcSharedLadder.sql", import.meta.url),"utf8");
+    await btcLadderPool.query(schema);
+    btcLadderMigrationReady = true;
+  }
+  return btcLadderPool;
+}
 const TRADE_BASE = "https://external-api.kalshi.com/trade-api/v2";
 
 let history = [], candles = [], lastHistoryMs = 0, lastCandleMs = 0, busy = false;
@@ -67,6 +91,21 @@ async function authJson(method, path, body) {
     throw new Error("kalshi_" + response.status + ":" + String(detail));
   }
   return payload;
+}
+
+
+// Review wiring to the BTC runner's real authenticated order endpoint.
+// This adapter is intentionally not invoked while reconciliation is unfinished.
+async function submitBtcViaSharedLadder({ clientOrderId, ticker, side, askCents }) {
+  return submitReservedBtcOrder({
+    pool: await getBtcLadderPool(), orderId: clientOrderId, ticker, side, askCents,
+    feeCents: (n, p) => Math.ceil(0.07 * n * p * (100 - p) / 100),
+    send: async ({ orderId, contracts }) => {
+      const raw = await authJson("POST", "/portfolio/events/orders",
+        orderPayload(ticker, side, orderId, contracts, askCents));
+      return { kind: "accepted", exchangeOrderId: raw?.order?.order_id ?? raw?.order_id ?? null };
+    },
+  });
 }
 
 function quoteCents(market, side) {
@@ -160,6 +199,29 @@ async function executeDecision(decision, market) {
       totals[decision.service].skippedOrders++;
       json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, askCents, limitPriceCents, reason: "ask_above_limit", retryable: true });
       return "retry";
+    }
+
+    if (BTC_SHARED_LADDER_REVIEW) {
+      // New shared-ladder order path. The flag is OFF by default and requires
+      // durable schema, authenticated reconciliation and release approval.
+      if (!ORDER_EXECUTION_ENABLED) return "terminal";
+      const pool = await getBtcLadderPool();
+      const state = await loadPendingBtcReservation(pool);
+      if (state.reconciliationRequired) {
+        json({event:"btc_ladder_pending_blocks_order",service:decision.service,ticker:decision.ticker});
+        return "terminal";
+      }
+      const stakeBudget = [200,400,800,1600,3200,6400][state.step];
+      const balance = await freshBalanceCents();
+      if (!stakeBudget || balance < stakeBudget) {
+        json({event:"btc_ladder_insufficient_balance",requiredCents:stakeBudget,balanceCents:balance});
+        return "retry";
+      }
+      const clientOrderId = deterministicUuid(decision.service,decision.ticker);
+      if (await alreadySubmitted(decision.ticker,clientOrderId)) return "terminal";
+      const outcome = await submitBtcViaSharedLadder({clientOrderId,ticker:decision.ticker,side:decision.side,askCents});
+      json({event:"btc_ladder_submit_result",service:decision.service,ticker:decision.ticker,kind:outcome.kind,reason:outcome.reason??null,orderId:clientOrderId});
+      return outcome.kind==="submitted"?"submitted":"terminal";
     }
 
     const contracts = Math.floor(STAKE_CENTS / askCents);
@@ -344,6 +406,20 @@ async function reconcileRecentOrders() {
     fillsByOrder.set(id, rows);
   }
 
+  // Shared-ladder reconciliation must be explicitly enabled only after
+  // complete order-history and restart recovery are implemented. Feature OFF.
+  // Read-only settlement audit wiring for BTC ladder review mode.
+  // Never advances or releases the ladder here: authenticated order history
+  // is needed first and the new order writer remains hard-gated.
+  if (BTC_SHARED_LADDER_REVIEW && btcLadderStartupState?.reconciliationRequired) {
+    const id = btcLadderStartupState.orderId ?? btcLadderStartupState.settlementId;
+    const known = recentOrders.find(o => o.clientOrderId === id);
+    json({ event: "btc_ladder_recovery_reconciliation_probe",
+      reservedOrderId: id, orderHistoryFound: Boolean(known),
+      fillHistoryFound: Boolean(known?.orderId && fillsByOrder.has(String(known.orderId))),
+      state: "held_until_authenticated_order_history_recovery" });
+  }
+
   for (const row of recentOrders) {
     const orderFills = fillsByOrder.get(String(row.orderId ?? "")) ?? [];
     let filledContracts = 0;
@@ -391,6 +467,46 @@ async function reconcileRecentOrders() {
   }
 }
 
+/**
+ * Review-only durable ladder reconciliation. Only rows explicitly submitted
+ * via the shared ladder are eligible. Existing legacy orders MUST NOT mutate
+ * this ledger. Never trust an empty or truncated fills page for zero-fill.
+ */
+export async function reconcileBtcSharedLadderRows(rows, exchangeOrders, fillsByOrder, resultByTicker, store) {
+  for (const row of rows) {
+    if (row.ladderReserved !== true || !row.clientOrderId || !row.orderId) continue;
+    const exchangeOrder = exchangeOrders.get(String(row.orderId));
+    if (!exchangeOrder) continue; // incomplete/expired exchange history: hold
+    const matches = fillsByOrder.get(String(row.orderId)) ?? [];
+    const filled = matches.reduce((count, fill) => count + Math.max(0, firstFinite(fill?.count_fp, fill?.count) ?? 0), 0);
+    const currentStatus = String(exchangeOrder.status ?? "").toLowerCase();
+    const terminal = ["executed","canceled","cancelled","closed","filled"].includes(currentStatus);
+    if (!terminal) continue;
+    const pool = await store();
+    if (filled <= 0) {
+      // No-fill requires explicit terminal exchange evidence AND a zero fill
+      // count from the authenticated order, not just absence in a fills page.
+      const exchangeFillCount = firstFinite(exchangeOrder.fill_count_fp, exchangeOrder.fill_count, exchangeOrder.filled_count_fp, exchangeOrder.filled_count);
+      if (exchangeFillCount !== 0) continue;
+      await recordBtcVerifiedZeroFill(pool, row.clientOrderId);
+      row.ladderReserved = false;
+      continue;
+    }
+    // A partial fill remains held until the order is terminal.
+    const result = resultByTicker.get(String(row.ticker));
+    // Persisted fill transition must be replay-safe after a process restart.
+    // In-memory flags are not authoritative; the DB adapter must tolerate
+    // redelivery of a previously recorded fill.
+    await recordBtcFilled(pool, row.clientOrderId, row.clientOrderId);
+    row.ladderFilled = true;
+    if (!["yes","no"].includes(result))continue;
+    // Outcome determined only from a settled market result. Fee economics
+    // must be independently reconciled for reporting.
+    await recordBtcVerifiedSettlement(pool, row.clientOrderId, result === row.side ? "WIN" : "LOSS");
+    row.ladderReserved = false;
+  }
+}
+
 function renderRecentOrders(rows) {
   if (!rows.length) return '<tr><td colspan="11">No BTC orders found in recent exchange history.</td></tr>';
   return rows.map((o) => {
@@ -408,6 +524,9 @@ const status = () => ({
   mode: LIVE_ENABLED ? "live" : "shadow",
   ordersEnabled: LIVE_ENABLED,
   stakeCents: STAKE_CENTS,
+  ladderReviewEnabled: BTC_SHARED_LADDER_REVIEW,
+  ladderStartupChecked: btcLadderStartupChecked,
+  ladderStartupState: btcLadderStartupState,
   initializing, lastSuccessMs, currentTicker, lastError, candleError, lastOrderEvent,
   countersSinceMs: startedAtMs, historyCount: history.length, candleCount: candles.length,
   healthy: !initializing && lastSuccessMs != null && Date.now() - lastSuccessMs < 60_000,
@@ -435,6 +554,14 @@ async function tick() {
   busy = true;
   try {
     const now = Date.now();
+    // Diagnostic startup recovery only; no ladder POST or settlement writes
+    // are permitted until the authenticated reconciliation gate is complete.
+    if (BTC_SHARED_LADDER_REVIEW && !btcLadderStartupChecked) {
+      const recovered = await loadPendingBtcReservation(await getBtcLadderPool());
+      btcLadderStartupState = recovered;
+      btcLadderStartupChecked = true;
+      json({ event:"btc_ladder_startup_recovery", ...recovered });
+    }
     if (!history.length) history = await bootstrapHistory(now);
     if (!historyHydrated) {
       try { await hydrateRecentOrdersFromExchange(); }
@@ -442,10 +569,22 @@ async function tick() {
     }
     if (now - lastReconcileMs >= 30_000) {
       try {
+        if (BTC_SHARED_LADDER_REVIEW) {
+          const recovery = await reconcilePendingBtcOrder({pool:await getBtcLadderPool(),authJson,publicJson,publicBase:PUBLIC_BASE});
+          json({event:"btc_ladder_authenticated_recovery",...recovery});
+          btcLadderStartupState = await loadPendingBtcReservation(await getBtcLadderPool());
+          // Read-only production proof of ladder step and recent verified settlements.
+          const ladderPool = await getBtcLadderPool();
+          const stateRows = await ladderPool.query("SELECT step, pending_order_id, pending_settlement_id, last_settlement_id, version FROM btc_shared_ladder WHERE market='BTC'");
+          const eventRows = await ladderPool.query("SELECT kind, order_id, settlement_id, prior_step, next_step, created_at FROM btc_shared_ladder_events ORDER BY id DESC LIMIT 5");
+          json({event:"btc_ladder_readonly_state",state:stateRows.rows[0]??null,recentEvents:eventRows.rows});
+        }
         await reconcileRecentOrders();
         lastReconcileMs = now;
       } catch (error) {
         json({ event: "btc_order_reconciliation_error", error: error instanceof Error ? error.message : "order_reconciliation_failed" });
+        // A 429 is transient exchange rate limiting; defer reconciliation without retrying orders.
+        lastReconcileMs = /public_source_http_429/.test(String(error)) ? now + 90_000 : now;
       }
     }
     if (now - lastBalanceProbeMs >= 30_000) {
@@ -466,11 +605,11 @@ async function tick() {
     }
     let open = null;
     let market = null;
-    for (let attempt = 0; attempt < 3 && !market; attempt++) {
+    for (let attempt = 0; attempt < 5 && !market; attempt++) {
       open = await publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=open&limit=20`);
       if (!Array.isArray(open.markets)) throw new Error("invalid_open_catalog");
       market = selectCurrent(open.markets, Date.now());
-      if (!market && attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1500));
+      if (!market && attempt < 4) await new Promise((resolve) => setTimeout(resolve, 2000));
     }
     if (!market) throw new Error("current_btc_market_unavailable");
     if (now - lastCandleMs > 60_000) {
