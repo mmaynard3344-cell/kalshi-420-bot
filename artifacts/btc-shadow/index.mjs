@@ -187,19 +187,13 @@ async function executeDecision(decision, market) {
 
   try {
     const limitPriceCents = Number(decision.limitPriceCents ?? 50);
-    const fresh = await publicJson(`${PUBLIC_BASE}/markets/${encodeURIComponent(decision.ticker)}`);
-    const quoteMarket = fresh?.market ?? fresh;
-    const askCents = quoteCents(quoteMarket, decision.side);
-    if (!Number.isInteger(askCents) || askCents < 1 || askCents > 99) {
-      totals[decision.service].skippedOrders++;
-      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, reason: "executable_ask_unavailable", retryable: true });
-      return "retry";
+    // Rest the GTC bid at our authorized limit; a higher market ask is not a blocker.
+    // Keep sizing, reserve budgeting, and exchange order price at this same limit.
+    if (!Number.isInteger(limitPriceCents) || limitPriceCents < 1 || limitPriceCents > 99) {
+      json({event:"btc_live_order_skipped",service:decision.service,ticker:decision.ticker,reason:"invalid_limit_price"});
+      return "terminal";
     }
-    if (askCents > limitPriceCents) {
-      totals[decision.service].skippedOrders++;
-      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, askCents, limitPriceCents, reason: "ask_above_limit", retryable: true });
-      return "retry";
-    }
+    const askCents = limitPriceCents;
 
     if (BTC_SHARED_LADDER_REVIEW) {
       // New shared-ladder order path. The flag is OFF by default and requires
