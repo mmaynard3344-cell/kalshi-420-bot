@@ -18,6 +18,14 @@ assert.ok(strategy.includes("decision.key === state.lastTriggerKey"), "prevent t
 assert.ok(strategy.includes("claim.service !== \"G\""), "external service settlement clears G latch");
 assert.ok(strategy.includes("claim.ticker !== lastG[\"ticker\"]"), "stale or unrelated claim cannot carry G direction");
 assert.ok(strategy.includes("G stale shared direction reset"), "cross-service recovery logging present");
+assert.ok(strategy.includes("expectedSharedVersion = version"), "G snapshots shared version");
+assert.ok(strategy.includes("market,state.ladderSide,expectedSharedVersion"), "G passes version to claim gateway");
+const store=readFileSync(fileURLToPath(new URL("../src/lib/sharedEthClaimStore.ts", import.meta.url)), "utf8");
+const gateway=readFileSync(fileURLToPath(new URL("../src/lib/sharedEthOrderGateway.ts", import.meta.url)), "utf8");
+assert.ok(store.includes("Number(state.version) !== req.expectedVersion"), "claim rejects changed shared version under lock");
+assert.ok(store.includes("FOR UPDATE"), "claim is row-locked");
+assert.ok(gateway.includes("expectedVersion:request.expectedVersion"), "gateway forwards expected version");
+
 function transition(state, outcome, sharedStep) {
   if (outcome === "ZERO_FILL") return state;
   if (outcome === "WIN" || (outcome === "LOSS" && sharedStep === 0)) return {side:null,step:0};
