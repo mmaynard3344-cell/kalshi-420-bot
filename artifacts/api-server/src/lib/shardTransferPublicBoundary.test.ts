@@ -1,0 +1,19 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { test } from "node:test";
+
+/** Deployment security invariant until an independently reviewed operator UI exists. */
+test("dashboard proxy remains GET/HEAD only and transfer POST stays disabled", () => {
+  const repoRoot = resolve(process.cwd(), "../..");
+  const proxy = readFileSync(resolve(repoRoot, "artifacts/kalshi-reader/server.mjs"), "utf8");
+  const route = readFileSync(resolve(repoRoot, "artifacts/api-server/src/routes/trade.ts"), "utf8");
+  assert.match(proxy, /req\.method !== 'GET' && req\.method !== 'HEAD'/);
+  assert.doesNotMatch(proxy, /ALLOWED_(?:POST|WRITE)_PATHS/);
+  const guardedPost = route.match(/router\.post\("\/trade\/shard-transfer"[\s\S]*?\n\}\);/);
+  assert.ok(guardedPost, "Transfer endpoint must exist");
+  assert.match(guardedPost[0], /verifyShardTransferOperatorToken/);
+  assert.match(guardedPost[0], /status\(503\)/);
+  assert.match(guardedPost[0], /transfer_submitted:\s*false/);
+  assert.doesNotMatch(guardedPost[0], /kalshiAuthFetch|submitManualShardTransfer/);
+});
