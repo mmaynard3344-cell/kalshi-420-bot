@@ -48,3 +48,10 @@ jobs:
         run: pnpm build
       - name: API test suite
         run: pnpm --dir artifacts/api-server test
+      - name: Baseline dispatcher integration on main
+        if: failure()
+        run: |
+          git worktree add /tmp/g-main-baseline origin/main
+          cd /tmp/g-main-baseline
+          pnpm install --frozen-lockfile
+          pnpm --dir artifacts/api-server exec node scripts/run-integration-test.mjs
