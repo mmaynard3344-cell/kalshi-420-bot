@@ -82,6 +82,7 @@ import { verifyShardTransferOperatorToken } from "../lib/shardTransferOperatorAu
 import { validateShardTransferHttpBoundary } from "../lib/shardTransferRequestBoundary.js";
 import { previewManualShardTransfer } from "../lib/shardTransferDryRun.js";
 import { describeShardTransferStatus } from "../lib/shardTransferStatusView.js";
+import { checkShardTransferReadOnly } from "../lib/shardTransferReadOnlyReconciliation.js";
 import { readShardTransfer } from "../lib/shardTransferLedgerRepository.js";
 import { ethMartingaleLedgerToCSV } from "../lib/csvExport.js";
 import { getAccountHistoryFingerprint } from "../lib/kalshiAccountFingerprint.js";
@@ -1469,6 +1470,16 @@ router.get("/trade/shard-transfer/:requestId", requireTradeAuth, async (req, res
     const record = await readShardTransfer(requestId);
     if (!record) {
       res.status(404).json({ error: "Transfer request not found" });
+      return;
+    }
+    // An explicit ?reconcile=read requests one signed GET; never modifies ledger.
+    // It does not mark completion, even if the exchange response looks final.
+    if (req.query.reconcile === "read") {
+      const reconciliation = await checkShardTransferReadOnly(
+        { state: record.state, exchangeTransferId: record.exchange_transfer_id },
+        (path) => kalshiAuthFetch("GET", path),
+      );
+      res.json({ transfer: record, interpretation: describeShardTransferStatus(record), reconciliation });
       return;
     }
     res.json({ transfer: record, interpretation: describeShardTransferStatus(record) });
