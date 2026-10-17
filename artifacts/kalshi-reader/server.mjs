@@ -1409,6 +1409,21 @@ async function martingaleCyclesReadOnly(req,res) {
               source:'btc_shared_ladder',activeTicker:null};
         }
       }catch(error){console.error('BTC ladder status unavailable',String(error?.message??error));}
+      // Read settled market outcomes independently of wager results.
+      // Return only exchange-confirmed YES/NO; never infer from signals or positions.
+      try {
+        const exists=await client.query("SELECT to_regclass('public.market_results') AS results");
+        if(exists.rows[0]?.results){
+          for(const cycle of cycles.filter(c=>c.market==='ETH'||c.market==='BTC')){
+            const prefix=cycle.market==='ETH'?'KXETH15M-%':'KXBTC15M-%';
+            const q=await client.query(
+              "SELECT ticker,lower(result) AS result FROM market_results "+
+              "WHERE ticker LIKE $1 AND lower(result) IN ('yes','no') "+
+              "ORDER BY resolved_at_ms DESC NULLS LAST LIMIT 3",[prefix]);
+            cycle.lastOutcomes=q.rows.reverse().map(r=>({ticker:r.ticker,result:r.result}));
+          }
+        }
+      }catch(error){console.error('Cycle outcome history unavailable',String(error?.message??error));}
     });
   }catch(error){console.error('Martingale read-only DB unavailable',String(error?.message??error));}
   return send(res,200,req.method==='HEAD'?'':JSON.stringify({generatedAtMs:Date.now(),cycles}),'application/json; charset=utf-8');
