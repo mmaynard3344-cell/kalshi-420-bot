@@ -139,7 +139,7 @@ function orderPayload(ticker, side, clientOrderId, contracts, outcomePriceCents)
     side: side === "yes" ? "bid" : "ask",
     count: contracts + ".00",
     price: ((side === "yes" ? outcomePriceCents : 100 - outcomePriceCents) / 100).toFixed(4),
-    time_in_force: "immediate_or_cancel",
+    time_in_force: "good_till_canceled",
     self_trade_prevention_type: "taker_at_cross",
   };
 }
