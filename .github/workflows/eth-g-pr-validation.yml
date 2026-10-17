@@ -48,6 +48,12 @@ jobs:
         run: pnpm typecheck
       - name: Build
         run: pnpm build
+      - name: Dispatcher repeatability check (3 isolated runs)
+        run: |
+          for i in 1 2 3; do
+            echo "Dispatcher integration repetition $i"
+            pnpm --dir artifacts/api-server exec node scripts/run-integration-test.mjs || exit 1
+          done
       - name: API test suite
         run: pnpm --dir artifacts/api-server test
       - name: Baseline dispatcher integration on main
