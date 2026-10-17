@@ -1409,23 +1409,26 @@ async function martingaleCyclesReadOnly(req,res) {
               source:'btc_shared_ladder',activeTicker:null};
         }
       }catch(error){console.error('BTC ladder status unavailable',String(error?.message??error));}
-      // Read settled market outcomes independently of wager results.
-      // Return only exchange-confirmed YES/NO; never infer from signals or positions.
-      try {
-        const exists=await client.query("SELECT to_regclass('public.market_results') AS results");
-        if(exists.rows[0]?.results){
-          for(const cycle of cycles.filter(c=>c.market==='ETH'||c.market==='BTC')){
-            const prefix=cycle.market==='ETH'?'KXETH15M-%':'KXBTC15M-%';
-            const q=await client.query(
-              "SELECT ticker,lower(result) AS result FROM market_results "+
-              "WHERE ticker LIKE $1 AND lower(result) IN ('yes','no') "+
-              "ORDER BY resolved_at_ms DESC NULLS LAST LIMIT 3",[prefix]);
-            cycle.lastOutcomes=q.rows.reverse().map(r=>({ticker:r.ticker,result:r.result}));
-          }
-        }
-      }catch(error){console.error('Cycle outcome history unavailable',String(error?.message??error));}
     });
   }catch(error){console.error('Martingale read-only DB unavailable',String(error?.message??error));}
+  // Exchange-confirmed results, not Shawshank trade outcomes or derived signals.
+  // Fetch settled markets directly from Kalshi; never present a stored snapshot as live.
+  for (const cycle of cycles.filter(c=>c.market==='ETH'||c.market==='BTC')) {
+    try {
+      const series=cycle.market==='ETH'?'KXETH15M':'KXBTC15M';
+      const endpoint='https://external-api.kalshi.com/trade-api/v2/markets?'+
+        new URLSearchParams({series_ticker:series,status:'settled',limit:'20'});
+      const response=await fetch(endpoint,{signal:AbortSignal.timeout(3500)});
+      if(!response.ok)throw Error('Kalshi '+response.status);
+      const payload=await response.json();
+      const verified=(Array.isArray(payload.markets)?payload.markets:[])
+        .filter(m=>typeof m.ticker==='string'&&(m.result==='yes'||m.result==='no'))
+        .sort((a,b)=>Date.parse(b.close_time||b.expiration_time||0)-Date.parse(a.close_time||a.expiration_time||0))
+        .slice(0,3).reverse();
+      cycle.lastOutcomes=verified.map(m=>({ticker:m.ticker,result:m.result}));
+      cycle.outcomeSource='Kalshi settled markets';
+    }catch(error){console.error('Kalshi cycle outcomes unavailable',cycle.market,String(error?.message??error));}
+  }
   return send(res,200,req.method==='HEAD'?'':JSON.stringify({generatedAtMs:Date.now(),cycles}),'application/json; charset=utf-8');
 }
 
