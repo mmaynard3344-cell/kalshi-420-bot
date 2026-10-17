@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const temp = mkdtempSync(join(tmpdir(), 'shard-transfer-tests-'));
 const tests = [
+  'shardTransferReadOnlyReconciliation.test.ts',
   'shardTransferExchangeObservation.test.ts',
   'shardTransferReconciliation.test.ts',
   'shardTransferStatusView.test.ts',
