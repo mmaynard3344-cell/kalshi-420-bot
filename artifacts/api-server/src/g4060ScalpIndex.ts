@@ -536,7 +536,7 @@ async function submitOrder(market: { ticker: string; closeMs: number; exchangeIn
  * ETH_G_SHARED_MARTINGALE_ENABLED can be enabled. Fail closed otherwise.
  */
 async function submitGWithSharedReservation(
- market:{ticker:string;closeMs:number;exchangeIndex:number},side:OutcomeSide
+ market:{ticker:string;closeMs:number;exchangeIndex:number},side:OutcomeSide,expectedVersion:number
 ):Promise<void>{
  if(process.env["ETH_SHARED_SETTLEMENT_BRIDGE_READY"]!=="true"){
   logger.error({ticker:market.ticker},"Shared ETH G submission blocked: settlement bridge not installed");
@@ -545,7 +545,7 @@ async function submitGWithSharedReservation(
  if(await orderForTicker(market.ticker))return;
  const clientOrderId="g-shared-v1:"+market.ticker;
  const attempt=await submitThroughSharedEthGate(sharedEthPgProvider,{
-  service:"G",ticker:market.ticker,side,clientOrderId
+  service:"G",ticker:market.ticker,side,clientOrderId,expectedVersion
  },async(claim,id)=>{
   const size=ethContractsWithinBudget(claim.budgetCents,LIMIT_PRICE_CENTS,feeCents);
   if(size.contracts===0)throw Error("Shared ETH wager cannot fund a contract including fees");
@@ -604,6 +604,15 @@ async function tick(): Promise<void> {
     const market = await discoverCurrentMarket();
     if (!market || Date.now() < market.openMs || Date.now() > market.openMs + ENTRY_WINDOW_MS) return;
     let state = await loadState();
+    let expectedSharedVersion: number | null = null;
+    if (process.env["ETH_G_SHARED_MARTINGALE_ENABLED"] === "true") {
+      const snapshot = await sharedEthPgProvider.transaction(async tx => tx.query<{version:number}>(
+        "SELECT version FROM eth_shared_martingale_state WHERE singleton=TRUE"
+      ));
+      const version = Number(snapshot.rows[0]?.version);
+      if (!Number.isSafeInteger(version) || version < 0) return;
+      expectedSharedVersion = version;
+    }
     if (process.env["ETH_G_SHARED_MARTINGALE_ENABLED"] === "true" && state.ladderSide != null) {
       // Reconcile against the authoritative shared ledger before carrying G's
       // direction into another market. Fail closed if a different service
@@ -651,7 +660,8 @@ async function tick(): Promise<void> {
     if (state.ladderSide == null) return;
     if (!await publishDirection(market.ticker, state.ladderSide, "g_ladder_direction")) return;
     if(process.env["ETH_G_SHARED_MARTINGALE_ENABLED"]==="true"){
-      await submitGWithSharedReservation(market,state.ladderSide);
+      if (expectedSharedVersion === null) return;
+       await submitGWithSharedReservation(market,state.ladderSide,expectedSharedVersion);
     }else{
       await submitOrder(market,state.ladderSide,state.step);
     }
