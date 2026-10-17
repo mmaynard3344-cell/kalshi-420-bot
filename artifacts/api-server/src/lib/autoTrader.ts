@@ -413,6 +413,9 @@ export function _clearAutoTraderTestOverrides(): void {
   _legacyEvaluateSpy             = null;
   _kalshiSeriesFetchImpl         = null;
   _kalshiStreamIsConnectedImpl   = null;
+  // Reset test-only REST request locks so a completed test cannot make the
+  // next test falsely observe an already-in-flight market discovery.
+  restFetchInFlight.clear();
   if (ethSettlementRetryTimer != null) {
     clearTimeout(ethSettlementRetryTimer);
     ethSettlementRetryTimer = null;
