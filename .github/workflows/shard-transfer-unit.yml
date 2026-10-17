@@ -27,6 +27,9 @@ jobs:
           node-version: "22"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Typecheck API server, including transfer routes
+        working-directory: artifacts/api-server
+        run: pnpm typecheck
       - name: Run pure transfer unit tests (no credentials)
         working-directory: artifacts/api-server
         run: pnpm test:shard-transfers
