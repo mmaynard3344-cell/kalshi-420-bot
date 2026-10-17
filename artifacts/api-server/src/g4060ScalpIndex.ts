@@ -537,12 +537,12 @@ async function submitOrder(market: { ticker: string; closeMs: number; exchangeIn
  */
 async function submitGWithSharedReservation(
  market:{ticker:string;closeMs:number;exchangeIndex:number},side:OutcomeSide,expectedVersion:number
-):Promise<void>{
+):Promise<boolean>{
  if(process.env["ETH_SHARED_SETTLEMENT_BRIDGE_READY"]!=="true"){
   logger.error({ticker:market.ticker},"Shared ETH G submission blocked: settlement bridge not installed");
-  return;
+  return false;
  }
- if(await orderForTicker(market.ticker))return;
+ if(await orderForTicker(market.ticker))return false;
  const clientOrderId="g-shared-v1:"+market.ticker;
  const attempt=await submitThroughSharedEthGate(sharedEthPgProvider,{
   service:"G",ticker:market.ticker,side,clientOrderId,expectedVersion
@@ -590,6 +590,7 @@ async function submitGWithSharedReservation(
  }
  logger.info({ticker:market.ticker,status:attempt.status,claimId:attempt.status==="SKIPPED_ACTIVE_CLAIM"?null:attempt.claim.claimId},
   "G shared ETH claim gateway decision");
+ return attempt.status !== "SKIPPED_ACTIVE_CLAIM";
 }
 
 let busy = false;
@@ -657,26 +658,25 @@ async function tick(): Promise<void> {
       await publishDirection(market.ticker, null, "g_signal_opposes_active_ladder");
       return;
     }
-    if (state.ladderSide == null) {
-      await setState(decision.side, 0, decision.key);
-      state = { ladderSide: decision.side, step: 0, lastTriggerKey: decision.key };
-      logger.info({ ticker: market.ticker, priorResult: decision.priorResult, side: decision.side, triggerKey: decision.key },
-        "G streak reversal two-consecutive-side trigger armed");
-    } else {
-      // Claim entry still checks the shared version and active-claim fence.
-      await setState(state.ladderSide, state.step, decision.key);
-      state = { ...state, lastTriggerKey: decision.key };
-      logger.info({ ticker: market.ticker, side: state.ladderSide, triggerKey: decision.key },
-        "G fresh signal authorized recovery rung");
-    }
-
-    if (state.ladderSide == null) return;
-    if (!await publishDirection(market.ticker, state.ladderSide, "g_fresh_signal")) return;
-    if(process.env["ETH_G_SHARED_MARTINGALE_ENABLED"]==="true"){
+    // A shared reservation must be acquired before recording a consumed G trigger.
+    // Otherwise a rejected claim consumes a valid signal without an exchange order.
+    const selectedSide = state.ladderSide ?? decision.side;
+    const freshStart = state.ladderSide == null;
+    if (process.env["ETH_G_SHARED_MARTINGALE_ENABLED"] === "true") {
       if (expectedSharedVersion === null) return;
-       await submitGWithSharedReservation(market,state.ladderSide,expectedSharedVersion);
-    }else{
-      await submitOrder(market,state.ladderSide,state.step);
+      const reserved = await submitGWithSharedReservation(market, selectedSide, expectedSharedVersion);
+      if (!reserved) {
+        logger.info({ticker:market.ticker,side:selectedSide,triggerKey:decision.key},
+          "G signal deferred: shared claim reservation not acquired");
+        return;
+      }
+      await setState(selectedSide, freshStart ? 0 : state.step, decision.key);
+      await publishDirection(market.ticker, selectedSide, "g_fresh_signal");
+    } else {
+      if (freshStart) await setState(selectedSide, 0, decision.key);
+      else await setState(selectedSide, state.step, decision.key);
+      if (!await publishDirection(market.ticker, selectedSide, "g_fresh_signal")) return;
+      await submitOrder(market, selectedSide, freshStart ? 0 : state.step);
     }
   } catch (err) {
     logger.warn({ err }, "G streak reversal tick failed");

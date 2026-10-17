@@ -20,7 +20,7 @@ assert.ok(strategy.includes("claim.service !== \"G\""), "external service settle
 assert.ok(strategy.includes("claim.ticker !== lastG[\"ticker\"]"), "stale or unrelated claim cannot carry G direction");
 assert.ok(strategy.includes("G stale shared direction reset"), "cross-service recovery logging present");
 assert.ok(strategy.includes("expectedSharedVersion = version"), "G snapshots shared version");
-assert.ok(strategy.includes("market,state.ladderSide,expectedSharedVersion"), "G passes version to claim gateway");
+assert.ok(strategy.includes("market, selectedSide, expectedSharedVersion"), "G passes version to claim gateway");
 // Regression guard: no recovery rung may bypass the fresh G signal gate.
 const gateStart=strategy.indexOf("const stored = await publishedDirection(market.ticker);", strategy.indexOf("async function tick()"));
 const decisionStart=strategy.indexOf("const decision = await exactTwoStreakDecision(market.openMs);",gateStart);
@@ -32,7 +32,10 @@ assert.ok(gate.includes('decision.kind === "unknown"'),"unsettled result defers 
 assert.ok(gate.includes("decision.side !== state.ladderSide"),"recovery only allowed on fresh matching-side signal");
 assert.ok(gate.includes("decision.key === state.lastTriggerKey"),"signal replay is rejected");
 assert.ok(gate.includes('g_signal_opposes_active_ladder'),"opposite signal skips without resetting ladder");
-assert.ok(gate.includes('await setState(state.ladderSide, state.step, decision.key)'),"same-side signal preserves rung");
+assert.ok(gate.includes("const selectedSide = state.ladderSide ?? decision.side"),"same-side signal preserves carried direction");
+const afterGateway=strategy.slice(submissionStart,strategy.indexOf("} else {\n      if (freshStart)",submissionStart));
+assert.ok(afterGateway.includes("if (!reserved)"),"failed reservation must not consume trigger");
+assert.ok(afterGateway.indexOf("if (!reserved)") < afterGateway.indexOf("await setState("),"trigger saved only after reservation");
 function canEnter(decision, state) {
   if(decision.kind!=="signal" || decision.key===state.lastTriggerKey) return false;
   if(state.ladderSide!==null && decision.side!==state.ladderSide) return false;
