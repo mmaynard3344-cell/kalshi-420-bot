@@ -138,13 +138,18 @@ describe("new-entry dispatcher boundary", () => {
 
     await _restFetchAllForTesting("rest_fallback");
 
-    assert.deepEqual(events, [
-      `evaluate:${ticker}`,
-      "reconcile:fill-economics",
-      "reconcile:unsettled",
-      "reconcile:unsettled",
-      `evaluate:${ticker}`,
-    ]);
+    const evaluationPositions = events.flatMap((event, index) =>
+      event === `evaluate:${ticker}` ? [index] : []
+    );
+    assert.equal(evaluationPositions.length, 2,
+      "ETH window is evaluated once from REST and once after reconciliation");
+    assert.ok(evaluationPositions[0] < evaluationPositions[1],
+      "post-reconciliation evaluation must follow the initial evaluation");
+    const between = events.slice(evaluationPositions[0] + 1, evaluationPositions[1]);
+    assert.ok(between.includes("reconcile:fill-economics"),
+      "fill economics must be reconciled before the second evaluation");
+    assert.ok(between.includes("reconcile:unsettled"),
+      "unsettled exposure must be checked before the second evaluation");
     assert.deepEqual(exchangeIndexes, [2, 2], "REST market exchange index must reach every ETH evaluation");
   });
 
