@@ -30,8 +30,8 @@ test("ledger enforces shard and amount boundaries", () => {
 });
 
 test("lookup and reconciliation are restricted to the existing unique request", () => {
-  assert.match(GET_SHARD_TRANSFER_SQL, /WHERE request_id = \\$1::uuid/);
-  assert.match(MARK_SHARD_TRANSFER_COMPLETED_SQL, /exchange_transfer_id = \\$2::text/);
-  assert.match(MARK_SHARD_TRANSFER_COMPLETED_SQL, /state IN \\('submitted', 'unknown'\\)/);
-  assert.match(MARK_SHARD_TRANSFER_RECONCILED_FAILED_SQL, /state IN \\('unknown', 'submitted'\\)/);
+  assert.match(GET_SHARD_TRANSFER_SQL, /WHERE request_id = \$1::uuid/);
+  assert.match(MARK_SHARD_TRANSFER_COMPLETED_SQL, /exchange_transfer_id = \$2::text/);
+  assert.match(MARK_SHARD_TRANSFER_COMPLETED_SQL, /state IN \('submitted', 'unknown'\)/);
+  assert.match(MARK_SHARD_TRANSFER_RECONCILED_FAILED_SQL, /state IN \('unknown', 'submitted'\)/);
 });
