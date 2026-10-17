@@ -22,8 +22,6 @@ export interface ShardTransferDependencies {
   accepted(requestId: string, transferId: string): Promise<void>;
   /** Mark uncertain outcome for manual/exchange reconciliation. */
   unknown(requestId: string): Promise<void>;
-  /** Mark a request failed when no exchange submission was attempted. */
-  failedBeforeSubmission(requestId: string): Promise<void>;
 }
 export type ShardTransferOutcome =
   | { status: "duplicate" }
@@ -53,7 +51,12 @@ export async function submitManualShardTransfer(
   } catch {
     // Once an exchange POST might have started, treat every failure as uncertain.
     // Even if recording this state fails, the durable claim remains non-retryable.
-    await deps.unknown(request.requestId);
+    try {
+      await deps.unknown(request.requestId);
+    } catch {
+      // Persisting uncertainty can fail too. Never report success or retry.
+      throw new Error("Transfer outcome uncertain and reconciliation persistence failed; operator review required");
+    }
     return {status: "unknown"};
   }
 }
