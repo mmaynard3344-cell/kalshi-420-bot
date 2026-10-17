@@ -22,3 +22,21 @@ test("retains cent precision for a one cent transfer", () => {
 test("rejects transfers without exact matching confirmation", () => {
   assert.throws(() => buildShardTransferPayload({...request, confirmation: "yes"}));
 });
+
+test("reverse direction maps exactly to shard 2 to shard 0", () => {
+  const payload = buildShardTransferPayload({
+    ...request,
+    sourceExchangeShard: 2, destinationExchangeShard: 0,
+    confirmation: "TRANSFER $25.00 FROM 2 TO 0",
+  });
+  assert.equal(payload.source_exchange_shard, 2);
+  assert.equal(payload.destination_exchange_shard, 0);
+  assert.equal(payload.source, "event_contract");
+  assert.equal(payload.destination, "event_contract");
+});
+test("rejects an amount exceeding the operator transfer limit", () => {
+  assert.throws(() => buildShardTransferPayload({
+    ...request, amountCents: 100001,
+    confirmation: "TRANSFER $1000.01 FROM 0 TO 2",
+  }));
+});
