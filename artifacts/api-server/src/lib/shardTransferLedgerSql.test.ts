@@ -6,6 +6,9 @@ import {
   CLAIM_SHARD_TRANSFER_SQL,
   MARK_SHARD_TRANSFER_UNKNOWN_SQL,
   RECORD_SHARD_TRANSFER_ACCEPTANCE_SQL,
+  GET_SHARD_TRANSFER_SQL,
+  MARK_SHARD_TRANSFER_COMPLETED_SQL,
+  MARK_SHARD_TRANSFER_RECONCILED_FAILED_SQL,
 } from "./shardTransferLedgerSql.js";
 
 test("request ID is a durable unique key", () => {
@@ -24,4 +27,11 @@ test("ledger enforces shard and amount boundaries", () => {
   assert.match(CREATE_SHARD_TRANSFER_LEDGER_SQL, /source_shard IN \(0, 2\)/);
   assert.match(CREATE_SHARD_TRANSFER_LEDGER_SQL, /destination_shard IN \(0, 2\)/);
   assert.match(CREATE_SHARD_TRANSFER_LEDGER_SQL, /amount_cents BETWEEN 1 AND 100000/);
+});
+
+test("lookup and reconciliation are restricted to the existing unique request", () => {
+  assert.match(GET_SHARD_TRANSFER_SQL, /WHERE request_id = \\$1::uuid/);
+  assert.match(MARK_SHARD_TRANSFER_COMPLETED_SQL, /exchange_transfer_id = \\$2::text/);
+  assert.match(MARK_SHARD_TRANSFER_COMPLETED_SQL, /state IN \\('submitted', 'unknown'\\)/);
+  assert.match(MARK_SHARD_TRANSFER_RECONCILED_FAILED_SQL, /state IN \\('unknown', 'submitted'\\)/);
 });
