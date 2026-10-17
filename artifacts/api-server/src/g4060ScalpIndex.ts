@@ -642,23 +642,35 @@ async function tick(): Promise<void> {
       }
     }
 
+    // Every rung requires a fresh, fully settled G signal for this market.
+    // An absent, unknown, replayed, or opposite-side signal skips the window
+    // without changing the carried side or the shared martingale rung.
+    const stored = await publishedDirection(market.ticker);
+    if (stored.exists && stored.side == null) return;
+    const decision = await exactTwoStreakDecision(market.openMs);
+    if (decision.kind === "unknown") return;
+    if (decision.kind === "none" || decision.key === state.lastTriggerKey) {
+      await publishDirection(market.ticker, null, "no_fresh_g_signal");
+      return;
+    }
+    if (state.ladderSide != null && decision.side !== state.ladderSide) {
+      await publishDirection(market.ticker, null, "g_signal_opposes_active_ladder");
+      return;
+    }
     if (state.ladderSide == null) {
-      const stored = await publishedDirection(market.ticker);
-      if (stored.exists && stored.side == null) return;
-      const decision = await exactTwoStreakDecision(market.openMs);
-      if (decision.kind === "unknown") return;
-      if (decision.kind === "none" || decision.key === state.lastTriggerKey) {
-        await publishDirection(market.ticker, null, "no_eligible_g_streak");
-        return;
-      }
       await setState(decision.side, 0, decision.key);
       state = { ladderSide: decision.side, step: 0, lastTriggerKey: decision.key };
       logger.info({ ticker: market.ticker, priorResult: decision.priorResult, side: decision.side, triggerKey: decision.key },
         "G streak reversal two-consecutive-side trigger armed");
+    } else {
+      // Claim entry still checks the shared version and active-claim fence.
+      await setState(state.ladderSide, state.step, decision.key);
+      state = { ...state, lastTriggerKey: decision.key };
+      logger.info({ ticker: market.ticker, side: state.ladderSide, triggerKey: decision.key },
+        "G fresh signal authorized recovery rung");
     }
 
-    if (state.ladderSide == null) return;
-    if (!await publishDirection(market.ticker, state.ladderSide, "g_ladder_direction")) return;
+    if (!await publishDirection(market.ticker, state.ladderSide, "g_fresh_signal")) return;
     if(process.env["ETH_G_SHARED_MARTINGALE_ENABLED"]==="true"){
       if (expectedSharedVersion === null) return;
        await submitGWithSharedReservation(market,state.ladderSide,expectedSharedVersion);
