@@ -78,6 +78,7 @@ import { kalshiStream } from "../lib/kalshiStream.js";
 import { getProtectiveExitMonitorStatus } from "../lib/protectiveExit.js";
 import { getExchangeDiscoverySweepStatus } from "../lib/fillReconciler.js";
 import { timingSafeEqual } from "crypto";
+import { verifyShardTransferOperatorToken } from "../lib/shardTransferOperatorAuth.js";
 import { ethMartingaleLedgerToCSV } from "../lib/csvExport.js";
 import { getAccountHistoryFingerprint } from "../lib/kalshiAccountFingerprint.js";
 import { getRuntimeHeartbeatStatus, isRuntimeEntryHealthy } from "../lib/runtimeHeartbeat.js";
@@ -1392,7 +1393,17 @@ router.get("/trade/account-fingerprint", requireTradeAuth, async (_req, res) => 
  * authentication are built and validated. Do not enable by setting environment
  * variables alone: this route deliberately performs no Kalshi POST.
  */
-router.post("/trade/shard-transfer", requireTradeAuth, (_req, res) => {
+router.post("/trade/shard-transfer", requireTradeAuth, (req, res) => {
+  // Separately require a strong operator secret, distinct from the dashboard
+  // trade token. This is only a security gate; submission stays disabled.
+  if (!verifyShardTransferOperatorToken(
+    req.header("x-shard-transfer-operator-token"),
+    process.env["SHARD_TRANSFER_OPERATOR_TOKEN"],
+    VALID_TRADE_TOKENS,
+  )) {
+    res.status(403).json({error: "Independent transfer operator authorization required", transfer_submitted: false});
+    return;
+  }
   res.status(503).json({
     error: "Manual shard transfers are not yet enabled",
     reason: "Operator authentication and durable duplicate-submission handling are pending",
