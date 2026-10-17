@@ -19,9 +19,13 @@ try {
     outExtension: { '.js': '.cjs' },
 
   });
-  const result = spawnSync(process.execPath, ['--test', join(outdir, 'shardTransferLedgerRepository.test.cjs'), join(outdir, 'shardTransferSimulatedE2E.test.cjs')], { stdio: 'inherit', env: process.env });
-  if (result.error) throw result.error;
-  process.exitCode = result.status ?? 1;
+  // Run suites sequentially: concurrent CREATE TABLE IF NOT EXISTS calls can
+  // race while PostgreSQL creates its catalog type on a pristine test DB.
+  for (const name of ['shardTransferLedgerRepository.test.cjs', 'shardTransferSimulatedE2E.test.cjs']) {
+    const result = spawnSync(process.execPath, ['--test', join(outdir, name)], { stdio: 'inherit', env: process.env });
+    if (result.error) throw result.error;
+    if (result.status !== 0) { process.exitCode = result.status ?? 1; break; }
+  }
 } finally {
   rmSync(outdir, {recursive:true,force:true});
 }
