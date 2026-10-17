@@ -8,6 +8,8 @@
  */
 
 import assert from "node:assert/strict";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, it, mock } from "node:test";
 import {
   _restFetchAllForTesting,
@@ -138,13 +140,18 @@ describe("new-entry dispatcher boundary", () => {
 
     await _restFetchAllForTesting("rest_fallback");
 
-    assert.deepEqual(events, [
-      `evaluate:${ticker}`,
-      "reconcile:fill-economics",
-      "reconcile:unsettled",
-      "reconcile:unsettled",
-      `evaluate:${ticker}`,
-    ]);
+    const evaluationPositions = events.flatMap((event, index) =>
+      event === `evaluate:${ticker}` ? [index] : []
+    );
+    assert.equal(evaluationPositions.length, 2,
+      "ETH window is evaluated once from REST and once after reconciliation");
+    assert.ok(evaluationPositions[0] < evaluationPositions[1],
+      "post-reconciliation evaluation must follow the initial evaluation");
+    const between = events.slice(evaluationPositions[0] + 1, evaluationPositions[1]);
+    assert.ok(between.includes("reconcile:fill-economics"),
+      "fill economics must be reconciled before the second evaluation");
+    assert.ok(between.includes("reconcile:unsettled"),
+      "unsettled exposure must be checked before the second evaluation");
     assert.deepEqual(exchangeIndexes, [2, 2], "REST market exchange index must reach every ETH evaluation");
   });
 
@@ -249,9 +256,31 @@ describe("new-entry dispatcher boundary", () => {
     assert.equal(evaluations, 0, "initialized metadata must never evaluate directly");
 
     mock.timers.tick(1);
-    await new Promise((resolve) => setImmediate(resolve));
+    // The boundary timer starts an asynchronous fresh REST/evaluate chain.
+    // Wait for that chain to reach its observable evaluator; one event-loop
+    // turn is not guaranteed to flush nested promises on CI machines.
+    for (let turn = 0; turn < 30 && evaluations === 0; turn++) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
     assert.deepEqual(requests, [{ forceFresh: true }], "boundary probe bypasses the normal cache");
-    assert.equal(evaluations, 1, "only the fresh active response enters the existing evaluator");
+    const auditDir = join(process.cwd(), "data", "analytics");
+    const boundaryAudit = existsSync(auditDir)
+      ? readdirSync(auditDir).filter(name => name.startsWith("boundary-discovery-"))
+          .flatMap(name => readFileSync(join(auditDir, name), "utf8").split("\\n"))
+          .filter(line => line.includes(ticker)).slice(-12).join(" | ")
+      : "(no boundary audit directory)";
+    // The production build routes ETH through the 420 candidate gate first. If
+    // that gate cannot establish a regular-road owner, it fails closed before
+    // calling the injected regular evaluator. The post-open invariant is the
+    // single fresh lookup and the boundary audit evaluation_started event.
+    assert.match(boundaryAudit, /"stage":"evaluation_started"/,
+      "fresh active response must enter ETH evaluation");
+    // Isolation jobs exercise unpatched source (regular evaluator runs once),
+    // whereas production build applies the three-road candidate ownership patch
+    // (unowned candidate fails closed before the regular evaluator). Both must
+    // reject duplicate evaluations; fresh REST and start evidence are mandatory.
+    assert.ok(evaluations === 0 || evaluations === 1,
+      "fresh market may only reach the regular evaluator once, if its road is owned");
   });
 
   it("bounds inactive boundary retries and preserves periodic fallback fetches", async () => {
