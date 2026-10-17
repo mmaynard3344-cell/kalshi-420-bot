@@ -39,3 +39,14 @@ test("public browser bundle never carries the operator token or calls transfer s
   assert.doesNotMatch(proxy, /SHARD_TRANSFER_OPERATOR_TOKEN|x-shard-transfer-operator-token/);
   assert.match(dashboard, /disabled=\{true\}|disabled(?:\s|>)/);
 });
+
+test("read-only shard balances are scoped to 0/1/2 and cannot authorize transfers", () => {
+  const repoRoot = resolve(process.cwd(), "../..");
+  const route = readFileSync(resolve(repoRoot, "artifacts/api-server/src/routes/trade.ts"), "utf8");
+  const dashboard = readFileSync(resolve(repoRoot, "artifacts/kalshi-reader/src/pages/LiveMartingale.tsx"), "utf8");
+  assert.match(route, /const shardIndexes = \[0, 1, 2\] as const/);
+  assert.match(route, /fetchKalshiBalanceForExchangeRead\(exchangeIndex\)/);
+  assert.match(route, /stale: true/);
+  assert.match(dashboard, /Manual shard transfer · preview only/);
+  assert.match(dashboard, /<button type="button" disabled className=/);
+});
