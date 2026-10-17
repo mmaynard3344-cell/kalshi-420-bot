@@ -12,7 +12,24 @@ permissions:
 jobs:
   g-validation:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: gtest
+          POSTGRES_PASSWORD: gtest_password
+          POSTGRES_DB: g_validation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd 'pg_isready -U gtest -d g_validation'
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://gtest:gtest_password@localhost:5432/g_validation
+      NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
