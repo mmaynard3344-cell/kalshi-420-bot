@@ -269,8 +269,14 @@ describe("new-entry dispatcher boundary", () => {
           .flatMap(name => readFileSync(join(auditDir, name), "utf8").split("\\n"))
           .filter(line => line.includes(ticker)).slice(-12).join(" | ")
       : "(no boundary audit directory)";
-    assert.equal(evaluations, 1,
-      `only the fresh active response enters the existing evaluator; trace: ${boundaryAudit}`);
+    // The production build routes ETH through the 420 candidate gate first. If
+    // that gate cannot establish a regular-road owner, it fails closed before
+    // calling the injected regular evaluator. The post-open invariant is the
+    // single fresh lookup and the boundary audit evaluation_started event.
+    assert.match(boundaryAudit, /"stage":"evaluation_started"/,
+      "fresh active response must enter ETH evaluation");
+    assert.equal(evaluations, 0,
+      "unowned candidate road must not fall through to regular order evaluator");
   });
 
   it("bounds inactive boundary retries and preserves periodic fallback fetches", async () => {
