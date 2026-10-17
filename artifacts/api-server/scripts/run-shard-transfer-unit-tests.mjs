@@ -22,13 +22,13 @@ const tests = [
 try {
   const outputs = [];
   for (const test of tests) {
-    const output = join(temp, test.replace(/\.ts$/, '.mjs'));
+    const output = join(temp, test.replace(/\.ts$/, '.cjs'));
     await build({
       entryPoints: [join(root, 'src', 'lib', test)],
       outfile: output,
       bundle: true,
       platform: 'node',
-      format: 'esm',
+      format: 'cjs',
       target: 'node20',
       logLevel: 'warning',
     });
