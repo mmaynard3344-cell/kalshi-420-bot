@@ -54,6 +54,7 @@ jobs:
           git worktree add /tmp/g-dispatch-isolation HEAD
           cd /tmp/g-dispatch-isolation
           git restore --source=origin/main -- artifacts/api-server/src/g4060ScalpIndex.ts
+          pnpm install --frozen-lockfile
           pnpm --dir artifacts/api-server exec node scripts/run-integration-test.mjs
       - name: Dispatcher repeatability check (3 isolated runs)
         run: |
