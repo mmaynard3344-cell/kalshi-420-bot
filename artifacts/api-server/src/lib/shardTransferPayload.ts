@@ -12,6 +12,7 @@ export function buildShardTransferPayload(input: unknown) {
   if (!Number.isSafeInteger(amount)) throw new Error("Transfer amount is out of range");
   return {
     source: "event_contract" as const,
+    client_transfer_id: transfer.requestId,
     destination: "event_contract" as const,
     source_exchange_shard: transfer.sourceExchangeShard,
     destination_exchange_shard: transfer.destinationExchangeShard,
