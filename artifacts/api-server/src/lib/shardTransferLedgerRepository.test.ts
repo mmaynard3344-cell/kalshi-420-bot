@@ -36,3 +36,8 @@ test("durable reservation permits one claim and disallows duplicate request IDs"
   assert.equal(record?.["state"], "unknown");
   await pool.query("DELETE FROM operator_shard_transfers WHERE request_id = $1::uuid", [requestId]);
 });
+
+// The pooled client otherwise keeps Node's test process alive after assertions.
+if (enabled) {
+  test.after(async () => { await pool.end(); });
+}
