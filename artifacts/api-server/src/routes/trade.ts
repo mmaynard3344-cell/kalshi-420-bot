@@ -79,6 +79,7 @@ import { getProtectiveExitMonitorStatus } from "../lib/protectiveExit.js";
 import { getExchangeDiscoverySweepStatus } from "../lib/fillReconciler.js";
 import { timingSafeEqual } from "crypto";
 import { verifyShardTransferOperatorToken } from "../lib/shardTransferOperatorAuth.js";
+import { readShardTransfer } from "../lib/shardTransferLedgerRepository.js";
 import { ethMartingaleLedgerToCSV } from "../lib/csvExport.js";
 import { getAccountHistoryFingerprint } from "../lib/kalshiAccountFingerprint.js";
 import { getRuntimeHeartbeatStatus, isRuntimeEntryHealthy } from "../lib/runtimeHeartbeat.js";
@@ -1409,6 +1410,37 @@ router.post("/trade/shard-transfer", requireTradeAuth, (req, res) => {
     reason: "Operator authentication and durable duplicate-submission handling are pending",
     transfer_submitted: false,
   });
+});
+
+/**
+ * Private reconciliation lookup, not exposed through the public read proxy.
+ * Even the read uses a separate operator credential and never changes funds.
+ */
+router.get("/trade/shard-transfer/:requestId", requireTradeAuth, async (req, res) => {
+  if (!verifyShardTransferOperatorToken(
+    req.header("x-shard-transfer-operator-token"),
+    process.env["SHARD_TRANSFER_OPERATOR_TOKEN"],
+    VALID_TRADE_TOKENS,
+  )) {
+    res.status(403).json({ error: "Independent transfer operator authorization required" });
+    return;
+  }
+  const requestId = req.params.requestId;
+  if (typeof requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+    res.status(400).json({ error: "A valid request UUID is required" });
+    return;
+  }
+  try {
+    const record = await readShardTransfer(requestId);
+    if (!record) {
+      res.status(404).json({ error: "Transfer request not found" });
+      return;
+    }
+    res.json({ transfer: record });
+  } catch (error) {
+    logger.warn({ err: error }, "transfer ledger lookup unavailable");
+    res.status(503).json({ error: "Transfer ledger unavailable" });
+  }
 });
 
 /**
