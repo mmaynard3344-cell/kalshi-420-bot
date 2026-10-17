@@ -22,7 +22,9 @@ import {
   type KalshiMarketLifecycleEvent,
 } from "./kalshiStream.js";
 
-const openMs = Date.UTC(2026, 8, 1, 12, 15, 0);
+// Keep the created-event boundary in the future. A historical fixed date
+// makes the legitimate boundary timer fire immediately when this suite runs.
+const openMs = Date.now() + 60_000;
 const lifecycle = (eventType: "created" | "activated"): KalshiMarketLifecycleEvent => ({
   ticker: "KXETH15M-26SEP011215-15",
   eventType,
