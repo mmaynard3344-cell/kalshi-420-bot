@@ -1418,7 +1418,23 @@ router.get("/trade/balance", requireTradeAuth, async (_req, res) => {
           return null;
         }),
     ]);
-    res.json(buildTradeBalanceDashboardResponse(read, activeEthExchangeIndex, activeEthExchangeBalance));
+    // Presentation-only shard balances. Never authorize trading or transfers from this cached view.
+    const shardIndexes = [0, 1, 2] as const;
+    const shards = await Promise.all(shardIndexes.map(async (exchangeIndex) => {
+      try {
+        const scoped = await fetchKalshiBalanceForExchangeRead(exchangeIndex);
+        const cents = scoped.value["balance"];
+        return {
+          exchange_index: exchangeIndex,
+          available_balance_cents: typeof cents === "number" && Number.isSafeInteger(cents) && cents >= 0 ? cents : null,
+          stale: scoped.stale,
+        };
+      } catch (error) {
+        logger.warn({ exchangeIndex, error }, "Shard balance unavailable for display");
+        return { exchange_index: exchangeIndex, available_balance_cents: null, stale: true };
+      }
+    }));
+    res.json({ ...buildTradeBalanceDashboardResponse(read, activeEthExchangeIndex, activeEthExchangeBalance), shard_balances: shards });
   } catch (err: unknown) {
     const e = err as { status?: number; body?: unknown; message?: string; stack?: string };
 
