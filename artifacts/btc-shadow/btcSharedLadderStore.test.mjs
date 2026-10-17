@@ -24,12 +24,12 @@ function mockDb(){
 }
 test("reservation/fill/loss persists advancement; duplicate settlement does not advance",async()=>{
  const db=mockDb();
- assert.equal((await reserveBtcWager(db.pool,"o1")).stakeCents,100);
+ assert.equal((await reserveBtcWager(db.pool,"o1")).stakeCents,200);
  await assert.rejects(()=>reserveBtcWager(db.pool,"o2"),/busy/);
  await recordBtcFilled(db.pool,"o1","s1");
  assert.equal((await recordBtcVerifiedSettlement(db.pool,"s1","LOSS")).step,1);
  assert.deepEqual(await recordBtcVerifiedSettlement(db.pool,"s1","LOSS"),{alreadyProcessed:true,step:1});
- assert.equal((await reserveBtcWager(db.pool,"o2")).stakeCents,200);
+ assert.equal((await reserveBtcWager(db.pool,"o2")).stakeCents,400);
  assert.equal(db.calls.filter(q=>q==="BEGIN").length,6);
  assert.equal(db.calls.filter(q=>q==="COMMIT").length,5);
 });

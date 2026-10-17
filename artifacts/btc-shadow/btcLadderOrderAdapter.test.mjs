@@ -35,8 +35,17 @@ test("timeout retains durable pending order",async()=>{
 
 test("unaffordable step-one wager never reserves database state or submits",async()=>{
  const p=pool();
- const result=await submitReservedBtcOrder({pool:p.db,orderId:"unaffordable",ticker:"KXBTC15M-EXAMPLE",side:"yes",askCents:99,feeCents:()=>5,send:p.send});
+ const result=await submitReservedBtcOrder({pool:p.db,orderId:"unaffordable",ticker:"KXBTC15M-EXAMPLE",side:"yes",askCents:99,feeCents:()=>210,send:p.send});
  assert.equal(result.kind,"skipped");
  assert.equal(p.state.pending_order_id,null);
  assert.equal(p.posted(),0);
+});
+
+test("explicit Kalshi insufficient balance rejection releases reservation without advancing",async()=>{
+ const p=pool();
+ const result=await submitReservedBtcOrder({pool:p.db,orderId:"rejected",ticker:"KXBTC15M-EXAMPLE",side:"yes",askCents:50,feeCents:()=>0,send:async()=>{throw Error("kalshi_400:insufficient balance")}});
+ assert.equal(result.kind,"skipped");
+ assert.equal(result.reason,"kalshi_insufficient_balance_rejected");
+ assert.equal(p.state.pending_order_id,null);
+ assert.equal(p.state.step,0);
 });

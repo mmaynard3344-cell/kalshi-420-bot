@@ -24,7 +24,11 @@ export async function reconcilePendingBtcOrder({pool,authJson,publicJson,publicB
    // One-time, user-authorized recovery of a specific orphaned reservation.
    // Only after exhaustive authenticated order-history pagination confirms absence.
    const approvedId="e32ca4c4-e32b-48f8-9248-fb0ee32f1981";
-   if(complete && reservation.clientOrderId===approvedId && reservation.ticker==="KXBTC15M-26OCT171100-00"){
+   const knownRejected = reservation.clientOrderId==="9ee54b6c-d656-4d1e-92ef-fe40730882c4" && reservation.ticker==="KXBTC15M-26OCT171800-00";
+   // The knownRejected reservation has independently logged an explicit Kalshi
+   // HTTP 400 insufficient-balance rejection. Still require exhaustive
+   // authenticated order history and official settlement before release.
+   if(complete && ((reservation.clientOrderId===approvedId && reservation.ticker==="KXBTC15M-26OCT171100-00") || knownRejected)){
     const marketRaw=await publicJson(publicBase+"/markets/"+encodeURIComponent(reservation.ticker));
     const market=marketRaw?.market??marketRaw;
     if(!["yes","no"].includes(String(market?.result??"").toLowerCase()))

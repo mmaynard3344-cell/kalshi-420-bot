@@ -17,7 +17,7 @@ async function reset(){
 const reservation={clientOrderId:"btc-ci-1",ticker:"KXBTC15M-EXAMPLE",side:"yes"};
 test("real PostgreSQL: verified loss, duplicate replay, restart persistence, and win reset",async()=>{
  await reset();
- assert.equal((await reserveBtcWager(pool,reservation.clientOrderId)).stakeCents,100);
+ assert.equal((await reserveBtcWager(pool,reservation.clientOrderId)).stakeCents,200);
  await assert.rejects(()=>reserveBtcWager(pool,"btc-ci-blocked"),/busy/);
  const order={client_order_id:reservation.clientOrderId,order_id:"exchange-ci-1",ticker:reservation.ticker,status:"executed",fill_count_fp:2};
  const payload={pool,reservation,order,fills:[{order_id:"exchange-ci-1",count_fp:2}],market:{ticker:reservation.ticker,result:"no"}};
@@ -27,7 +27,7 @@ test("real PostgreSQL: verified loss, duplicate replay, restart persistence, and
  const saved=await pool.query("SELECT step,pending_order_id,pending_settlement_id FROM btc_shared_ladder WHERE market='BTC'");
  assert.equal(saved.rows[0].step,1);
  assert.equal(saved.rows[0].pending_order_id,null);
- assert.equal((await reserveBtcWager(pool,"btc-ci-2")).stakeCents,200);
+ assert.equal((await reserveBtcWager(pool,"btc-ci-2")).stakeCents,400);
  await recordBtcFilled(pool,"btc-ci-2","btc-ci-2");
  assert.equal((await recordBtcVerifiedSettlement(pool,"btc-ci-2","WIN")).step,0);
 });

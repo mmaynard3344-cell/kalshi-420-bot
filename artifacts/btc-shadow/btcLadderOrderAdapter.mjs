@@ -3,7 +3,7 @@
  * Its dependencies are injected so that tests never contact Kalshi.
  * Caller must supply an authenticated final order-status/fill reconciler.
  */
-import {reserveBtcWagerWithIdentity,attachBtcExchangeOrderId} from "./btcSharedLadderStore.mjs";
+import {reserveBtcWagerWithIdentity,attachBtcExchangeOrderId,recordBtcVerifiedZeroFill} from "./btcSharedLadderStore.mjs";
 import {sizeBtcOrder,initialBtcLadder} from "./btcSharedLadder.mjs";
 export async function submitReservedBtcOrder({pool,orderId,ticker,side,askCents,feeCents,maxContracts=10000,send}){
  if(!orderId||typeof send!=="function")throw Error("missing BTC order dependency");
@@ -26,6 +26,13 @@ export async function submitReservedBtcOrder({pool,orderId,ticker,side,askCents,
   return {kind:ack.kind==="accepted"?"submitted":"held",reason:ack.kind==="accepted"?null:"exchange_reconciliation_required",orderId,exchangeOrderId:ack.exchangeOrderId??null};
  }catch(error){
   const detail=error instanceof Error?error.message:String(error);
+  // Kalshi explicitly rejected the order before acceptance. This is a verified
+  // zero-fill, unlike a timeout/5xx/unknown acknowledgement. Release the
+  // reservation atomically so other BTC signals are not held indefinitely.
+  if (/^kalshi_400:insufficient balance\b/i.test(detail)) {
+   await recordBtcVerifiedZeroFill(pool,orderId);
+   return {kind:"skipped",reason:"kalshi_insufficient_balance_rejected",orderId};
+  }
   console.error(JSON.stringify({event:"btc_order_submission_error",clientOrderId:orderId,ticker,detail:detail.slice(0,500)}));
   return {kind:"held",reason:"exchange_reconciliation_required",orderId};
  }
