@@ -32,4 +32,26 @@ test("simulated exchange accepts one transfer only, preserving durable acceptanc
     await pool.query("DELETE FROM operator_shard_transfers WHERE request_id = $1",[requestId]);
   }
 });
+test("simulated timeout remains durably unknown and is never retried", {skip: !enabled}, async () => {
+  await pool.query(CREATE_SHARD_TRANSFER_LEDGER_SQL);
+  const requestId = randomUUID();
+  const req = {requestId,sourceExchangeShard:2,destinationExchangeShard:0,amountCents:200,confirmation:"TRANSFER $2.00 FROM 2 TO 0"};
+  let posts = 0;
+  const deps = makeShardTransferDependencies({
+    uncachedAvailableBalanceCents: async () => 1000,
+    submitTransferOnce: async () => {
+      posts++;
+      throw new Error("simulated network timeout after possible submission");
+    },
+  });
+  try {
+    assert.deepEqual(await submitManualShardTransfer(req,deps),{status:"unknown"});
+    assert.deepEqual(await submitManualShardTransfer(req,deps),{status:"duplicate"});
+    assert.equal(posts,1);
+    const {rows} = await pool.query("SELECT state FROM operator_shard_transfers WHERE request_id = $1",[requestId]);
+    assert.equal(rows[0]?.state,"unknown");
+  } finally {
+    await pool.query("DELETE FROM operator_shard_transfers WHERE request_id = $1",[requestId]);
+  }
+});
 if(enabled) test.after(async()=>{await pool.end()});
