@@ -305,7 +305,7 @@ function EthLiveMarketCard({
           const shard = balance?.shard_balances?.find((item) => item.exchange_index === index);
           return <div key={index}><div className="text-[10px] text-muted-foreground">Shard {index}</div><div>{formatDollars(shard?.available_balance_cents)}</div><div className="text-[10px] text-muted-foreground">{shard == null ? 'unavailable' : shard.stale ? 'stale' : 'available'}</div></div>;
         })}
-      </div><div className="mt-2 text-muted-foreground">Available cash by shard · refreshes every 10 seconds · read-only</div></div>
+      </div><div className="mt-2 text-muted-foreground">Available cash by shard · refreshes every 10 seconds · read-only</div><div className="mt-2 text-muted-foreground">Funds transfer control: locked pending operator authentication and end-to-end tests.</div></div>
       <div className="bg-card p-4 font-mono text-xs"><div className="text-[10px] text-muted-foreground uppercase">Live ETH position</div><div className="mt-2 text-foreground">{positionDisplay.kind === 'position' && livePosition ? `${livePosition.side.toUpperCase()} · Step ${livePosition.step}` : positionDisplay.detail}</div><div className="mt-1 text-muted-foreground">{positionDisplay.kind === 'position' && livePosition ? `${formatContracts(livePosition.filledContracts ?? 0)} filled · ${livePosition.lifecycleStatus.replaceAll('_', ' ')}` : 'Durable candidate ledger'}</div></div>
     </div>
     <details className="border-t border-border p-4 font-mono text-xs">
