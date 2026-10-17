@@ -53,7 +53,7 @@ test("failure to persist exchange acceptance is uncertain, not retried", async (
 });
 test("failure to claim reservation never reaches the exchange", async () => {
   const {deps,calls} = fakeDeps();
-  deps.claim = async () => false;
+  deps.claim = async () => { calls.push("claim"); return false; };
   assert.deepEqual(await submitManualShardTransfer(request,deps),{status:"duplicate"});
   assert.deepEqual(calls,["balance","reserve","claim"]);
 });
