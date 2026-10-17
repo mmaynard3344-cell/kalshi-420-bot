@@ -1,0 +1,24 @@
+name: Read-only shard balance API validation
+on:
+  push:
+    branches:
+      - feat/shard-funds-readonly-api-20261017
+  pull_request:
+    paths:
+      - 'artifacts/api-server/src/routes/trade.ts'
+      - '.github/workflows/shard-balances-readonly-api.yml'
+jobs:
+  verify-readonly-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.26.1'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck:libs
+      - run: pnpm --filter @workspace/api-server typecheck
