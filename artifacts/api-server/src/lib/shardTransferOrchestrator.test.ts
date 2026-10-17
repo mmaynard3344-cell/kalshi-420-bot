@@ -18,7 +18,6 @@ function fakeDeps() {
     submitOnce: async () => {calls.push("post"); return {transferId: "kalshi-transfer-1"};},
     accepted: async () => {calls.push("accepted");},
     unknown: async () => {calls.push("unknown");},
-    failedBeforeSubmission: async () => {calls.push("failed");},
   };
   return {deps, calls};
 }
@@ -57,4 +56,12 @@ test("failure to claim reservation never reaches the exchange", async () => {
   deps.claim = async () => false;
   assert.deepEqual(await submitManualShardTransfer(request,deps),{status:"duplicate"});
   assert.deepEqual(calls,["balance","reserve","claim"]);
+});
+
+test("failure to record uncertainty never reports a completed transfer", async () => {
+  const {deps,calls} = fakeDeps();
+  deps.submitOnce = async () => {calls.push("post"); throw new Error("network timeout");};
+  deps.unknown = async () => {calls.push("unknown"); throw new Error("database failure");};
+  await assert.rejects(submitManualShardTransfer(request,deps), /operator review required/);
+  assert.deepEqual(calls,["balance","reserve","claim","post","unknown"]);
 });
