@@ -1386,6 +1386,22 @@ router.get("/trade/account-fingerprint", requireTradeAuth, async (_req, res) => 
   });
 });
 
+/**
+ * Read-only Kalshi transfer history for the operator UI.
+ * A transfer is not considered completed until the exchange reports it.
+ */
+router.get("/trade/shard-transfers", requireTradeAuth, async (_req, res) => {
+  try {
+    const result = await kalshiAuthFetch<Record<string, unknown>>(
+      "GET", "/portfolio/intra_exchange_instance_transfers"
+    );
+    res.json(result);
+  } catch (error) {
+    const status = (error as { status?: number }).status;
+    res.status(status === 401 || status === 403 ? status : 502).json({ error: "Transfer history unavailable" });
+  }
+});
+
 /** GET /trade/balance — portfolio balance, also confirms auth is working. */
 router.get("/trade/balance", requireTradeAuth, async (_req, res) => {
   const kalshiUrl = `${KALSHI_TRADE_BASE}/portfolio/balance`;
