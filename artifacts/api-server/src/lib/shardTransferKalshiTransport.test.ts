@@ -11,7 +11,7 @@ test("transport submits only on explicit invocation, with exactly one POST", asy
   assert.equal(calls.length,0);
   const payload = {
     source:"event_contract" as const,destination:"event_contract" as const,
-    source_exchange_shard:0,destination_exchange_shard:2,
+    source_exchange_shard:0 as const,destination_exchange_shard:2 as const,
     source_subaccount:0,destination_subaccount:0,amount:10000,
   };
   assert.deepEqual(await transport(payload),{transfer_id:"simulated"});
