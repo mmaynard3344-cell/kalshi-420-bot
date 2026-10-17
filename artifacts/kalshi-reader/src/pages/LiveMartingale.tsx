@@ -237,6 +237,38 @@ export function Eth420BalanceSheet({
   </section>;
 }
 
+/** Preview-only transfer request; submission remains deliberately disabled. */
+function ShardTransferPreview({balance}: {balance: MartingaleBalance | undefined}) {
+  const [direction, setDirection] = useState<'0to2' | '2to0'>('0to2');
+  const [amount, setAmount] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+  const source = direction === '0to2' ? 0 : 2;
+  const destination = direction === '0to2' ? 2 : 0;
+  const cents = /^\\d+(?:\\.\\d{1,2})?$/.test(amount) ? Math.round(Number(amount) * 100) : null;
+  const sourceBalance = balance?.shard_balances?.find((item) => item.exchange_index === source);
+  const valid = cents != null && cents > 0 && cents <= 100000
+    && sourceBalance?.stale === false
+    && sourceBalance.available_balance_cents != null
+    && sourceBalance.available_balance_cents >= cents;
+  return <section className="mt-3 border-t border-border pt-3 text-xs font-mono">
+    <div className="font-semibold">Manual shard transfer · preview only</div>
+    <div className="mt-1 text-muted-foreground">Submitting transfers is disabled until operator authentication and durable duplicate protection are tested.</div>
+    <label className="mt-2 block">Direction
+      <select className="mt-1 w-full border border-border bg-background p-2" value={direction} onChange={(event) => {setDirection(event.target.value as '0to2' | '2to0');setConfirmed(false);}}>
+        <option value="0to2">Shard 0 to Shard 2</option>
+        <option value="2to0">Shard 2 to Shard 0</option>
+      </select>
+    </label>
+    <label className="mt-2 block">Amount (USD)
+      <input className="mt-1 w-full border border-border bg-background p-2" inputMode="decimal" placeholder="25.00" value={amount} onChange={(event) => {setAmount(event.target.value);setConfirmed(false);}}/>
+    </label>
+    <div className="mt-2 text-muted-foreground">{valid ? `Preview: move ${(cents! / 100).toFixed(2)} from Shard ${source} to Shard ${destination}` : 'Enter an amount within the available source-shard balance ($0.01–$1,000.00).'}</div>
+    <label className="mt-2 flex items-center gap-2"><input type="checkbox" checked={confirmed} disabled={!valid} onChange={(event) => setConfirmed(event.target.checked)}/>I have reviewed the amount and direction</label>
+    <button type="button" disabled className="mt-2 w-full border border-border bg-muted p-2 text-muted-foreground">Transfer disabled — testing required</button>
+    {confirmed && <div className="mt-2 text-muted-foreground">Review captured locally only. No transfer was submitted.</div>}
+  </section>;
+}
+
 /** Read-only operational context. It deliberately has no order or allocation controls. */
 function EthLiveMarketCard({
   balance,
@@ -305,7 +337,7 @@ function EthLiveMarketCard({
           const shard = balance?.shard_balances?.find((item) => item.exchange_index === index);
           return <div key={index}><div className="text-[10px] text-muted-foreground">Shard {index}</div><div>{formatDollars(shard?.available_balance_cents)}</div><div className="text-[10px] text-muted-foreground">{shard == null ? 'unavailable' : shard.stale ? 'stale' : 'available'}</div></div>;
         })}
-      </div><div className="mt-2 text-muted-foreground">Available cash by shard · refreshes every 10 seconds · read-only</div><div className="mt-2 text-muted-foreground">Funds transfer control: locked pending operator authentication and end-to-end tests.</div></div>
+      </div><div className="mt-2 text-muted-foreground">Available cash by shard · refreshes every 10 seconds · read-only</div><ShardTransferPreview balance={balance}/></div>
       <div className="bg-card p-4 font-mono text-xs"><div className="text-[10px] text-muted-foreground uppercase">Live ETH position</div><div className="mt-2 text-foreground">{positionDisplay.kind === 'position' && livePosition ? `${livePosition.side.toUpperCase()} · Step ${livePosition.step}` : positionDisplay.detail}</div><div className="mt-1 text-muted-foreground">{positionDisplay.kind === 'position' && livePosition ? `${formatContracts(livePosition.filledContracts ?? 0)} filled · ${livePosition.lifecycleStatus.replaceAll('_', ' ')}` : 'Durable candidate ledger'}</div></div>
     </div>
     <details className="border-t border-border p-4 font-mono text-xs">
