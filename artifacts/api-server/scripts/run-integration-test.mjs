@@ -43,7 +43,12 @@ const __dirname = __bannerPath.dirname(__filename);`,
 
 void result;
 
-const proc = spawnSync(process.execPath, ["--test", outfile], {
+const testArgs = ["--test"];
+if (process.env["AUTO_TRADER_TEST_NAME_PATTERN"]) {
+  testArgs.push("--test-name-pattern", process.env["AUTO_TRADER_TEST_NAME_PATTERN"]);
+}
+testArgs.push(outfile);
+const proc = spawnSync(process.execPath, testArgs, {
   stdio: "inherit",
   // Research-only captures derive their data path from process.cwd(). Keep
   // integration-test observations in /tmp instead of mutating tracked datasets.
