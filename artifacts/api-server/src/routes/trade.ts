@@ -1387,6 +1387,20 @@ router.get("/trade/account-fingerprint", requireTradeAuth, async (_req, res) => 
 });
 
 /**
+ * Manual transfer endpoint is deliberately fail-closed.
+ * It does not accept submissions until durable idempotency and independent operator
+ * authentication are built and validated. Do not enable by setting environment
+ * variables alone: this route deliberately performs no Kalshi POST.
+ */
+router.post("/trade/shard-transfer", requireTradeAuth, (_req, res) => {
+  res.status(503).json({
+    error: "Manual shard transfers are not yet enabled",
+    reason: "Operator authentication and durable duplicate-submission handling are pending",
+    transfer_submitted: false,
+  });
+});
+
+/**
  * Read-only Kalshi transfer history for the operator UI.
  * A transfer is not considered completed until the exchange reports it.
  */
