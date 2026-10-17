@@ -29,3 +29,5 @@ jobs:
         run: pnpm typecheck
       - name: Build
         run: pnpm build
+      - name: API test suite
+        run: pnpm --dir artifacts/api-server test
