@@ -27,7 +27,7 @@ test("real PostgreSQL: verified loss, duplicate replay, restart persistence, and
  const saved=await pool.query("SELECT step,pending_order_id,pending_settlement_id FROM btc_shared_ladder WHERE market='BTC'");
  assert.equal(saved.rows[0].step,1);
  assert.equal(saved.rows[0].pending_order_id,null);
- assert.equal((await reserveBtcWager(pool,"btc-ci-2")).stakeCents,200);
+ assert.equal((await reserveBtcWager(pool,"btc-ci-2")).stakeCents,400);
  await recordBtcFilled(pool,"btc-ci-2","btc-ci-2");
  assert.equal((await recordBtcVerifiedSettlement(pool,"btc-ci-2","WIN")).step,0);
 });
