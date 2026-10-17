@@ -27,6 +27,8 @@ jobs:
           node-version: "22"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Build shared library types
+        run: pnpm typecheck:libs
       - name: Typecheck API server, including transfer routes
         working-directory: artifacts/api-server
         run: pnpm typecheck
