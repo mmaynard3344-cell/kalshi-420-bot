@@ -81,6 +81,7 @@ import { timingSafeEqual } from "crypto";
 import { verifyShardTransferOperatorToken } from "../lib/shardTransferOperatorAuth.js";
 import { validateShardTransferHttpBoundary } from "../lib/shardTransferRequestBoundary.js";
 import { previewManualShardTransfer } from "../lib/shardTransferDryRun.js";
+import { describeShardTransferStatus } from "../lib/shardTransferStatusView.js";
 import { readShardTransfer } from "../lib/shardTransferLedgerRepository.js";
 import { ethMartingaleLedgerToCSV } from "../lib/csvExport.js";
 import { getAccountHistoryFingerprint } from "../lib/kalshiAccountFingerprint.js";
@@ -1470,7 +1471,7 @@ router.get("/trade/shard-transfer/:requestId", requireTradeAuth, async (req, res
       res.status(404).json({ error: "Transfer request not found" });
       return;
     }
-    res.json({ transfer: record });
+    res.json({ transfer: record, interpretation: describeShardTransferStatus(record) });
   } catch (error) {
     logger.warn({ err: error }, "transfer ledger lookup unavailable");
     res.status(503).json({ error: "Transfer ledger unavailable" });
