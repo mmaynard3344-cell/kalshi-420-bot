@@ -670,6 +670,7 @@ async function tick(): Promise<void> {
         "G fresh signal authorized recovery rung");
     }
 
+    if (state.ladderSide == null) return;
     if (!await publishDirection(market.ticker, state.ladderSide, "g_fresh_signal")) return;
     if(process.env["ETH_G_SHARED_MARTINGALE_ENABLED"]==="true"){
       if (expectedSharedVersion === null) return;
