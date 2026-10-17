@@ -308,9 +308,9 @@ async function settleOrder(order: GOrder, result: OutcomeSide): Promise<void> {
     const outcome=verifiedFills===0?"ZERO_FILL":order.side===result?"WIN":"LOSS";
     const sharedSettlement = await finalizeEthClaim(sharedEthPgProvider,String(linked["claim_id"]),
       "G:"+order.clientOrderId+":"+result,outcome);
-    // Keep G's local six-rung directional latch synchronized with the shared
-    // claim's verified outcome. This transaction makes the journal settlement
-    // and direction advancement/reset crash-atomic.
+    // Shared settlement commits first; the local journal and direction update
+    // are atomic only with each other. A crash between these commits must be
+    // recovered by reconcileOutstanding before any subsequent submission.
     await d.transaction(async (tx) => {
       const settled = await tx.execute(sql`
         UPDATE eth_g_streak_reversal_orders SET settlement_result=${result},
