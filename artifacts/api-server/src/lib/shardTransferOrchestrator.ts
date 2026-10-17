@@ -44,22 +44,16 @@ export async function submitManualShardTransfer(
   if (!await deps.reserve(request)) return {status: "duplicate"};
   if (!await deps.claim(request.requestId)) return {status: "duplicate"};
 
-  let posted = false;
   try {
     // Once this line is reached, a timeout is UNCERTAIN, never safe to retry.
-    posted = true;
     const result = await deps.submitOnce(request);
     if (!result.transferId) throw new Error("Exchange did not return a transfer ID");
     await deps.accepted(request.requestId, result.transferId);
     return {status: "submitted", transferId: result.transferId};
-  } catch (error) {
-    if (posted) {
-      // If reconciliation persistence fails, surface the failure and keep
-      // the claimed DB row non-retryable. Never submit again.
-      await deps.unknown(request.requestId);
-      return {status: "unknown"};
-    }
-    await deps.failedBeforeSubmission(request.requestId);
-    throw error;
+  } catch {
+    // Once an exchange POST might have started, treat every failure as uncertain.
+    // Even if recording this state fails, the durable claim remains non-retryable.
+    await deps.unknown(request.requestId);
+    return {status: "unknown"};
   }
 }
