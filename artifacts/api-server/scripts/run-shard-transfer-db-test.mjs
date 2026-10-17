@@ -14,14 +14,14 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const outdir = join(root, 'node_modules', '.shard-transfer-db-tests');
 try {
   await build({
-    entryPoints: [join(root, 'src/lib/shardTransferLedgerRepository.test.ts'), join(root, 'src/lib/shardTransferSimulatedE2E.test.ts')],
+    entryPoints: [join(root, 'src/lib/shardTransferLedgerRepository.test.ts'), join(root, 'src/lib/shardTransferSimulatedE2E.test.ts'), join(root, 'src/lib/shardTransferSubmissionAdapter.test.ts')],
     outdir, bundle: true, platform: 'node', format: 'cjs', target: 'node22',
     outExtension: { '.js': '.cjs' },
 
   });
   // Run suites sequentially: concurrent CREATE TABLE IF NOT EXISTS calls can
   // race while PostgreSQL creates its catalog type on a pristine test DB.
-  for (const name of ['shardTransferLedgerRepository.test.cjs', 'shardTransferSimulatedE2E.test.cjs']) {
+  for (const name of ['shardTransferLedgerRepository.test.cjs', 'shardTransferSimulatedE2E.test.cjs', 'shardTransferSubmissionAdapter.test.cjs']) {
     const result = spawnSync(process.execPath, ['--test', join(outdir, name)], { stdio: 'inherit', env: process.env });
     if (result.error) throw result.error;
     if (result.status !== 0) { process.exitCode = result.status ?? 1; break; }
