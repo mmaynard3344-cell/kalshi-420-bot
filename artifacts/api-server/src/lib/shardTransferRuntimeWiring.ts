@@ -1,4 +1,5 @@
 import { kalshiAuthFetch } from "./kalshiAuth.js";
+import { getFreshShardTransferBalanceCents } from "./shardTransferFreshBalance.js";
 import { buildShardTransferPayload } from "./shardTransferPayload.js";
 import { createShardTransferKalshiTransport } from "./shardTransferKalshiTransport.js";
 import { makeShardTransferDependencies } from "./shardTransferSubmissionAdapter.js";
@@ -13,7 +14,7 @@ import { submitManualShardTransfer } from "./shardTransferOrchestrator.js";
  * schema migration, and an explicit production release decision.
  */
 export function createUnenabledShardTransferRuntime(
-  uncachedAvailableBalanceCents: (shard: 0 | 2) => Promise<number>,
+  uncachedAvailableBalanceCents: (shard: 0 | 2) => Promise<number> = getFreshShardTransferBalanceCents,
 ) {
   const deps = makeShardTransferDependencies({
     uncachedAvailableBalanceCents,
