@@ -1,0 +1,31 @@
+name: ETH G PR validation
+on:
+  pull_request:
+    paths:
+      - 'artifacts/api-server/src/g4060ScalpIndex.ts'
+      - 'artifacts/api-server/src/lib/sharedEth*.ts'
+      - 'artifacts/api-server/scripts/run-g-shared-latch-regression-test.mjs'
+      - '.github/workflows/eth-g-pr-validation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  g-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: G shared ladder source regression
+        run: node artifacts/api-server/scripts/run-g-shared-latch-regression-test.mjs
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Build
+        run: pnpm build
