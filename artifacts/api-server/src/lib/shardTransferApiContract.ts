@@ -11,3 +11,11 @@ export function parseShardTransferCreationResponse(raw: unknown): string {
   }
   return id;
 }
+
+/** Build a read-only single-transfer URL; never permit an arbitrary path. */
+export function singleTransferLookupPath(transferId: string): string {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(transferId)) {
+    throw new Error("Invalid exchange transfer identifier");
+  }
+  return SHARD_TRANSFER_HISTORY_PATH + "/" + encodeURIComponent(transferId);
+}
