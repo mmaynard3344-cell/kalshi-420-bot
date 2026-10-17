@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { requireFreshShardBalanceCents } from "./shardTransferFreshBalance.js";
+import { requireFreshShardBalanceCents } from "./shardTransferBalanceValidation.js";
 
 test("accepts only fresh nonnegative integer shard balance", () => {
   assert.equal(requireFreshShardBalanceCents({stale:false,value:{balance:1250}}),1250);
