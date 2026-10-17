@@ -10,6 +10,7 @@ export type TransactionProvider = {
 };
 export type EthClaimRequest = {
   claimId: string; service: string; ticker: string; side: "yes" | "no";
+  expectedVersion?: number;
 };
 export type EthClaim = EthClaimRequest & { step: number; budgetCents: number };
 
@@ -19,12 +20,13 @@ export async function claimFirstEthSignal(
   if (!req.claimId || !req.service || !req.ticker || !["yes","no"].includes(req.side))
     throw new Error("incomplete ETH claim");
   return db.transaction(async tx => {
-    const {rows} = await tx.query<{step:number;active_claim_id:string|null}>(
-      "SELECT step, active_claim_id FROM eth_shared_martingale_state WHERE singleton=TRUE FOR UPDATE"
+    const {rows} = await tx.query<{step:number;active_claim_id:string|null;version:number}>(
+      "SELECT step, active_claim_id, version FROM eth_shared_martingale_state WHERE singleton=TRUE FOR UPDATE"
     );
     const state = rows[0];
     if (!state) throw new Error("ETH shared ladder has not been initialized");
     if (state.active_claim_id) return null;
+    if (req.expectedVersion !== undefined && (!Number.isSafeInteger(req.expectedVersion) || Number(state.version) !== req.expectedVersion)) return null;
     const step = Number(state.step), budgetCents = wagerCents(step);
     await tx.query(
       "INSERT INTO eth_shared_martingale_claims (claim_id,service,ticker,side,step,budget_cents) VALUES ($1,$2,$3,$4,$5,$6)",
