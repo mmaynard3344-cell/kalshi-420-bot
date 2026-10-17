@@ -1333,7 +1333,7 @@ async function load(){
  finally{el('refresh').disabled=false}
 }
 el('refresh').addEventListener('click',load);el('market').addEventListener('change',draw);load();
-</script><script src="/martingale-cycles.js" defer></script></body></html>`;
+</script><script src="/martingale-cycles.js?v=20261017-outcomes-2" defer></script></body></html>`;
   return send(res,200,req.method === 'HEAD' ? '' : html,'text/html; charset=utf-8');
 }
 
