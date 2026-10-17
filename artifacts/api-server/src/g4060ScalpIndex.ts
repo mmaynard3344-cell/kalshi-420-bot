@@ -604,6 +604,34 @@ async function tick(): Promise<void> {
     const market = await discoverCurrentMarket();
     if (!market || Date.now() < market.openMs || Date.now() > market.openMs + ENTRY_WINDOW_MS) return;
     let state = await loadState();
+    if (process.env["ETH_G_SHARED_MARTINGALE_ENABLED"] === "true" && state.ladderSide != null) {
+      // Reconcile against the authoritative shared ledger before carrying G's
+      // direction into another market. Fail closed if a different service
+      // settled the shared cycle after G's last settlement.
+      const latest = await sharedEthPgProvider.transaction(async tx =>
+        tx.query<{service:string;ticker:string;outcome:string}>(
+          "SELECT service,ticker,outcome FROM eth_shared_martingale_claims " +
+          "WHERE status IN ('SETTLED','ZERO_FILL') " +
+          "ORDER BY resolved_at DESC, claim_id DESC LIMIT 1"
+        )
+      );
+      const lastG = rows(await (await db()).execute(sql`
+        SELECT ticker FROM eth_g_streak_reversal_orders
+        WHERE settled_at_ms IS NOT NULL ORDER BY settled_at_ms DESC LIMIT 1
+      `))[0];
+      const claim = latest.rows[0];
+      if (!claim || !lastG || claim.service !== "G"
+        || claim.ticker !== lastG["ticker"] || claim.outcome === "WIN") {
+        await (await db()).execute(sql`
+          UPDATE eth_g_streak_reversal_state
+          SET ladder_side=NULL, step=0, updated_at_ms=${Date.now()}
+          WHERE id=1
+        `);
+        logger.warn({ticker:market.ticker, latestService:claim?.service},
+          "G stale shared direction reset after external or mismatched settlement");
+        state = await loadState();
+      }
+    }
 
     if (state.ladderSide == null) {
       const stored = await publishedDirection(market.ticker);
