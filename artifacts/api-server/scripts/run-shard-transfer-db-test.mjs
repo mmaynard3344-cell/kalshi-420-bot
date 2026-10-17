@@ -16,7 +16,7 @@ try {
   await build({
     entryPoints: [join(root, 'src/lib/shardTransferLedgerRepository.test.ts')],
     outfile, bundle: true, platform: 'node', format: 'esm', target: 'node22',
-    external: ['pg', 'drizzle-orm', 'drizzle-orm/*', 'drizzle-zod', 'zod'],
+
   });
   const result = spawnSync(process.execPath, ['--test', outfile], { stdio: 'inherit', env: process.env });
   if (result.error) throw result.error;
