@@ -45,3 +45,16 @@ test("exchange timeout is unknown and not retried", async () => {
   assert.deepEqual(await submitManualShardTransfer(request,deps),{status:"unknown"});
   assert.deepEqual(calls,["balance","reserve","claim","post","unknown"]);
 });
+
+test("failure to persist exchange acceptance is uncertain, not retried", async () => {
+  const {deps,calls} = fakeDeps();
+  deps.accepted = async () => {calls.push("accepted"); throw new Error("database temporarily unavailable");};
+  assert.deepEqual(await submitManualShardTransfer(request,deps),{status:"unknown"});
+  assert.deepEqual(calls,["balance","reserve","claim","post","accepted","unknown"]);
+});
+test("failure to claim reservation never reaches the exchange", async () => {
+  const {deps,calls} = fakeDeps();
+  deps.claim = async () => false;
+  assert.deepEqual(await submitManualShardTransfer(request,deps),{status:"duplicate"});
+  assert.deepEqual(calls,["balance","reserve","claim"]);
+});
