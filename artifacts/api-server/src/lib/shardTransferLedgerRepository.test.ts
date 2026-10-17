@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { pool } from "@workspace/db";
+import { CREATE_SHARD_TRANSFER_LEDGER_SQL } from "./shardTransferLedgerSql.js";
 import { test } from "node:test";
 import {
   reserveShardTransfer,
@@ -16,6 +18,7 @@ const enabled = process.env["SHARD_TRANSFER_TEST_DATABASE"] === "1"
   && process.env["NODE_ENV"] === "test"
   && process.env["SHARD_TRANSFER_DISPOSABLE_DB_CONFIRMED"] === "yes";
 test("durable reservation permits one claim and disallows duplicate request IDs", { skip: !enabled }, async () => {
+  await pool.query(CREATE_SHARD_TRANSFER_LEDGER_SQL);
   const requestId = randomUUID();
   const request = {
     sourceExchangeShard: 0 as const,
@@ -31,4 +34,5 @@ test("durable reservation permits one claim and disallows duplicate request IDs"
   assert.equal(await markShardTransferUnknown(requestId), undefined);
   const record = await readShardTransfer(requestId);
   assert.equal(record?.["state"], "unknown");
+  await pool.query("DELETE FROM operator_shard_transfers WHERE request_id = $1::uuid", [requestId]);
 });
