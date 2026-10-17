@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import {
   reserveShardTransfer,
@@ -12,9 +13,10 @@ import {
  * NEVER set SHARD_TRANSFER_TEST_DATABASE=1 on a trading production database.
  */
 const enabled = process.env["SHARD_TRANSFER_TEST_DATABASE"] === "1"
-  && process.env["NODE_ENV"] !== "production";
+  && process.env["NODE_ENV"] === "test"
+  && process.env["SHARD_TRANSFER_DISPOSABLE_DB_CONFIRMED"] === "yes";
 test("durable reservation permits one claim and disallows duplicate request IDs", { skip: !enabled }, async () => {
-  const requestId = crypto.randomUUID();
+  const requestId = randomUUID();
   const request = {
     sourceExchangeShard: 0 as const,
     destinationExchangeShard: 2 as const,
