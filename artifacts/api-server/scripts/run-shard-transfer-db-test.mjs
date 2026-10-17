@@ -11,16 +11,16 @@ if (process.env.NODE_ENV !== 'test'
   throw new Error('Refusing transfer DB test: dedicated localhost disposable shard_transfer_test database required');
 }
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const outfile = join(root, 'node_modules', '.shard-transfer-db-test.cjs');
+const outdir = join(root, 'node_modules', '.shard-transfer-db-tests');
 try {
   await build({
-    entryPoints: [join(root, 'src/lib/shardTransferLedgerRepository.test.ts')],
-    outfile, bundle: true, platform: 'node', format: 'cjs', target: 'node22',
+    entryPoints: [join(root, 'src/lib/shardTransferLedgerRepository.test.ts'), join(root, 'src/lib/shardTransferSimulatedE2E.test.ts')],
+    outdir, bundle: true, platform: 'node', format: 'cjs', target: 'node22',
 
   });
-  const result = spawnSync(process.execPath, ['--test', outfile], { stdio: 'inherit', env: process.env });
+  const result = spawnSync(process.execPath, ['--test', join(outdir, 'shardTransferLedgerRepository.test.js'), join(outdir, 'shardTransferSimulatedE2E.test.js')], { stdio: 'inherit', env: process.env });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
 } finally {
-  rmSync(outfile, {force:true});
+  rmSync(outdir, {recursive:true,force:true});
 }
