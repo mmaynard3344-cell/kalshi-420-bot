@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'artifacts/api-server/src/g4060ScalpIndex.ts'
+      - 'artifacts/api-server/src/lib/autoTrader.ts'
+      - 'artifacts/api-server/src/lib/autoTrader.integration.test.ts'
       - 'artifacts/api-server/src/lib/sharedEth*.ts'
       - 'artifacts/api-server/scripts/run-g-shared-latch-regression-test.mjs'
       - '.github/workflows/eth-g-pr-validation.yml'
