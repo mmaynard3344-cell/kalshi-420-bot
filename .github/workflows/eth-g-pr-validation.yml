@@ -44,6 +44,8 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Initialize disposable CI PostgreSQL schema
+        run: pnpm --dir lib/db push-force
       - name: G shared ladder source regression
         run: node artifacts/api-server/scripts/run-g-shared-latch-regression-test.mjs
       - name: Typecheck
