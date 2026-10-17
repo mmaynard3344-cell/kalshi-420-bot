@@ -20,6 +20,30 @@
     state.style.color = '#b9c7da';
     setText(state, cycle && cycle.status ? cycle.status : 'Verified cycle source unavailable');
     section.append(name, step, stake, document.createElement('br'), state);
+    if (market === 'ETH' || market === 'BTC') {
+      var outcomes = document.createElement('div');
+      outcomes.style.cssText = 'margin-top:12px;padding-top:10px;border-top:1px solid #40516a;font-size:13px';
+      var label = document.createElement('div');
+      label.style.cssText = 'color:#b9c7da;margin-bottom:6px';
+      setText(label, 'Last 3 settled outcomes · oldest first');
+      outcomes.appendChild(label);
+      var entries = cycle && Array.isArray(cycle.lastOutcomes) ? cycle.lastOutcomes : [];
+      if (!entries.length) {
+        var empty = document.createElement('small');
+        setText(empty, 'Outcomes unavailable');
+        outcomes.appendChild(empty);
+      } else {
+        entries.forEach(function (entry) {
+          var chip = document.createElement('span');
+          var yes = entry.result === 'yes';
+          chip.style.cssText = 'display:inline-block;margin:0 6px 4px 0;padding:5px 8px;border-radius:6px;font-weight:700;background:'+
+            (yes ? '#173f37;color:#a8f3d4' : '#47262d;color:#ffbfc5');
+          setText(chip, yes ? 'YES ↑' : 'NO ↓');
+          outcomes.appendChild(chip);
+        });
+      }
+      section.appendChild(outcomes);
+    }
     return section;
   }
   async function refresh() {
