@@ -17,3 +17,15 @@ test("dashboard proxy remains GET/HEAD only and transfer POST stays disabled", (
   assert.match(guardedPost[0], /transfer_submitted:\s*false/);
   assert.doesNotMatch(guardedPost[0], /kalshiAuthFetch|submitManualShardTransfer/);
 });
+
+test("operator endpoints cannot be reached through dashboard's public read proxy", () => {
+  const repoRoot = resolve(process.cwd(), "../..");
+  const proxy = readFileSync(resolve(repoRoot, "artifacts/kalshi-reader/server.mjs"), "utf8");
+  const routes = readFileSync(resolve(repoRoot, "artifacts/api-server/src/routes/trade.ts"), "utf8");
+  const allowlist = proxy.match(/ALLOWED_READ_PATHS = new Set\(\[([\s\S]*?)\]\)/);
+  assert.ok(allowlist, "Explicit public read allowlist is required");
+  assert.doesNotMatch(allowlist[1], /\/api\/trade\/shard-transfer\/|\/api\/trade\/shard-transfer['"]/);
+  assert.match(routes, /router\.post\("\/trade\/shard-transfer\/preview", requireTradeAuth/);
+  assert.match(routes, /router\.get\("\/trade\/shard-transfer\/:requestId", requireTradeAuth/);
+  assert.match(routes, /router\.get\("\/trade\/shard-transfer\/:requestId"[\s\S]*?verifyShardTransferOperatorToken/);
+});
