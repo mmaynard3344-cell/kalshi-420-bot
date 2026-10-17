@@ -24,7 +24,9 @@ export async function submitReservedBtcOrder({pool,orderId,ticker,side,askCents,
   if(!ack||!["accepted","rejected","uncertain"].includes(ack.kind))return {kind:"held",reason:"unknown_exchange_ack",orderId};
   if (ack.exchangeOrderId) await attachBtcExchangeOrderId(pool,orderId,ack.exchangeOrderId);
   return {kind:ack.kind==="accepted"?"submitted":"held",reason:ack.kind==="accepted"?null:"exchange_reconciliation_required",orderId,exchangeOrderId:ack.exchangeOrderId??null};
- }catch{
+ }catch(error){
+  const detail=error instanceof Error?error.message:String(error);
+  console.error(JSON.stringify({event:"btc_order_submission_error",clientOrderId:orderId,ticker,detail:detail.slice(0,500)}));
   return {kind:"held",reason:"exchange_reconciliation_required",orderId};
  }
 }
