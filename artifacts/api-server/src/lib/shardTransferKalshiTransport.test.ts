@@ -10,6 +10,7 @@ test("transport submits only on explicit invocation, with exactly one POST", asy
   });
   assert.equal(calls.length,0);
   const payload = {
+    client_transfer_id:"69e61066-4170-4eb4-bfca-1b33800ca633",
     source:"event_contract" as const,destination:"event_contract" as const,
     source_exchange_shard:0 as const,destination_exchange_shard:2 as const,
     source_subaccount:0,destination_subaccount:0,amount:10000,
@@ -26,6 +27,7 @@ test("transport does not retry uncertain POST errors", async () => {
     attempts++;throw new Error("simulated timeout");
   });
   await assert.rejects(transport({
+    client_transfer_id:"69e61066-4170-4eb4-bfca-1b33800ca633",
     source:"event_contract",destination:"event_contract",source_exchange_shard:0,
     destination_exchange_shard:2,source_subaccount:0,destination_subaccount:0,amount:10000,
   }),/timeout/);
