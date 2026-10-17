@@ -8,9 +8,9 @@ export function describeShardTransferStatus(raw: Record<string, unknown>) {
   return {
     state,
     transferId,
-    fundsArrived: state === "completed",
+    fundsArrived: state === "completed" && transferId !== null,
     requiresReconciliation: state === "unknown",
-    message: state === "completed" ? "Exchange completion recorded"
+    message: state === "completed" && transferId !== null ? "Exchange completion recorded"
       : state === "submitted" ? "Accepted by exchange; completion not yet verified"
       : state === "unknown" ? "Submission outcome uncertain; operator reconciliation required"
       : state === "failed" ? "Reconciled as failed"
