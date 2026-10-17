@@ -27,5 +27,5 @@ export function validateShardTransferRequest(value: unknown): ShardTransferReque
   if (typeof v["requestId"] !== "string" || !/^[0-9a-f-]{36}$/i.test(v["requestId"])) {
     throw new Error("A unique request ID is required");
   }
-  return {sourceExchangeShard: source, destinationExchangeShard: destination, amountCents: amount, confirmation: v["confirmation"], requestId: v["requestId"]};
+  return {sourceExchangeShard: source as 0 | 2, destinationExchangeShard: destination as 0 | 2, amountCents: amount, confirmation: v["confirmation"] as string, requestId: v["requestId"] as string};
 }
