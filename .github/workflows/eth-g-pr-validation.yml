@@ -66,6 +66,14 @@ jobs:
           git restore --source=origin/review/eth-g-shared-ladder-adapter -- artifacts/api-server/src/lib/sharedEthClaimStore.ts artifacts/api-server/src/lib/sharedEthOrderGateway.ts artifacts/api-server/src/lib/sharedEthOrderSizing.ts artifacts/api-server/src/lib/sharedEthPgProvider.ts artifacts/api-server/src/lib/strategies/ethServiceRole.ts
           pnpm install --frozen-lockfile
           pnpm --dir artifacts/api-server exec node scripts/run-integration-test.mjs
+      - name: Isolate ETH dispatcher handoff test
+        run: pnpm --dir artifacts/api-server exec node scripts/run-integration-test.mjs
+        env:
+          AUTO_TRADER_TEST_NAME_PATTERN: "re-evaluates the already-open ETH window"
+      - name: Isolate ETH post-open evaluation test
+        run: pnpm --dir artifacts/api-server exec node scripts/run-integration-test.mjs
+        env:
+          AUTO_TRADER_TEST_NAME_PATTERN: "uses a fresh post-open lookup"
       - name: Dispatcher repeatability check (3 isolated runs)
         run: |
           for i in 1 2 3; do
