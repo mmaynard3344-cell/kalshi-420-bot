@@ -18,6 +18,7 @@ if (!graceToken) throw new Error('GRACE_TRADE_API_TOKEN must be set');
 
 const ALLOWED_READ_PATHS = new Set([
   '/api/trade/balance',
+  '/api/trade/shard-transfers',
   '/api/trade/status',
   '/api/trade/positions',
   '/api/trade/martingale',
