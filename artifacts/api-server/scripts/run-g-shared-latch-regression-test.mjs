@@ -14,6 +14,7 @@ for (const [fragment, description] of [
   ["step=${sharedSettlement.step}", "shared authoritative rung mirrored"],
 ]) assert.ok(section.includes(fragment), description);
 assert.ok(strategy.includes("await exactTwoStreakDecision(market.openMs)"), "fresh entry checks settled streak");
+assert.ok(strategy.includes('side: one.result === "yes" ? "no" : "yes"'), "G must trade opposite of two-outcome streak");
 assert.ok(strategy.includes("decision.key === state.lastTriggerKey"), "prevent trigger replay");
 assert.ok(strategy.includes("claim.service !== \"G\""), "external service settlement clears G latch");
 assert.ok(strategy.includes("claim.ticker !== lastG[\"ticker\"]"), "stale or unrelated claim cannot carry G direction");
