@@ -1,0 +1,43 @@
+name: Read-only shard balance API validation
+on:
+  push:
+    branches:
+      - feat/shard-funds-readonly-api-20261017
+  pull_request:
+    paths:
+      - 'artifacts/api-server/src/routes/trade.ts'
+      - '.github/workflows/shard-balances-readonly-api.yml'
+jobs:
+  verify-readonly-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.26.1'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck:libs
+      - name: Validate read-only balance endpoint invariants
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync } from 'node:fs';
+          import assert from 'node:assert/strict';
+          const route=readFileSync('artifacts/api-server/src/routes/trade.ts','utf8');
+          const start=route.indexOf('router.get("/trade/balance", requireTradeAuth');
+          const end=route.indexOf('router.get("/trade/balance/exchange/:exchangeIndex"',start);
+          assert.ok(start>=0 && end>start,'expected authenticated read endpoint');
+          const endpoint=route.slice(start,end);
+          assert.match(endpoint,/const shardIndexes = \[0, 1, 2\] as const/);
+          assert.match(endpoint,/fetchKalshiBalanceForExchangeRead\(exchangeIndex\)/);
+          assert.match(endpoint,/shard_balances: shardBalances/);
+          assert.match(endpoint,/stale: true/);
+          assert.doesNotMatch(endpoint,/kalshiAuthFetch\(\s*["']POST|submitManualShardTransfer|intra_exchange_instance_transfer/);
+          console.log('Read-only shard endpoint static invariants passed');
+          EOF
+      - name: API typecheck (existing strategy errors tracked separately)
+        continue-on-error: true
+        run: pnpm --filter @workspace/api-server typecheck

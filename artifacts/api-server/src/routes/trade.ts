@@ -1419,7 +1419,23 @@ router.get("/trade/balance", requireTradeAuth, async (_req, res) => {
           return null;
         }),
     ]);
-    res.json(buildTradeBalanceDashboardResponse(read, activeEthExchangeIndex, activeEthExchangeBalance));
+    // Read-only dashboard metadata only. Never use cached values to authorize transfers.
+    const shardIndexes = [0, 1, 2] as const;
+    const shardBalances = await Promise.all(shardIndexes.map(async (exchangeIndex) => {
+      try {
+        const scoped = await fetchKalshiBalanceForExchangeRead(exchangeIndex);
+        const balanceCents = scoped.value["balance"];
+        return {
+          exchange_index: exchangeIndex,
+          available_balance_cents: typeof balanceCents === "number" && Number.isSafeInteger(balanceCents) && balanceCents >= 0 ? balanceCents : null,
+          stale: scoped.stale,
+        };
+      } catch (error) {
+        logger.warn({ exchangeIndex, error }, "Read-only scoped balance unavailable");
+        return { exchange_index: exchangeIndex, available_balance_cents: null, stale: true };
+      }
+    }));
+    res.json({ ...buildTradeBalanceDashboardResponse(read, activeEthExchangeIndex, activeEthExchangeBalance), shard_balances: shardBalances });
   } catch (err: unknown) {
     const e = err as { status?: number; body?: unknown; message?: string; stack?: string };
 
