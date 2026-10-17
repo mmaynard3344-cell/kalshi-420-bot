@@ -308,11 +308,25 @@ async function settleOrder(order: GOrder, result: OutcomeSide): Promise<void> {
     const outcome=verifiedFills===0?"ZERO_FILL":order.side===result?"WIN":"LOSS";
     await finalizeEthClaim(sharedEthPgProvider,String(linked["claim_id"]),
       "G:"+order.clientOrderId+":"+result,outcome);
-    await d.execute(sql`
+    const settled = await d.execute(sql`
       UPDATE eth_g_streak_reversal_orders SET settlement_result=${result},
         won=${verifiedFills>0?order.side===result:null},filled_contracts=${verifiedFills},settled_at_ms=${Date.now()},
         updated_at_ms=${Date.now()} WHERE id=${order.id} AND settled_at_ms IS NULL
+      RETURNING id
     `);
+    // Shared-claim settlement must also release G's independently durable
+    // directional latch on a verified win. Otherwise every subsequent 15m
+    // market skips exactTwoStreakDecision and repeats the stale side.
+    // Preserve last_trigger_key to prevent replay of an already-used signal.
+    if (rows(settled).length === 1 && outcome === "WIN") {
+      await d.execute(sql`
+        UPDATE eth_g_streak_reversal_state
+        SET ladder_side=NULL, step=0, updated_at_ms=${Date.now()}
+        WHERE id=1 AND ladder_side=${order.side}
+      `);
+      logger.info({ ticker: order.ticker, outcome, side: order.side },
+        "G shared win cleared directional latch; fresh two-streak signal required");
+    }
     return;
   }
   const won = order.filledContracts > 0 ? order.side === result : null;
