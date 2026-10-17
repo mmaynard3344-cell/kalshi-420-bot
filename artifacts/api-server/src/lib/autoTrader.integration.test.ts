@@ -254,7 +254,12 @@ describe("new-entry dispatcher boundary", () => {
     assert.equal(evaluations, 0, "initialized metadata must never evaluate directly");
 
     mock.timers.tick(1);
-    await new Promise((resolve) => setImmediate(resolve));
+    // The boundary timer starts an asynchronous fresh REST/evaluate chain.
+    // Wait for that chain to reach its observable evaluator; one event-loop
+    // turn is not guaranteed to flush nested promises on CI machines.
+    for (let turn = 0; turn < 30 && evaluations === 0; turn++) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
     assert.deepEqual(requests, [{ forceFresh: true }], "boundary probe bypasses the normal cache");
     assert.equal(evaluations, 1, "only the fresh active response enters the existing evaluator");
   });
