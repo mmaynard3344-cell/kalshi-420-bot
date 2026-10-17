@@ -79,6 +79,7 @@ import { getProtectiveExitMonitorStatus } from "../lib/protectiveExit.js";
 import { getExchangeDiscoverySweepStatus } from "../lib/fillReconciler.js";
 import { timingSafeEqual } from "crypto";
 import { verifyShardTransferOperatorToken } from "../lib/shardTransferOperatorAuth.js";
+import { validateShardTransferHttpBoundary } from "../lib/shardTransferRequestBoundary.js";
 import { readShardTransfer } from "../lib/shardTransferLedgerRepository.js";
 import { ethMartingaleLedgerToCSV } from "../lib/csvExport.js";
 import { getAccountHistoryFingerprint } from "../lib/kalshiAccountFingerprint.js";
@@ -1403,6 +1404,16 @@ router.post("/trade/shard-transfer", requireTradeAuth, (req, res) => {
     VALID_TRADE_TOKENS,
   )) {
     res.status(403).json({error: "Independent transfer operator authorization required", transfer_submitted: false});
+    return;
+  }
+  if (!validateShardTransferHttpBoundary({
+    contentType: req.header("content-type"),
+    origin: req.header("origin"),
+    expectedOrigin: process.env["SHARD_TRANSFER_ALLOWED_ORIGIN"],
+    fetchSite: req.header("sec-fetch-site"),
+    contentLength: req.header("content-length"),
+  })) {
+    res.status(403).json({ error: "Transfer request origin or content rejected", transfer_submitted: false });
     return;
   }
   res.status(503).json({
