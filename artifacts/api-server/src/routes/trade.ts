@@ -1476,7 +1476,7 @@ router.get("/trade/shard-transfer/:requestId", requireTradeAuth, async (req, res
     // It does not mark completion, even if the exchange response looks final.
     if (req.query.reconcile === "read") {
       const reconciliation = await checkShardTransferReadOnly(
-        { state: record.state, exchangeTransferId: record.exchange_transfer_id },
+        { state: typeof record.state === "string" ? record.state : "unknown", exchangeTransferId: typeof record.exchange_transfer_id === "string" ? record.exchange_transfer_id : null },
         (path) => kalshiAuthFetch("GET", path),
       );
       res.json({ transfer: record, interpretation: describeShardTransferStatus(record), reconciliation });
