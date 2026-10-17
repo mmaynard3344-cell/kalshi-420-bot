@@ -11,11 +11,11 @@ if (process.env.NODE_ENV !== 'test'
   throw new Error('Refusing transfer DB test: dedicated localhost disposable shard_transfer_test database required');
 }
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const outfile = join(root, 'node_modules', '.shard-transfer-db-test.mjs');
+const outfile = join(root, 'node_modules', '.shard-transfer-db-test.cjs');
 try {
   await build({
     entryPoints: [join(root, 'src/lib/shardTransferLedgerRepository.test.ts')],
-    outfile, bundle: true, platform: 'node', format: 'esm', target: 'node22',
+    outfile, bundle: true, platform: 'node', format: 'cjs', target: 'node22',
 
   });
   const result = spawnSync(process.execPath, ['--test', outfile], { stdio: 'inherit', env: process.env });
