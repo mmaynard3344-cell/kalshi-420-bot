@@ -16,9 +16,10 @@ try {
   await build({
     entryPoints: [join(root, 'src/lib/shardTransferLedgerRepository.test.ts'), join(root, 'src/lib/shardTransferSimulatedE2E.test.ts')],
     outdir, bundle: true, platform: 'node', format: 'cjs', target: 'node22',
+    outExtension: { '.js': '.cjs' },
 
   });
-  const result = spawnSync(process.execPath, ['--test', join(outdir, 'shardTransferLedgerRepository.test.js'), join(outdir, 'shardTransferSimulatedE2E.test.js')], { stdio: 'inherit', env: process.env });
+  const result = spawnSync(process.execPath, ['--test', join(outdir, 'shardTransferLedgerRepository.test.cjs'), join(outdir, 'shardTransferSimulatedE2E.test.cjs')], { stdio: 'inherit', env: process.env });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
 } finally {
