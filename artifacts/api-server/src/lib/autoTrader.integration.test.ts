@@ -8,6 +8,8 @@
  */
 
 import assert from "node:assert/strict";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, it, mock } from "node:test";
 import {
   _restFetchAllForTesting,
@@ -261,7 +263,14 @@ describe("new-entry dispatcher boundary", () => {
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
     assert.deepEqual(requests, [{ forceFresh: true }], "boundary probe bypasses the normal cache");
-    assert.equal(evaluations, 1, "only the fresh active response enters the existing evaluator");
+    const auditDir = join(process.cwd(), "data", "analytics");
+    const boundaryAudit = existsSync(auditDir)
+      ? readdirSync(auditDir).filter(name => name.startsWith("boundary-discovery-"))
+          .flatMap(name => readFileSync(join(auditDir, name), "utf8").split("\\n"))
+          .filter(line => line.includes(ticker)).slice(-12).join(" | ")
+      : "(no boundary audit directory)";
+    assert.equal(evaluations, 1,
+      `only the fresh active response enters the existing evaluator; trace: ${boundaryAudit}`);
   });
 
   it("bounds inactive boundary retries and preserves periodic fallback fetches", async () => {
