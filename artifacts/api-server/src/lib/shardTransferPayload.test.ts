@@ -11,6 +11,7 @@ const request = {
 test("converts $25 to 250000 centicents", () => {
   const payload = buildShardTransferPayload(request);
   assert.equal(payload.amount, 250000);
+  assert.equal(payload.client_transfer_id, request.requestId);
   assert.equal(payload.source_exchange_shard, 0);
   assert.equal(payload.destination_exchange_shard, 2);
 });
