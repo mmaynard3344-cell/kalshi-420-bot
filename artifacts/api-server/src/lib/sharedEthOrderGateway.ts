@@ -11,6 +11,7 @@ export type SharedEthOrderRequest = {
  ticker: string;
  side: "yes"|"no";
  clientOrderId: string;
+ expectedVersion?: number;
 };
 export type SharedEthSubmitResult<T> =
  | {status:"SKIPPED_ACTIVE_CLAIM"}
@@ -25,7 +26,7 @@ export async function submitThroughSharedEthGate<T>(
  if(!request.ticker.startsWith("KXETH15M-"))throw new Error("ETH-only boundary rejects non-ETH ticker");
  if(!request.clientOrderId || !request.service)throw new Error("missing ETH order identity");
  const claimId=randomUUID();
- const claim=await claimFirstEthSignal(db,{claimId,service:request.service,ticker:request.ticker,side:request.side});
+ const claim=await claimFirstEthSignal(db,{claimId,service:request.service,ticker:request.ticker,side:request.side,expectedVersion:request.expectedVersion});
  if(!claim)return {status:"SKIPPED_ACTIVE_CLAIM"};
  // Persist SUBMITTED with durable client-order identity first. This deliberately
  // holds the claim even if the following network submission fails or times out.
