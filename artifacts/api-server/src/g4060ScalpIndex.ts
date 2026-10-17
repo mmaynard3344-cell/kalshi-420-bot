@@ -308,25 +308,38 @@ async function settleOrder(order: GOrder, result: OutcomeSide): Promise<void> {
     const outcome=verifiedFills===0?"ZERO_FILL":order.side===result?"WIN":"LOSS";
     await finalizeEthClaim(sharedEthPgProvider,String(linked["claim_id"]),
       "G:"+order.clientOrderId+":"+result,outcome);
-    const settled = await d.execute(sql`
-      UPDATE eth_g_streak_reversal_orders SET settlement_result=${result},
-        won=${verifiedFills>0?order.side===result:null},filled_contracts=${verifiedFills},settled_at_ms=${Date.now()},
-        updated_at_ms=${Date.now()} WHERE id=${order.id} AND settled_at_ms IS NULL
-      RETURNING id
-    `);
-    // Shared-claim settlement must also release G's independently durable
-    // directional latch on a verified win. Otherwise every subsequent 15m
-    // market skips exactTwoStreakDecision and repeats the stale side.
-    // Preserve last_trigger_key to prevent replay of an already-used signal.
-    if (rows(settled).length === 1 && outcome === "WIN") {
-      await d.execute(sql`
-        UPDATE eth_g_streak_reversal_state
-        SET ladder_side=NULL, step=0, updated_at_ms=${Date.now()}
-        WHERE id=1 AND ladder_side=${order.side}
+    // Keep G's local six-rung directional latch synchronized with the shared
+    // claim's verified outcome. This transaction makes the journal settlement
+    // and direction advancement/reset crash-atomic.
+    await d.transaction(async (tx) => {
+      const settled = await tx.execute(sql`
+        UPDATE eth_g_streak_reversal_orders SET settlement_result=${result},
+          won=${verifiedFills>0?order.side===result:null},
+          filled_contracts=${verifiedFills},settled_at_ms=${Date.now()},
+          updated_at_ms=${Date.now()} WHERE id=${order.id} AND settled_at_ms IS NULL
+        RETURNING id
       `);
-      logger.info({ ticker: order.ticker, outcome, side: order.side },
-        "G shared win cleared directional latch; fresh two-streak signal required");
-    }
+      if (rows(settled).length !== 1 || outcome === "ZERO_FILL") return;
+      if (outcome === "WIN") {
+        await tx.execute(sql`
+          UPDATE eth_g_streak_reversal_state SET ladder_side=NULL, step=0,
+            updated_at_ms=${Date.now()} WHERE id=1 AND ladder_side=${order.side}
+        `);
+        logger.info({ ticker:order.ticker }, "G shared win: direction cleared");
+      } else {
+        // G's step is its own consecutive-loss counter, independent of
+        // shared ETH claim sizing. After six verified G losses, require a
+        // fresh exact-two streak instead of repeating the same direction.
+        await tx.execute(sql`
+          UPDATE eth_g_streak_reversal_state
+          SET ladder_side=CASE WHEN step >= 5 THEN NULL ELSE ladder_side END,
+              step=CASE WHEN step >= 5 THEN 0 ELSE step+1 END,
+              updated_at_ms=${Date.now()}
+          WHERE id=1 AND ladder_side=${order.side}
+        `);
+        logger.info({ ticker:order.ticker }, "G shared loss: directional rung advanced or exhausted");
+      }
+    });
     return;
   }
   const won = order.filledContracts > 0 ? order.side === result : null;
