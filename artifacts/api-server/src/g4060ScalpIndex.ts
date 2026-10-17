@@ -432,7 +432,7 @@ async function exactTwoStreakDecision(currentOpenMs: number): Promise<MarketDire
     // Never declare NO SIGNAL until all three necessary settlements are known.
     if (!one || !two || !three) return { kind: "unknown" };
     if (one.result !== two.result || three.result === one.result) return { kind: "none" };
-    return { kind: "signal", side: one.result, priorResult: one.result, key: `${two.ticker}|${one.ticker}` };
+    return { kind: "signal", side: one.result === "yes" ? "no" : "yes", priorResult: one.result, key: `${two.ticker}|${one.ticker}` };
   } catch (err) {
     logger.warn({ err }, "G direction settlement history unavailable; decision deferred");
     return { kind: "unknown" };
