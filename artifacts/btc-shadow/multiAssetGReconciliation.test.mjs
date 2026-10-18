@@ -29,8 +29,9 @@ test("holds if fill page incomplete or empty",async()=>{
  {order:{order_id:"exchange-1",client_order_id:"client-1",ticker,side:"no",status:"executed"}};
  assert.equal((await verifyAssetGSettlement(x)).reason,"fill_history_incomplete");
 });
-test("never assumes bid or ask is a verified outcome side",async()=>{
- assert.equal((await verifyAssetGSettlement(inputs({order:{side:"bid"}}))).reason,"order_side_not_verified");
+test("verified Kalshi bid agrees with expected reservation side",async()=>{
+ assert.equal((await verifyAssetGSettlement(inputs({order:{side:"bid"}}))).outcome,"win");
+ assert.equal((await verifyAssetGSettlement({...inputs({order:{side:"bid"}}),expectedSide:"no"})).reason,"order_side_mismatch");
 });
 
 test("holds on open order even when market is settled and fills exist",async()=>{
