@@ -97,10 +97,17 @@ async function initStore(): Promise<void> {
     CREATE TABLE IF NOT EXISTS eth_g_streak_reversal_state (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       ladder_side TEXT CHECK (ladder_side IN ('yes','no')),
-      step INTEGER NOT NULL DEFAULT 0 CHECK (step BETWEEN 0 AND 2),
+      step INTEGER NOT NULL DEFAULT 0 CHECK (step BETWEEN 0 AND 5),
       last_trigger_key TEXT,
       updated_at_ms BIGINT NOT NULL
     )
+  `);
+  // Existing installations retain the original three-rung constraint from CREATE TABLE IF NOT EXISTS.
+  // Expand the LOCAL diagnostic state only. Do not reset it or alter the shared claim ledger.
+  await d.execute(sql`
+    ALTER TABLE eth_g_streak_reversal_state
+      DROP CONSTRAINT IF EXISTS eth_g_streak_reversal_state_step_check,
+      ADD CONSTRAINT eth_g_streak_reversal_state_step_check CHECK (step BETWEEN 0 AND 5)
   `);
   await d.execute(sql`
     INSERT INTO eth_g_streak_reversal_state (id, ladder_side, step, last_trigger_key, updated_at_ms)
