@@ -78,3 +78,27 @@ export async function readAssetG(pool,asset){
  const res=await pool.query("SELECT asset,step,pending_order_id,pending_settlement_id,last_settlement_id,version,updated_at FROM multi_asset_g_ladders WHERE asset=$1",[asset]);
  return res.rows[0]??null;
 }
+
+export async function getPendingAssetG(pool,asset){
+ assertAsset(asset);
+ const res=await pool.query(
+ "SELECT s.asset,s.step,s.pending_order_id,o.client_order_id,o.ticker,o.side,o.exchange_order_id,o.verified_filled_contracts FROM multi_asset_g_ladders s LEFT JOIN multi_asset_g_order_identity o ON o.asset=s.asset AND o.client_order_id=s.pending_order_id WHERE s.asset=$1",[asset]);
+ const r=res.rows[0];
+ if(!r)throw Error("g_asset_not_initialized");
+ if(!r.pending_order_id)return null;
+ if(!r.ticker||!r.side||r.client_order_id!==r.pending_order_id)throw Error("g_asset_pending_identity_missing");
+ return {asset,step:Number(r.step),orderId:r.pending_order_id,ticker:r.ticker,side:r.side,
+ exchangeOrderId:r.exchange_order_id??null,filledContracts:Number(r.verified_filled_contracts)};
+}
+export async function recordAssetGExchangeId(pool,{asset,orderId,exchangeOrderId}){
+ assertAsset(asset);
+ if(!orderId||!exchangeOrderId)throw Error("invalid_asset_g_exchange_order");
+ return transaction(pool,asset,async(old,client)=>{
+  if(old.pendingOrderId!==orderId)throw Error("g_asset_order_mismatch");
+  const r=await client.query(
+  "UPDATE multi_asset_g_order_identity SET exchange_order_id=$3 WHERE asset=$1 AND client_order_id=$2 AND (exchange_order_id IS NULL OR exchange_order_id=$3)",
+  [asset,orderId,exchangeOrderId]);
+  if(r.rowCount!==1)throw Error("g_asset_exchange_identity_conflict");
+  return {asset,orderId,exchangeOrderId};
+ });
+}
