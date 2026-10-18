@@ -167,6 +167,23 @@ export default function SharedSnapshot() {
           </div>
         </header>
 
+        <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm" aria-label="Additional G market rollout">
+          <h2 className="text-lg font-semibold text-foreground">Additional 15-minute G markets</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            SOL, XRP and DOGE are in integration review. They are not enabled for live trading.
+            Health and order activity will remain unverified until independent runners and telemetry are connected.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            {(['SOL', 'XRP', 'DOGE'] as const).map((asset) => (
+              <div key={asset} className="rounded-xl border border-border p-4">
+                <div className="font-semibold">{asset} G</div>
+                <div className="mt-2 text-sm font-medium text-muted-foreground">Not live · Integration pending</div>
+                <div className="mt-1 text-xs text-muted-foreground">6-step ladder planned · $2–$64</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <figure className="mt-6 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           <img
             src="/shared/shawshank-investments.png"
