@@ -1,0 +1,38 @@
+name: ETH G v2 disposable Postgres integration
+on:
+  pull_request:
+    paths:
+      - 'artifacts/eth-g-v2/schema.sql'
+      - 'artifacts/eth-g-v2/postgresSmoke.sql'
+      - '.github/workflows/eth-g-v2-postgres.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: test
+      PGPASSWORD: test
+      PGDATABASE: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply review-only ETH v2 schema
+        run: psql -v ON_ERROR_STOP=1 -f artifacts/eth-g-v2/schema.sql
+      - name: Test isolated ladder and settlement constraints
+        run: psql -v ON_ERROR_STOP=1 -f artifacts/eth-g-v2/postgresSmoke.sql
