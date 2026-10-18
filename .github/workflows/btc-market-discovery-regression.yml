@@ -22,7 +22,7 @@ jobs:
       - name: Read-only Kalshi open-market response check
         run: |
           node --input-type=module <<'NODE'
-          import { selectCurrent, PUBLIC_BASE } from './artifacts/btc-shadow/client.mjs';
+          import { selectCurrent, fetchCurrentBtcMarket, PUBLIC_BASE } from './artifacts/btc-shadow/client.mjs';
           const url = new URL(PUBLIC_BASE+'/markets');
           url.searchParams.set('series_ticker','KXBTC15M');
           url.searchParams.set('status','open');
@@ -65,5 +65,7 @@ jobs:
           console.log(JSON.stringify({probe:'exact_ticker',ticker,http:exact.status,market:exactBody.market && {
              ticker:exactBody.market.ticker,status:exactBody.market.status,open_time:exactBody.market.open_time,
              close_time:exactBody.market.close_time,floor_strike:exactBody.market.floor_strike}}));
-          if (!selected) throw new Error('Live Kalshi catalog does not yield exactly one eligible BTC market');
+          const direct = await fetchCurrentBtcMarket(Date.now());
+          console.log(JSON.stringify({directCurrentTicker:direct?.ticker || null}));
+          if (!direct) throw new Error('Live direct BTC market lookup failed validation');
           NODE
