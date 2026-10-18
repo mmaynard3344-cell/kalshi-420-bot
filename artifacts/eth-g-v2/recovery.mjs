@@ -26,6 +26,10 @@ export async function reconcileEthG({pending,authJson,marketJson}){
  if(order?.order_id!==exchangeOrderId||order?.client_order_id!==pending.clientOrderId||order?.ticker!==pending.ticker)
   return {state:"held",reason:"order_identity_mismatch"};
  if(order.side!=null && order.side!==pending.side)return {state:"held",reason:"order_side_mismatch"};
+ // Market settlement alone does not prove a partially filled GTC order is closed.
+ // Never advance while the exchange can still fill the remaining contracts.
+ if(!["executed","canceled","cancelled","filled","closed"].includes(String(order.status??"").toLowerCase()))
+  return {state:"held",reason:"exchange_order_not_final"};
  let cursor=null;const fills=[];let completed=false;
  for(let page=0;page<50;page++){
   const payload=await authJson("GET","/portfolio/fills?order_id="+encodeURIComponent(exchangeOrderId)+"&limit=200"+(cursor?"&cursor="+encodeURIComponent(cursor):""));
