@@ -99,3 +99,17 @@ test('Trade Log sign-in and preview use same-origin gateway, with transfer still
  assert.match(page,/type="button" disabled aria-disabled="true">Transfer disabled/);
  assert.doesNotMatch(page,/fetch\('\/api\/trade\/shard-transfer'/);
 });
+
+test('Trade Log embedded browser scripts parse independently', async()=>{
+ const {readFileSync}=await import('node:fs');
+ const {Script}=await import('node:vm');
+ const page=readFileSync(new URL('./server.mjs',import.meta.url),'utf8');
+ const start=page.indexOf('function serveSimpleTradeLog(');
+ const finish=page.indexOf('async function receiveUsdCycleSnapshot(',start);
+ assert.ok(start>=0&&finish>start);
+ const template=page.slice(start,finish);
+ const scripts=[...template.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)].map(m=>m[1]);
+ assert.ok(scripts.length>=2,'Trade Log inline scripts must be present');
+ for(const script of scripts) assert.doesNotThrow(()=>new Script(script));
+ assert.ok(scripts.some(script=>script.includes('/api/operator/shards/preview')));
+});
