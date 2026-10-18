@@ -16,6 +16,8 @@ export async function verifyAssetGSettlement({asset,clientOrderId,ticker,exchang
    return {state:"held",reason:"order_identity_unverified"};
  if(!Array.isArray(fillBody?.fills)||fillBody.cursor)
    return {state:"held",reason:"fill_history_incomplete"};
+ if(!["executed","filled","closed","canceled","cancelled"].includes(String(order.status??"").toLowerCase()))
+   return {state:"held",reason:"order_not_final"};
  const fills=fillBody.fills;
  if(fills.some(f=>f.order_id!==exchangeOrderId||f.ticker!==ticker))
    return {state:"held",reason:"fill_identity_mismatch"};
