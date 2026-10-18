@@ -1,0 +1,21 @@
+name: BTC market discovery regression
+on:
+  pull_request:
+    paths:
+      - 'artifacts/btc-shadow/client.mjs'
+      - 'artifacts/btc-shadow/client.market-discovery.test.mjs'
+      - '.github/workflows/btc-market-discovery-regression.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  market-discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fail-closed BTC market boundary regression
+        run: node --test artifacts/btc-shadow/client.market-discovery.test.mjs
