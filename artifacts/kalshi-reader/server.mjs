@@ -1379,7 +1379,15 @@ el('refresh').addEventListener('click',load);el('market').addEventListener('chan
    }
    if(!shardOperatorCsrf){result.textContent='Sign in to request a secure preview. Transfers are disabled.';return;}
    const amountCents=Math.round(Number(amount)*100);
-   const confirmation='TRANSFER 
+   const confirmation='TRANSFER '+String.fromCharCode(36)+Number(amount).toFixed(2)+' FROM '+direction[0]+' TO '+direction[1];
+   result.textContent='Checking secure preview…';
+   try {
+     const requestId=crypto.randomUUID();
+     const response=await fetch('/api/operator/shards/preview',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'content-type':'application/json','x-shard-operator-csrf':shardOperatorCsrf},body:JSON.stringify({requestId,sourceExchangeShard:Number(direction[0]),destinationExchangeShard:Number(direction[1]),amountCents,confirmation})});
+     const preview=await response.json();
+     if(!response.ok||preview.wouldSubmit!==false)throw Error('Rejected');
+     result.textContent='Authorized preview: '+String.fromCharCode(36)+Number(amount).toFixed(2)+' Shard '+direction[0]+' → Shard '+direction[1]+'. No transfer submitted.';
+   }catch {result.textContent='Secure preview unavailable or rejected · no transfer submitted.';}
  });
 })();
 </script><script src="/martingale-cycles.js?v=20261017-outcomes-2" defer></script></body></html>`;
