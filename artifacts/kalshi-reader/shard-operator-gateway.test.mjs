@@ -48,13 +48,15 @@ test('same-origin gateway forwards secure login cookie but never leaks trade tok
    assert.equal(url,'https://api.example.com/api/trade/shard-transfer/operator-login');
    upstreamHeaders=init.headers;
    return new Response(JSON.stringify({authenticated:true,csrf:'dummy',transfer_submitted:false}),{
-     status:200,headers:{'set-cookie':'__Host-shard_operator=mock.token; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=900','content-type':'application/json'}
+     status:200,headers:{'set-cookie':'__Host-shard_operator=mock.long-session-token-0123456789; HttpOnly; Secure; SameSite=Strict; Path=/; Domain=.example.com; Max-Age=900','content-type':'application/json'}
    });
  };
  try{
   await operatorGateway(request,response,'/api/operator/shards/login',{enabled:true,origin,baseUrl:'https://api.example.com',tradeToken:'private-server-key'});
   assert.equal(response.status,200);
   assert.match(response.headers['set-cookie'],/^__Host-shard_operator=/);
+  assert.doesNotMatch(response.headers['set-cookie'],/Domain=/i);
+  assert.match(response.headers['set-cookie'],/Max-Age=900/);
   assert.equal(upstreamHeaders['x-trade-token'],'private-server-key');
   assert.doesNotMatch(JSON.stringify(response),/private-server-key/);
  }finally{globalThis.fetch=oldFetch;}
