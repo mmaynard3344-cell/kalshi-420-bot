@@ -37,5 +37,16 @@ jobs:
             .map(m=>({ticker:m.ticker,status:m.status,open_time:m.open_time,close_time:m.close_time,
               has_strike:Number.isFinite(Number(m.floor_strike))&&Number(m.floor_strike)>0}));
           console.log(JSON.stringify({catalogSize:body.markets.length, selected:selected?.ticker||null,near},null,2));
+          for (const status of [null,'open','active','unopened']) {
+            const probe = new URL(PUBLIC_BASE+'/markets');
+            probe.searchParams.set('series_ticker','KXBTC15M');
+            probe.searchParams.set('limit','20');
+            if (status) probe.searchParams.set('status',status);
+            const res=await fetch(probe,{signal:AbortSignal.timeout(12000)});
+            const raw=await res.json();
+            const markets=Array.isArray(raw.markets)?raw.markets:[];
+            console.log(JSON.stringify({status:status||'omitted',http:res.status,count:markets.length,
+              sample:markets.slice(0,3).map(m=>({ticker:m.ticker,status:m.status,open_time:m.open_time,close_time:m.close_time,has_strike:Number(m.floor_strike)>0}))}));
+          }
           if (!selected) throw new Error('Live Kalshi catalog does not yield exactly one eligible BTC market');
           NODE
