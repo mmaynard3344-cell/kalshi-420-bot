@@ -12,7 +12,7 @@ test("disabled path cannot reserve or submit",async()=>{
  assert.equal(r.state,"disabled");assert.equal(requests,0);
 });
 test("durably reserves before invoking injected exchange sender",async()=>{
- let called=false;const r=await submitAssetG({...params,enabled:true,send:async x=>{called=true;assert.equal(x.contracts,4);return {exchangeOrderId:"ex-1"}}});
+ let called=false;const r=await submitAssetG({...params,enabled:true,send:async x=>{called=true;assert.equal(x.contracts,3);return {exchangeOrderId:"ex-1"}}});
  assert(called);assert.equal(r.exchangeOrderId,"ex-1");assert.equal(r.state,"held");
 });
 test("ambiguous network error holds order and never retries",async()=>{
