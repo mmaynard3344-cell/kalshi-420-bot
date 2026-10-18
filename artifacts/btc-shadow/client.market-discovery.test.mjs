@@ -5,7 +5,7 @@ import { selectCurrent, btcCurrentTicker, fetchCurrentBtcMarket } from "./client
 const WINDOW = 15 * 60_000;
 const start = Date.parse("2026-10-18T18:00:00Z");
 const market = (overrides = {}) => ({
-  ticker: "KXBTC15M-26OCT181815-15",
+  ticker: "KXBTC15M-26OCT181415-15",
   status: "active",
   open_time: new Date(start - 2 * WINDOW).toISOString(),
   close_time: new Date(start + WINDOW).toISOString(),
