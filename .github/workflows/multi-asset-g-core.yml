@@ -4,6 +4,8 @@ on:
     paths:
       - 'artifacts/btc-shadow/multiAssetGCore.mjs'
       - 'artifacts/btc-shadow/multiAssetGCore.test.mjs'
+      - 'artifacts/btc-shadow/multiAssetGMarket.mjs'
+      - 'artifacts/btc-shadow/multiAssetGMarket.test.mjs'
       - '.github/workflows/multi-asset-g-core.yml'
   workflow_dispatch:
 permissions:
@@ -17,4 +19,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test artifacts/btc-shadow/multiAssetGCore.test.mjs
+      - run: node --test artifacts/btc-shadow/multiAssetGCore.test.mjs artifacts/btc-shadow/multiAssetGMarket.test.mjs
