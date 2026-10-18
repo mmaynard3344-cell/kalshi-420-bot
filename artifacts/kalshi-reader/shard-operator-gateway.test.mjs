@@ -59,3 +59,31 @@ test('same-origin gateway forwards secure login cookie but never leaks trade tok
   assert.doesNotMatch(JSON.stringify(response),/private-server-key/);
  }finally{globalThis.fetch=oldFetch;}
 });
+
+test('session preview forwards only cookie and CSRF, never a transfer submission',async()=>{
+ const {Readable}=await import('node:stream');
+ const {operatorGateway}=await import('./shard-operator-gateway.mjs');
+ const body=JSON.stringify({requestId:'69e61066-4170-4eb4-bfca-1b33800ca633',sourceExchangeShard:0,destinationExchangeShard:2,amountCents:100,confirmation:'TRANSFER $1.00 FROM 0 TO 2'});
+ const request=Readable.from([body]);
+ request.method='POST';
+ request.headers={...req.headers,'content-length':String(Buffer.byteLength(body)),cookie:'__Host-shard_operator=mock.token; unrelated=ignored','x-shard-operator-csrf':'csrf-test-value'};
+ const response={status:null,headers:null,body:null,writeHead(status,headers){this.status=status;this.headers=headers;},end(body){this.body=body;}};
+ const oldFetch=globalThis.fetch;
+ let called=0;
+ globalThis.fetch=async(url,init)=>{
+   called++;
+   assert.equal(url,'https://api.example.com/api/trade/shard-transfer/session-preview');
+   assert.equal(init.headers.cookie,'__Host-shard_operator=mock.token');
+   assert.equal(init.headers['x-shard-operator-csrf'],'csrf-test-value');
+   assert.equal(init.method,'POST');
+   return new Response(JSON.stringify({wouldSubmit:false,sourceShard:0,destinationShard:2,amountCents:100}),{status:200,headers:{'content-type':'application/json'}});
+ };
+ try{
+   await operatorGateway(request,response,'/api/operator/shards/preview',{enabled:true,origin,baseUrl:'https://api.example.com',tradeToken:'private-server-key'});
+   assert.equal(called,1);
+   assert.equal(response.status,200);
+   assert.equal(JSON.parse(response.body).wouldSubmit,false);
+   assert.equal(response.headers['set-cookie'],undefined);
+   assert.equal(operatorGatewayUpstreamPath('/api/operator/shards/transfer'),null);
+ }finally{globalThis.fetch=oldFetch;}
+});
