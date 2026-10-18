@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { operatorGateway, operatorGatewayUpstreamPath } from './shard-operator-gateway.mjs';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1461,6 +1462,12 @@ async function martingaleCyclesReadOnly(req,res) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  if (operatorGatewayUpstreamPath(url.pathname)) return void operatorGateway(req,res,url.pathname,{
+    enabled: process.env.SHARD_OPERATOR_GATEWAY_ENABLED === 'true',
+    origin: process.env.SHARD_TRANSFER_ALLOWED_ORIGIN,
+    baseUrl: graceBase,
+    tradeToken: graceToken,
+  });
   if (url.pathname === '/api/telemetry/usd-martingale') return void receiveUsdCycleSnapshot(req,res);
   if (url.pathname === '/api/trade/analytics/martingale-cycles') return void martingaleCyclesReadOnly(req,res);
   if (url.pathname === '/api/diagnostics/trade-results') return void tradeResultsReadOnly(req,res,url);
