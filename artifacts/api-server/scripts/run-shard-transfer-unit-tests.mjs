@@ -18,6 +18,7 @@ const tests = [
   'shardTransferKalshiTransport.test.ts',
   'shardTransferPublicBoundary.test.ts',
   'shardTransferApiContract.test.ts',
+  'shardTransferAuthorizedPreview.test.ts',
   'shardTransferOperatorLoginLimiter.test.ts',
   'shardTransferOperatorLogin.test.ts',
   'shardTransferOperatorSession.test.ts',
