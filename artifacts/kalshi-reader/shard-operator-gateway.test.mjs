@@ -17,3 +17,19 @@ test('non-POST and cross-site requests denied',()=>{
  assert.equal(operatorGatewayAllowed({...req,headers:{...req.headers,'sec-fetch-site':'cross-site'}},'/api/operator/shards/login',origin),false);
  assert.equal(operatorGatewayAllowed({...req,headers:{...req.headers,'content-length':'5000'}},'/api/operator/shards/login',origin),false);
 });
+
+test('gateway remains off by default and makes zero upstream requests',async()=>{
+ const {Readable}=await import('node:stream');
+ const {operatorGateway}=await import('./shard-operator-gateway.mjs');
+ const request=Readable.from(['{"operatorCredential":"test"}']);
+ request.method='POST';request.headers={...req.headers,'content-length':'29'};
+ const response={status:null,headers:null,body:null,writeHead(status,headers){this.status=status;this.headers=headers;},end(body){this.body=body;}};
+ const oldFetch=globalThis.fetch;
+ let called=false;
+ globalThis.fetch=async()=>{called=true;throw Error('No upstream request expected');};
+ try{
+  await operatorGateway(request,response,'/api/operator/shards/login',{enabled:false,origin,baseUrl:'https://api.example.com',tradeToken:'server-only'});
+  assert.equal(response.status,403);
+  assert.equal(called,false);
+ }finally{globalThis.fetch=oldFetch;}
+});
