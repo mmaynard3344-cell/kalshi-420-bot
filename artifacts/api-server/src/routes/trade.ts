@@ -80,6 +80,9 @@ import { getExchangeDiscoverySweepStatus } from "../lib/fillReconciler.js";
 import { timingSafeEqual } from "crypto";
 import { verifyShardTransferOperatorToken } from "../lib/shardTransferOperatorAuth.js";
 import { authorizedShardTransferPreview } from "../lib/shardTransferAuthorizedPreview.js";
+import { issueShardOperatorSession } from "../lib/shardTransferOperatorLogin.js";
+import { createShardOperatorLoginLimiter } from "../lib/shardTransferOperatorLoginLimiter.js";
+import { SHARD_OPERATOR_COOKIE_NAME, SHARD_OPERATOR_COOKIE_ATTRIBUTES, SHARD_OPERATOR_SESSION_MAX_AGE_SECONDS } from "../lib/shardTransferOperatorSession.js";
 import { validateShardTransferHttpBoundary } from "../lib/shardTransferRequestBoundary.js";
 import { previewManualShardTransfer } from "../lib/shardTransferDryRun.js";
 import { describeShardTransferStatus } from "../lib/shardTransferStatusView.js";
@@ -1404,6 +1407,47 @@ router.get("/trade/account-fingerprint", requireTradeAuth, async (_req, res) => 
  * Only an independent authenticated operator login may issue a cookie;
  * no such public login route is enabled yet.
  */
+// Development-only login path. Disabled by default and NOT approved for production
+// until a shared, durable distributed rate limiter replaces the process-local limiter.
+const shardOperatorLoginLimiter = createShardOperatorLoginLimiter({ limit: 3, windowMs: 15 * 60_000, maxKeys: 1024 });
+router.post("/trade/shard-transfer/operator-login", requireTradeAuth, (req, res) => {
+  if (process.env["SHARD_OPERATOR_LOGIN_ENABLED"] !== "true") {
+    res.status(503).json({ error: "Operator login is not enabled", transfer_submitted: false });
+    return;
+  }
+  if (!validateShardTransferHttpBoundary({
+    contentType: req.header("content-type"), origin: req.header("origin"),
+    expectedOrigin: process.env["SHARD_TRANSFER_ALLOWED_ORIGIN"],
+    fetchSite: req.header("sec-fetch-site"), contentLength: req.header("content-length"),
+  })) {
+    res.status(403).json({ error: "Login request rejected", transfer_submitted: false });
+    return;
+  }
+  // Single-process throttle is only a development guard, not a production
+  // guarantee: do not set the feature flag in Railway until distributed guard exists.
+  const identity = req.ip || "unknown";
+  if (!shardOperatorLoginLimiter.allow(identity, Date.now())) {
+    res.status(429).json({ error: "Too many operator sign-in attempts", transfer_submitted: false });
+    return;
+  }
+  const credential = req.body && typeof req.body === "object" && !Array.isArray(req.body)
+    ? (req.body as Record<string, unknown>).operatorCredential : undefined;
+  const issued = issueShardOperatorSession({
+    presentedOperatorCredential: typeof credential === "string" ? credential : undefined,
+    configuredOperatorCredential: process.env["SHARD_TRANSFER_OPERATOR_TOKEN"],
+    sessionSigningKey: process.env["SHARD_OPERATOR_SESSION_SIGNING_KEY"],
+    tradeTokens: VALID_TRADE_TOKENS,
+  });
+  if (!issued) {
+    res.status(403).json({ error: "Operator sign-in rejected", transfer_submitted: false });
+    return;
+  }
+  res.setHeader("Set-Cookie", SHARD_OPERATOR_COOKIE_NAME + "=" + issued.token +
+    "; " + SHARD_OPERATOR_COOKIE_ATTRIBUTES + "; Max-Age=" + SHARD_OPERATOR_SESSION_MAX_AGE_SECONDS);
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ authenticated: true, csrf: issued.csrf, expiresInSeconds: SHARD_OPERATOR_SESSION_MAX_AGE_SECONDS, transfer_submitted: false });
+});
+
 router.post("/trade/shard-transfer/session-preview", requireTradeAuth, (req, res) => {
   const rawCookie = req.header("cookie") ?? "";
   const match = rawCookie.match(/(?:^|;\\s*)__Host-shard_operator=([A-Za-z0-9_.-]+)/);
