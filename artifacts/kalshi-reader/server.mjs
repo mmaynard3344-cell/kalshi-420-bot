@@ -1232,6 +1232,20 @@ function serveSimpleTradeLog(req,res) {
 </head><body><main><header><div><h1>Shawshank · Trade Log</h1><p>Existing exchange orders and fills · read only</p></div><div><select id="market"><option value="ALL">All markets</option><option>ETH</option><option>BTC</option><option>USD</option></select> <button id="refresh">Refresh</button></div></header>
 <p id="status">Loading trades…</p><p class="warn">EUR/USD pilot orders are held by a separate Railway Function and may not be present in this feed. Missing entries do not mean no USD trades occurred.</p>
 <section id="martingale-cycles" style="border:1px solid #40516a;border-radius:12px;padding:18px;background:#172336;margin-top:20px"><h2 style="margin:0 0 5px">Martingale Cycle Tracker</h2><p style="font-size:13px">Current verified stages for USD, ETH and BTC · updates every 10 seconds</p><div id="martingale-cycle-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px"><p>Loading stages…</p></div><small id="martingale-cycle-updated" class="muted">Waiting for cycle data</small></section>
+<section id="shard-transfer-preview" style="border:1px solid #40516a;border-radius:12px;padding:18px;background:#172336;margin-top:16px">
+<h2 style="margin:0 0 5px">Funds Manager · Transfer Preview</h2>
+<p>Design preview only · no money can be moved from this page</p>
+<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+<label for="shard-direction">Direction</label>
+<select id="shard-direction"><option value="0-2">Shard 0 → Shard 2</option><option value="2-0">Shard 2 → Shard 0</option></select>
+<label for="shard-amount">Amount (USD)</label>
+<input id="shard-amount" type="number" min="0.01" max="10000" step="0.01" inputmode="decimal" placeholder="e.g. 10.00" style="max-width:150px" />
+<button id="shard-preview-button" type="button">Preview</button>
+<button type="button" disabled aria-disabled="true">Transfer disabled</button>
+</div>
+<p id="shard-preview-result" role="status" class="muted">Select direction and amount to preview a transfer without submitting it.</p>
+<small class="muted">Operator authentication, shared rate limits and final authorization are not connected. Do not enter credentials here.</small>
+</section>
 <section><table><thead><tr><th>Time (ET)</th><th>Market</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Price</th><th>Bet Amount</th><th>Status</th><th>W/L</th><th>Net P&L</th><th>Order ID</th></tr></thead><tbody id="rows"></tbody></table></section><p><small>Source: Shawshank existing authenticated order/fill API. No trades submitted by this page.</small></p></main>
 <script>
 let all=[];
@@ -1334,6 +1348,18 @@ async function load(){
  finally{el('refresh').disabled=false}
 }
 el('refresh').addEventListener('click',load);el('market').addEventListener('change',draw);load();
+</script><script>
+(function(){
+ const result=document.getElementById('shard-preview-result');
+ document.getElementById('shard-preview-button').addEventListener('click',function(){
+   const amount=document.getElementById('shard-amount').value.trim();
+   const direction=document.getElementById('shard-direction').value.split('-');
+   if(!/^(?:[1-9][0-9]{0,3}|0)(?:\\.[0-9]{1,2})?$/.test(amount)||Number(amount)<=0||Number(amount)>10000){
+     result.textContent='Enter a valid amount from $0.01 to $10,000.00 (two decimal places maximum).';return;
+   }
+   result.textContent='Preview only: $'+Number(amount).toFixed(2)+' from Shard '+direction[0]+' to Shard '+direction[1]+'. No transfer submitted.';
+ });
+})();
 </script><script src="/martingale-cycles.js?v=20261017-outcomes-2" defer></script></body></html>`;
   return send(res,200,req.method === 'HEAD' ? '' : html,'text/html; charset=utf-8');
 }
