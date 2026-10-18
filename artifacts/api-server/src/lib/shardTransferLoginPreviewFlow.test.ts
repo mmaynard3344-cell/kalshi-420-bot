@@ -22,3 +22,15 @@ test("login issues a cookie-backed session; protected preview remains inert",()=
 test("wrong operator credential cannot create session",()=>{
  assert.equal(issueShardOperatorSession({presentedOperatorCredential:"incorrect",configuredOperatorCredential:credential,sessionSigningKey:signingKey,tradeTokens:[],nowMs}),null);
 });
+
+test("reverse preview is inert and malformed confirmation is rejected",()=>{
+ const login=issueShardOperatorSession({presentedOperatorCredential:credential,configuredOperatorCredential:credential,sessionSigningKey:signingKey,tradeTokens:["trade-token-only"],nowMs});
+ assert.ok(login);
+ const request={...body,sourceExchangeShard:2,destinationExchangeShard:0,confirmation:"TRANSFER $1.00 FROM 2 TO 0"};
+ const args={sessionCookie:login.token,sessionSigningKey:signingKey,csrfHeader:login.csrf,contentType:"application/json",origin:"https://shawshank.example.com",expectedOrigin:"https://shawshank.example.com",fetchSite:"same-origin",contentLength:"220",requestBody:request,nowMs:nowMs+1000};
+ const preview=authorizedShardTransferPreview(args);
+ assert.equal(preview?.sourceShard,2);
+ assert.equal(preview?.destinationShard,0);
+ assert.equal(preview?.wouldSubmit,false);
+ assert.throws(()=>authorizedShardTransferPreview({...args,requestBody:{...request,confirmation:"TRANSFER $1.00 FROM 0 TO 2"}}));
+});
