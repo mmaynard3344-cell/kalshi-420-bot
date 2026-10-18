@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS multi_asset_g_order_identity (
  ticker TEXT NOT NULL,
  side TEXT NOT NULL CHECK (side IN ('yes','no')),
  exchange_order_id TEXT,
+ verified_filled_contracts INTEGER NOT NULL DEFAULT 0 CHECK (verified_filled_contracts >= 0),
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  PRIMARY KEY (asset,client_order_id),
  UNIQUE(asset,exchange_order_id)
