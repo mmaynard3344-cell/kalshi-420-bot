@@ -40,5 +40,5 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f artifacts/eth-g-v2/postgresSmoke.sql
       - name: Test application transactions against PostgreSQL
         run: |
-          npm install --no-save --ignore-scripts --no-package-lock --prefix /tmp/eth-g-pg pg@8
-          NODE_PATH=/tmp/eth-g-pg/node_modules node artifacts/eth-g-v2/realPostgresTest.mjs
+          npm install --no-save --ignore-scripts --no-package-lock --prefix artifacts/eth-g-v2 pg@8
+          node artifacts/eth-g-v2/realPostgresTest.mjs
