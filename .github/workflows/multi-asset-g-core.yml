@@ -1,0 +1,35 @@
+name: Multi-asset G pure-core tests
+on:
+  pull_request:
+    paths:
+      - 'artifacts/btc-shadow/multiAssetGCore.mjs'
+      - 'artifacts/btc-shadow/multiAssetGCore.test.mjs'
+      - 'artifacts/btc-shadow/multiAssetGMarket.mjs'
+      - 'artifacts/btc-shadow/multiAssetGMarket.test.mjs'
+      - 'artifacts/btc-shadow/multiAssetGStore.mjs'
+      - 'artifacts/btc-shadow/multiAssetGStore.test.mjs'
+      - 'artifacts/btc-shadow/multiAssetG.sql'
+      - 'artifacts/btc-shadow/multiAssetGReconciliation.mjs'
+      - 'artifacts/btc-shadow/multiAssetGReconciliation.test.mjs'
+      - 'artifacts/btc-shadow/multiAssetGOrderAdapter.mjs'
+      - 'artifacts/btc-shadow/multiAssetGOrderAdapter.test.mjs'
+      - 'artifacts/btc-shadow/multiAssetGSignal.mjs'
+      - 'artifacts/btc-shadow/multiAssetGSignal.test.mjs'
+      - 'artifacts/btc-shadow/multiAssetGAuthClient.mjs'
+      - 'artifacts/btc-shadow/multiAssetGAuthClient.test.mjs'
+      - 'artifacts/btc-shadow/multiAssetGEngine.mjs'
+      - 'artifacts/btc-shadow/multiAssetGEngine.test.mjs'
+      - '.github/workflows/multi-asset-g-core.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-g-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test artifacts/btc-shadow/multiAssetGCore.test.mjs artifacts/btc-shadow/multiAssetGMarket.test.mjs artifacts/btc-shadow/multiAssetGStore.test.mjs artifacts/btc-shadow/multiAssetGReconciliation.test.mjs artifacts/btc-shadow/multiAssetGOrderAdapter.test.mjs artifacts/btc-shadow/multiAssetGSignal.test.mjs artifacts/btc-shadow/multiAssetGAuthClient.test.mjs artifacts/btc-shadow/multiAssetGEngine.test.mjs
