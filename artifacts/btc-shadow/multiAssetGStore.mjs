@@ -42,13 +42,28 @@ export async function reserveAssetG(pool,{asset,orderId,ticker,side}){
 }
 // No exchange result may be inferred here. The caller must have independently
 // verified a corresponding fill and final market result before invoking this.
+export async function recordVerifiedAssetGFill(pool,{asset,orderId,exchangeOrderId,filledContracts}){
+ assertAsset(asset);
+ if(typeof exchangeOrderId!=="string"||!exchangeOrderId||!Number.isSafeInteger(filledContracts)||filledContracts<=0)
+   throw Error("invalid_verified_fill");
+ return transaction(pool,asset,async(old,client)=>{
+  if(old.pendingOrderId!==orderId)throw Error("g_asset_order_mismatch");
+  const identity=await client.query(
+   "UPDATE multi_asset_g_order_identity SET exchange_order_id=$3, verified_filled_contracts=$4 WHERE asset=$1 AND client_order_id=$2 AND (exchange_order_id IS NULL OR exchange_order_id=$3) AND verified_filled_contracts <= $4",
+   [asset,orderId,exchangeOrderId,filledContracts]);
+  if(identity.rowCount!==1)throw Error("g_asset_fill_identity_conflict");
+  await client.query("INSERT INTO multi_asset_g_events(asset,kind,order_id,prior_step,next_step) VALUES($1,'FILLED',$2,$3,$3)",
+   [asset,orderId,old.step]);
+  return {asset,orderId,filledContracts};
+ });
+}
 export async function settleVerifiedAssetG(pool,{asset,orderId,settlementId,result}){
  if(typeof settlementId!=="string"||!settlementId)throw Error("missing_verified_settlement_id");
  if(result!=="win"&&result!=="loss")throw Error("invalid_verified_settlement");
  return transaction(pool,asset,async(old,client)=>{
   if(old.pendingOrderId!==orderId)throw Error("g_asset_order_mismatch");
   const identity=await client.query(
-    "SELECT 1 FROM multi_asset_g_order_identity WHERE asset=$1 AND client_order_id=$2",[asset,orderId]);
+    "SELECT 1 FROM multi_asset_g_order_identity WHERE asset=$1 AND client_order_id=$2 AND exchange_order_id IS NOT NULL AND verified_filled_contracts > 0",[asset,orderId]);
   if(identity.rowCount!==1)throw Error("g_asset_order_identity_missing");
   const next=applyVerifiedResult(old,orderId,result);
   await client.query("INSERT INTO multi_asset_g_events(asset,kind,order_id,settlement_id,prior_step,next_step) VALUES($1,$2,$3,$4,$5,$6)",
