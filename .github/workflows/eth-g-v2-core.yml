@@ -1,0 +1,18 @@
+name: ETH G v2 pure-core tests
+on:
+  pull_request:
+    paths:
+      - 'artifacts/eth-g-v2/**'
+      - '.github/workflows/eth-g-v2-core.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test artifacts/eth-g-v2/core.test.mjs
