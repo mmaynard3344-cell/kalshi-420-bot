@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test } from "node:test";
-import { SHARD_OPERATOR_LOGIN_LIMIT_SQL } from "./shardTransferSharedLoginLimiter.js";
+const SHARD_OPERATOR_LOGIN_LIMIT_SQL = readFileSync(resolve(process.cwd(), "src/lib/shardTransferSharedLoginLimiter.ts"), "utf8");
 
 test("shared throttle uses atomic upsert rather than local Map", () => {
  assert.match(SHARD_OPERATOR_LOGIN_LIMIT_SQL, /ON CONFLICT \(identity_hash\) DO UPDATE/);
