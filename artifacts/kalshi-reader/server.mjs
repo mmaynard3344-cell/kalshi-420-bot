@@ -1231,11 +1231,7 @@ function serveSimpleTradeLog(req,res) {
 </head><body><main><header><div><h1>Shawshank · Trade Log</h1><p>Existing exchange orders and fills · read only</p></div><div><select id="market"><option value="ALL">All markets</option><option>ETH</option><option>BTC</option><option>USD</option></select> <button id="refresh">Refresh</button></div></header>
 <p id="status">Loading trades…</p><p class="warn">EUR/USD pilot orders are held by a separate Railway Function and may not be present in this feed. Missing entries do not mean no USD trades occurred.</p>
 <section id="martingale-cycles" style="border:1px solid #40516a;border-radius:12px;padding:18px;background:#172336;margin-top:20px"><h2 style="margin:0 0 5px">Martingale Cycle Tracker</h2><p style="font-size:13px">Current verified stages for USD, ETH and BTC · updates every 10 seconds</p><div id="martingale-cycle-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px"><p>Loading stages…</p></div><small id="martingale-cycle-updated" class="muted">Waiting for cycle data</small></section>
-<section id="shard-funds" style="border:1px solid #40516a;border-radius:12px;padding:18px;background:#172336;margin-top:16px">
-<h2 style="margin:0 0 5px">Shard Balances</h2><p style="font-size:13px">Available cash on Kalshi shards 0, 1 and 2 · read only</p>
-<div id="shard-fund-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px"><p>Loading balances…</p></div>
-<small id="shard-funds-updated" class="muted">Waiting for balance data</small>
-</section>
+<section id="shard-funds" style="border:1px solid #40516a;border-radius:12px;padding:18px;background:#172336;margin-top:16px"><h2>Shard Balances</h2><p>Available cash on Kalshi shards 0, 1 and 2 · read only</p><div id="shard-fund-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px">Loading balances…</div><small id="shard-funds-updated" class="muted">Waiting for balance data</small></section>
 <section><table><thead><tr><th>Time (ET)</th><th>Market</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Price</th><th>Bet Amount</th><th>Status</th><th>W/L</th><th>Net P&L</th><th>Order ID</th></tr></thead><tbody id="rows"></tbody></table></section><p><small>Source: Shawshank existing authenticated order/fill API. No trades submitted by this page.</small></p></main>
 <script>
 let all=[];
@@ -1340,8 +1336,7 @@ async function load(){
 el('refresh').addEventListener('click',load);el('market').addEventListener('change',draw);load();
 </script><script>
 async function refreshShardFunds(){
- const cards=document.getElementById('shard-fund-cards');
- const updated=document.getElementById('shard-funds-updated');
+ const cards=document.getElementById('shard-fund-cards'),updated=document.getElementById('shard-funds-updated');
  try{
   const response=await fetch('/api/trade/balance',{cache:'no-store'});
   if(!response.ok)throw Error('Balance feed unavailable');
@@ -1351,252 +1346,19 @@ async function refreshShardFunds(){
   for(const index of [0,1,2]){
    const item=shards.find(value=>value.exchange_index===index);
    const cents=item?.available_balance_cents;
-   const valid=Number.isSafeInteger(cents)&&cents>=0;
-   const card=document.createElement('div');
-   card.style.cssText='border:1px solid #40516a;border-radius:9px;padding:14px;min-width:0';
+   const valid=typeof cents==='number'&&Number.isSafeInteger(cents)&&cents>=0;
+   const card=document.createElement('div');card.style.cssText='border:1px solid #40516a;border-radius:9px;padding:14px;min-width:0';
    const heading=document.createElement('strong');heading.textContent='Shard '+index;
    const amount=document.createElement('div');amount.style.cssText='font-size:25px;font-weight:700;margin:9px 0';
-   amount.textContent=valid?'</body></html>`;
-  return send(res,200,req.method === 'HEAD' ? '' : html,'text/html; charset=utf-8');
-}
-
-async function receiveUsdCycleSnapshot(req,res){
- if(req.method!=='POST')return send(res,405,'Method not allowed');
- const secret=process.env.USD_CYCLE_TELEMETRY_SECRET;
- if(!secret||req.headers['x-usd-cycle-secret']!==secret)return send(res,403,'Forbidden');
- let raw='';
- try{
-  for await(const chunk of req){raw+=chunk.toString();if(raw.length>4096)throw Error('too_large');}
-  const v=JSON.parse(raw);
-  const step=Number(v.step),version=Number(v.version),timestamp=Number(v.observedAtMs);
-  if(!Number.isInteger(step)||step<0||step>5||!Number.isInteger(version)||version<0||
-    !Number.isFinite(timestamp)||Math.abs(Date.now()-timestamp)>300000||
-    typeof v.unresolved!=='boolean')return send(res,422,'Invalid cycle telemetry');
-  const pool=getDbPool();
-  if(!pool)return send(res,503,'Telemetry database unavailable');
-  await pool.query("CREATE TABLE IF NOT EXISTS usd_martingale_telemetry (id INTEGER PRIMARY KEY CHECK(id=1),step INTEGER NOT NULL, version INTEGER NOT NULL,unresolved BOOLEAN NOT NULL,observed_at_ms BIGINT NOT NULL)");
-  await pool.query(`INSERT INTO usd_martingale_telemetry(id,step,version,unresolved,observed_at_ms) VALUES(1,$1,$2,$3,$4)
-   ON CONFLICT(id) DO UPDATE SET step=EXCLUDED.step,version=EXCLUDED.version,
-   unresolved=EXCLUDED.unresolved,observed_at_ms=EXCLUDED.observed_at_ms
-   WHERE usd_martingale_telemetry.observed_at_ms<=EXCLUDED.observed_at_ms`,
-   [step,version,v.unresolved,timestamp]);
-  return send(res,200,JSON.stringify({ok:true}),'application/json; charset=utf-8');
- }catch(err){console.error('USD telemetry ingest failed',String(err?.message??err));return send(res,503,'Telemetry update failed');}
-}
-
-async function martingaleCyclesReadOnly(req,res) {
-  if(req.method!=='GET'&&req.method!=='HEAD')return send(res,405,'Method not allowed');
-  const unknown=(market,status)=>({market,step:null,maxSteps:null,nextWagerCents:null,status,source:'unverified',activeTicker:null});
-  const cycles=[
-    unknown('USD','USD ladder stored in isolated Railway Function SQLite; telemetry bridge required'),
-    unknown('ETH','ETH shared ladder unavailable'),
-    unknown('BTC','BTC shared ladder unavailable')
-  ];
-  try {
-    await withReadOnlyDb(async client=>{
-      try{
-        const t=await client.query("SELECT to_regclass('public.usd_martingale_telemetry') AS telemetry");
-        if(t.rows[0]?.telemetry){
-          const r=await client.query("SELECT step,version,unresolved,observed_at_ms FROM usd_martingale_telemetry WHERE id=1");
-          const row=r.rows[0],step=Number(row?.step),seen=Number(row?.observed_at_ms);
-          if(row&&Number.isInteger(step)&&step>=0&&step<=5){
-            const age=Date.now()-seen;
-            cycles[0]={market:'USD',step:step+1,maxSteps:6,
-              nextWagerCents:[200,400,800,1600,3200,6400][step],
-              status:age>25*60000?'Stale snapshot ('+Math.round(age/60000)+' min old)':
-               row.unresolved?'Outstanding order awaiting reconciliation':'Ready for next signal',
-              source:'USD Function SQLite snapshot',activeTicker:null};
-          }
-        }
-      }catch(error){console.error('USD telemetry read failed',String(error?.message??error));}
-
-      try {
-        const tables=await client.query("SELECT to_regclass('public.eth_shared_martingale_state') AS state, to_regclass('public.eth_shared_martingale_claims') AS claims");
-        if(tables.rows[0]?.state&&tables.rows[0]?.claims){
-          const result=await client.query("SELECT s.step,s.active_claim_id,c.ticker,c.status FROM eth_shared_martingale_state s LEFT JOIN eth_shared_martingale_claims c ON c.claim_id=s.active_claim_id WHERE s.singleton=TRUE LIMIT 1");
-          const row=result.rows[0],step=Number(row?.step);
-          if(row&&Number.isInteger(step)&&step>=0&&step<=5)
-            cycles[1]={market:'ETH',step:step+1,maxSteps:6,nextWagerCents:[200,400,800,1600,3200,6400][step],
-              status:row.active_claim_id?'Waiting for settlement ('+(row.status||'pending')+')':'Ready for next signal',
-              source:'eth_shared_martingale_state',activeTicker:row.ticker||null};
-        }
-      }catch(error){console.error('ETH ladder status unavailable',String(error?.message??error));}
-      try {
-        const t=await client.query("SELECT to_regclass('public.btc_shared_ladder') AS ladder");
-        if(t.rows[0]?.ladder){
-          const r=await client.query("SELECT step,pending_order_id,pending_settlement_id FROM btc_shared_ladder WHERE market='BTC' LIMIT 1");
-          const row=r.rows[0],step=Number(row?.step);
-          if(row&&Number.isInteger(step)&&step>=0&&step<=5)
-            cycles[2]={market:'BTC',step:step+1,maxSteps:6,nextWagerCents:[200,400,800,1600,3200,6400][step],
-              status:row.pending_order_id?'Order pending settlement':row.pending_settlement_id?'Settlement pending verification':'Ready for next signal',
-              source:'btc_shared_ladder',activeTicker:null};
-        }
-      }catch(error){console.error('BTC ladder status unavailable',String(error?.message??error));}
-    });
-  }catch(error){console.error('Martingale read-only DB unavailable',String(error?.message??error));}
-  // Exchange-confirmed results, not Shawshank trade outcomes or derived signals.
-  // Fetch settled markets directly from Kalshi; never present a stored snapshot as live.
-  for (const cycle of cycles.filter(c=>c.market==='ETH'||c.market==='BTC')) {
-    try {
-      const series=cycle.market==='ETH'?'KXETH15M':'KXBTC15M';
-      const endpoint='https://external-api.kalshi.com/trade-api/v2/markets?'+
-        new URLSearchParams({series_ticker:series,status:'settled',limit:'20'});
-      const response=await fetch(endpoint,{signal:AbortSignal.timeout(3500)});
-      if(!response.ok)throw Error('Kalshi '+response.status);
-      const payload=await response.json();
-      const verified=(Array.isArray(payload.markets)?payload.markets:[])
-        .filter(m=>typeof m.ticker==='string'&&(m.result==='yes'||m.result==='no'))
-        .sort((a,b)=>Date.parse(b.close_time||b.expiration_time||0)-Date.parse(a.close_time||a.expiration_time||0))
-        .slice(0,3).reverse();
-      cycle.lastOutcomes=verified.map(m=>({ticker:m.ticker,result:m.result}));
-      cycle.outcomeSource='Kalshi settled markets';
-    }catch(error){console.error('Kalshi cycle outcomes unavailable',cycle.market,String(error?.message??error));}
-  }
-  return send(res,200,req.method==='HEAD'?'':JSON.stringify({generatedAtMs:Date.now(),cycles}),'application/json; charset=utf-8');
-}
-
-const server = http.createServer((req, res) => {
-  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-  if (url.pathname === '/api/telemetry/usd-martingale') return void receiveUsdCycleSnapshot(req,res);
-  if (url.pathname === '/api/trade/analytics/martingale-cycles') return void martingaleCyclesReadOnly(req,res);
-  if (url.pathname === '/api/diagnostics/trade-results') return void tradeResultsReadOnly(req,res,url);
-  if (url.pathname === '/trades') return void serveSimpleTradeLog(req, res);
-  if (url.pathname === '/api/diagnostics/btc-bl-status') return void btcBlStatusDiagnostics(req, res);
-  if (url.pathname === '/api/diagnostics/service-ownership') return void serviceOwnershipDiagnostics(req, res);
-  if (url.pathname === '/api/diagnostics/service-ledger-today') return void serviceLedgerTodayDiagnostics(req, res);
-  if (url.pathname === '/api/diagnostics/market-results-recent') return void recentMarketResultsDiagnostics(req, res);
-  if (url.pathname === '/api/diagnostics/big-bet-rows-recent') return void recentBigBetRowsDiagnostics(req, res);
-  if (url.pathname === '/api/diagnostics/restart-daily-pnl') return void restartDailyPnlDiagnostics(req, res);
-  if (url.pathname === '/api/diagnostics/shadow-performance') return void shadowPerformanceDiagnostics(req, res);
-  if (url.pathname === '/api/diagnostics/exchange-ticker') return void exchangeTickerDiagnostics(req, res, url);
-  if (url.pathname === '/api/diagnostics/candidate-lifecycle') return void candidateLifecycleDiagnostics(req, res, url);
-  if (url.pathname === '/api/diagnostics/settlement-latency') return void settlementLatencyDiagnostics(req, res, url);
-  if (url.pathname === '/api/diagnostics/back-flips') return void backFlipDiagnostics(req, res, false);
-  if (url.pathname === '/api/diagnostics/back-flips.csv') return void backFlipDiagnostics(req, res, true);
-  if (url.pathname.startsWith('/api/')) return void proxyRead(req, res, url);
-  serveStatic(req, res, url);
-});
-
-server.listen(port, '0.0.0.0', () => {
-  console.log(`Read-only ETH 420 operator UI listening on ${port}`);
-  void Promise.all([
-    graceJson('/api/trade/status').then((s) => console.log('TRADE_STATUS_PNL_DIAGNOSTIC', JSON.stringify({
-      date: s?.date ?? null,
-      daily_realized_net_pnl_dollars: s?.daily_realized_net_pnl_dollars ?? null,
-      daily_realized_settled_fill_count: s?.daily_realized_settled_fill_count ?? null,
-      daily_realized_pending_fill_count: s?.daily_realized_pending_fill_count ?? null,
-      daily_realized_unverified_fill_count: s?.daily_realized_unverified_fill_count ?? null,
-    }))),
-    withReadOnlyDb(async (client) => {
-      const tables = ['eth_martingale_orders','eth420_candidate_live_orders','eth_big_bet_orders','eth_g_streak_reversal_orders','jackpot_attempts','kamakazee_orders'];
-      const q = await client.query(`
-        SELECT table_name, column_name, data_type
-        FROM information_schema.columns
-        WHERE table_schema='public' AND table_name = ANY($1::text[])
-        ORDER BY table_name, ordinal_position
-      `, [tables]);
-      console.log('SERVICE_LEDGER_SCHEMA_DIAGNOSTIC', JSON.stringify(q.rows));
-      const [a,cand,big,g,j,k] = await Promise.all([
-        client.query(`
-          SELECT COUNT(*)::int AS n,
-                 COALESCE(SUM(
-                   CASE WHEN settlement_result = side
-                     THEN (COALESCE(filled_contracts,0)::numeric - COALESCE(actual_notional_dollars,0)::numeric - COALESCE(actual_fee_dollars,0)::numeric)
-                     ELSE -(COALESCE(actual_notional_dollars,0)::numeric + COALESCE(actual_fee_dollars,0)::numeric)
-                   END
-                 ),0) AS pnl
-          FROM eth_martingale_orders
-          WHERE eastern_date='2026-09-23'
-            AND settlement_result IN ('yes','no')
-            AND COALESCE(filled_contracts,0)::numeric > 0
-        `),
-        client.query(`
-          SELECT COUNT(*)::int AS n, COALESCE(SUM(realized_pnl_delta_cents),0)::int AS pnl_cents
-          FROM eth420_candidate_live_orders
-          WHERE eastern_date='2026-09-23' AND realized_pnl_delta_cents IS NOT NULL
-        `),
-        client.query(`
-          SELECT strategy, COUNT(*)::int AS n, COALESCE(SUM(realized_pnl_cents),0)::int AS pnl_cents
-          FROM eth_big_bet_orders
-          WHERE created_at_ms >= 1790136000000
-            AND created_at_ms < 1790222400000
-            AND realized_pnl_cents IS NOT NULL
-          GROUP BY strategy ORDER BY strategy
-        `),
-        client.query(`
-          SELECT COUNT(*)::int AS n,
-                 COUNT(*) FILTER (WHERE settlement_result IN ('yes','no'))::int AS settled,
-                 COUNT(*) FILTER (WHERE won IS TRUE)::int AS wins,
-                 COUNT(*) FILTER (WHERE won IS FALSE)::int AS losses
-          FROM eth_g_streak_reversal_orders
-          WHERE created_at_ms >= 1790136000000 AND created_at_ms < 1790222400000
-        `),
-        client.query(`
-          SELECT COUNT(*)::int AS n,
-                 COUNT(*) FILTER (WHERE official_result IN ('yes','no'))::int AS settled,
-                 COALESCE(SUM(j_fee_cents),0)::int AS fees_cents
-          FROM jackpot_attempts
-          WHERE detected_at_ms >= 1790136000000 AND detected_at_ms < 1790222400000
-            AND j_kalshi_order_id IS NOT NULL
-        `),
-        client.query(`
-          SELECT COUNT(*)::int AS n,
-                 COUNT(*) FILTER (WHERE official_result IN ('yes','no'))::int AS settled
-          FROM kamakazee_orders
-          WHERE created_at_ms >= 1790136000000 AND created_at_ms < 1790222400000
-            AND kalshi_order_id IS NOT NULL
-        `)
-      ]);
-      console.log('SERVICE_LEDGER_TODAY_DIAGNOSTIC', JSON.stringify({
-        A:a.rows, candidate:cand.rows, BI:big.rows, G:g.rows, J:j.rows, K:k.rows
-      }));
-    }),
-  ]).catch((error) => console.error('PNL_SCHEMA_DIAGNOSTIC_FAILED', String(error?.message ?? error)));
-  void withReadOnlyDb(async (client) => {
-    const r = await client.query(`
-      SELECT id, kalshi_order_id, origin_service, created_at_ms
-        FROM eth420_candidate_live_orders
-       WHERE id IN (
-         'KXETH15M-26SEP231345-45:eth420-live-v1',
-         'KXETH15M-26SEP231400-00:eth420-live-v1',
-         'KXETH15M-26SEP231415-15:eth420-live-v1'
-       )
-       ORDER BY created_at_ms DESC
-    `);
-    console.log('CANDIDATE_ORIGIN_DIAGNOSTIC', JSON.stringify(r.rows));
-    const early = await client.query(`
-      SELECT id, ticker, kalshi_order_id, origin_service, requested_contracts, fill_price_cents, created_at_ms
-      FROM eth420_candidate_live_orders
-      WHERE ticker IN (
-        'KXETH15M-26SEP230530-30',
-        'KXETH15M-26SEP230615-15',
-        'KXETH15M-26SEP230815-15',
-        'KXETH15M-26SEP231145-45',
-        'KXETH15M-26SEP231300-00',
-        'KXETH15M-26SEP231315-15'
-      )
-      ORDER BY created_at_ms
-    `);
-    console.log('EARLY_CANDIDATE_ORIGIN_DIAGNOSTIC', JSON.stringify(early.rows));
-  }).catch((error) => console.error('CANDIDATE_ORIGIN_DIAGNOSTIC_FAILED', String(error?.message ?? error)));
-  for (const path of ['/api/trade/fills?limit=10000', '/api/trade/orders?limit=1000']) {
-    const url = new URL(path, 'http://shawshank.local');
-    void refreshReadCache(url).catch((error) => console.error('Dashboard cache warm failed', path, error));
-  }
-});
-+(cents/100).toFixed(2):'Unavailable';
+   amount.textContent=valid?String.fromCharCode(36)+(cents/100).toFixed(2):'Unavailable';
    const status=document.createElement('small');status.className='muted';
    status.textContent=!item?'No data':item.stale?'Stale data':valid?'Available cash':'Invalid balance';
    card.append(heading,amount,status);cards.append(card);
   }
   updated.textContent='Last checked '+new Date().toLocaleTimeString('en-US',{timeZone:'America/New_York'})+' ET · transfers disabled';
- }catch(error){
-  cards.textContent='Shard balances unavailable right now';
-  updated.textContent='Balance data could not be refreshed · transfers disabled';
- }
+ }catch(error){cards.textContent='Shard balances unavailable right now';updated.textContent='Balance data could not be refreshed · transfers disabled';}
 }
-refreshShardFunds();
-window.setInterval(refreshShardFunds,30000);
+refreshShardFunds();window.setInterval(refreshShardFunds,30000);
 </script><script src="/martingale-cycles.js?v=20261017-outcomes-2" defer></script></body></html>`;
   return send(res,200,req.method === 'HEAD' ? '' : html,'text/html; charset=utf-8');
 }
