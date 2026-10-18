@@ -87,3 +87,15 @@ test('session preview forwards only cookie and CSRF, never a transfer submission
    assert.equal(operatorGatewayUpstreamPath('/api/operator/shards/transfer'),null);
  }finally{globalThis.fetch=oldFetch;}
 });
+
+test('Trade Log sign-in and preview use same-origin gateway, with transfer still disabled', async()=>{
+ const {readFileSync}=await import('node:fs');
+ const page=readFileSync(new URL('./server.mjs',import.meta.url),'utf8');
+ assert.match(page,/fetch\('\/api\/operator\/shards\/login'/);
+ assert.match(page,/fetch\('\/api\/operator\/shards\/preview'/);
+ assert.match(page,/id="shard-operator-credential" type="password"/);
+ assert.match(page,/id="shard-signin-button"/);
+ assert.match(page,/id="shard-preview-button"/);
+ assert.match(page,/type="button" disabled aria-disabled="true">Transfer disabled/);
+ assert.doesNotMatch(page,/fetch\('\/api\/trade\/shard-transfer'/);
+});
