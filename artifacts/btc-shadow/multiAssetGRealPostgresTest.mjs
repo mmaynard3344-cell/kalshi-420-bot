@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import pg from "pg";
 import {reserveAssetG,recordVerifiedAssetGFill,settleVerifiedAssetG,readAssetG} from "./multiAssetGStore.mjs";
-const pool=new pg.Pool();
+const pool=new pg.Pool({connectionString:process.env.DATABASE_URL});
 try{
  const first=await Promise.all([
   reserveAssetG(pool,{asset:"SOL",orderId:"sol-test-a",ticker:"KXSOL15M-TEST",side:"no"}),
@@ -18,7 +18,7 @@ try{
  assert.equal(states[1].pending_order_id,"xrp-test-a");
  assert.equal(states[2].pending_order_id,"doge-test-a");
  await assert.rejects(settleVerifiedAssetG(pool,{asset:"SOL",orderId:"sol-test-a",settlementId:"settle-sol",result:"loss"}));
- const restart=new pg.Pool();
+ const restart=new pg.Pool({connectionString:process.env.DATABASE_URL});
  try {const s=await readAssetG(restart,"SOL");assert.equal(Number(s.step),1);
    const next=await reserveAssetG(restart,{asset:"SOL",orderId:"sol-test-b",ticker:"KXSOL15M-TEST2",side:"yes"});
    assert.equal(next.stakeCents,400);
