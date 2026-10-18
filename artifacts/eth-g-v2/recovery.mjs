@@ -25,6 +25,7 @@ export async function reconcileEthG({pending,authJson,marketJson}){
  const order=data?.order??data;
  if(order?.order_id!==exchangeOrderId||order?.client_order_id!==pending.clientOrderId||order?.ticker!==pending.ticker)
   return {state:"held",reason:"order_identity_mismatch"};
+ if(order.side!=null && order.side!==pending.side)return {state:"held",reason:"order_side_mismatch"};
  let cursor=null;const fills=[];let completed=false;
  for(let page=0;page<50;page++){
   const payload=await authJson("GET","/portfolio/fills?order_id="+encodeURIComponent(exchangeOrderId)+"&limit=200"+(cursor?"&cursor="+encodeURIComponent(cursor):""));
