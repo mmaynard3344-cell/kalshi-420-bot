@@ -91,3 +91,4 @@ jobs:
           cd /tmp/g-main-baseline
           pnpm install --frozen-lockfile
           pnpm --dir artifacts/api-server exec node scripts/run-integration-test.mjs
+          pnpm --dir artifacts/api-server test
