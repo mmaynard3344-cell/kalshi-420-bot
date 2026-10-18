@@ -81,7 +81,7 @@ import { timingSafeEqual } from "crypto";
 import { verifyShardTransferOperatorToken } from "../lib/shardTransferOperatorAuth.js";
 import { authorizedShardTransferPreview } from "../lib/shardTransferAuthorizedPreview.js";
 import { issueShardOperatorSession } from "../lib/shardTransferOperatorLogin.js";
-import { createShardOperatorLoginLimiter } from "../lib/shardTransferOperatorLoginLimiter.js";
+import { allowSharedShardOperatorLogin } from "../lib/shardTransferSharedLoginLimiter.js";
 import { SHARD_OPERATOR_COOKIE_NAME, SHARD_OPERATOR_COOKIE_ATTRIBUTES, SHARD_OPERATOR_SESSION_MAX_AGE_SECONDS } from "../lib/shardTransferOperatorSession.js";
 import { validateShardTransferHttpBoundary } from "../lib/shardTransferRequestBoundary.js";
 import { previewManualShardTransfer } from "../lib/shardTransferDryRun.js";
@@ -1407,10 +1407,9 @@ router.get("/trade/account-fingerprint", requireTradeAuth, async (_req, res) => 
  * Only an independent authenticated operator login may issue a cookie;
  * no such public login route is enabled yet.
  */
-// Development-only login path. Disabled by default and NOT approved for production
-// until a shared, durable distributed rate limiter replaces the process-local limiter.
-const shardOperatorLoginLimiter = createShardOperatorLoginLimiter({ limit: 3, windowMs: 15 * 60_000, maxKeys: 1024 });
-router.post("/trade/shard-transfer/operator-login", requireTradeAuth, (req, res) => {
+// Development-only login path; disabled by default. Requires reviewed migration,
+// operator-only authentication, and security review before any production enablement.
+router.post("/trade/shard-transfer/operator-login", requireTradeAuth, async (req, res) => {
   if (process.env["SHARD_OPERATOR_LOGIN_ENABLED"] !== "true") {
     res.status(503).json({ error: "Operator login is not enabled", transfer_submitted: false });
     return;
@@ -1423,10 +1422,9 @@ router.post("/trade/shard-transfer/operator-login", requireTradeAuth, (req, res)
     res.status(403).json({ error: "Login request rejected", transfer_submitted: false });
     return;
   }
-  // Single-process throttle is only a development guard, not a production
-  // guarantee: do not set the feature flag in Railway until distributed guard exists.
+  // Atomic shared PostgreSQL throttle fails closed if the schema is absent.
   const identity = req.ip || "unknown";
-  if (!shardOperatorLoginLimiter.allow(identity, Date.now())) {
+  if (!await allowSharedShardOperatorLogin(identity, Date.now())) {
     res.status(429).json({ error: "Too many operator sign-in attempts", transfer_submitted: false });
     return;
   }
