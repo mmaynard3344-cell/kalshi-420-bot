@@ -11,6 +11,8 @@ on:
       - 'artifacts/btc-shadow/multiAssetG.sql'
       - 'artifacts/btc-shadow/multiAssetGReconciliation.mjs'
       - 'artifacts/btc-shadow/multiAssetGReconciliation.test.mjs'
+      - 'artifacts/btc-shadow/multiAssetGOrderAdapter.mjs'
+      - 'artifacts/btc-shadow/multiAssetGOrderAdapter.test.mjs'
       - '.github/workflows/multi-asset-g-core.yml'
   workflow_dispatch:
 permissions:
@@ -24,4 +26,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test artifacts/btc-shadow/multiAssetGCore.test.mjs artifacts/btc-shadow/multiAssetGMarket.test.mjs artifacts/btc-shadow/multiAssetGStore.test.mjs artifacts/btc-shadow/multiAssetGReconciliation.test.mjs
+      - run: node --test artifacts/btc-shadow/multiAssetGCore.test.mjs artifacts/btc-shadow/multiAssetGMarket.test.mjs artifacts/btc-shadow/multiAssetGStore.test.mjs artifacts/btc-shadow/multiAssetGReconciliation.test.mjs artifacts/btc-shadow/multiAssetGOrderAdapter.test.mjs
