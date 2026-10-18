@@ -1,0 +1,71 @@
+name: BTC market discovery regression
+on:
+  pull_request:
+    paths:
+      - 'artifacts/btc-shadow/client.mjs'
+      - 'artifacts/btc-shadow/client.market-discovery.test.mjs'
+      - '.github/workflows/btc-market-discovery-regression.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  market-discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fail-closed BTC market boundary regression
+        run: node --test artifacts/btc-shadow/client.market-discovery.test.mjs
+      - name: Read-only Kalshi open-market response check
+        run: |
+          node --input-type=module <<'NODE'
+          import { selectCurrent, fetchCurrentBtcMarket, PUBLIC_BASE } from './artifacts/btc-shadow/client.mjs';
+          const url = new URL(PUBLIC_BASE+'/markets');
+          url.searchParams.set('series_ticker','KXBTC15M');
+          url.searchParams.set('status','open');
+          url.searchParams.set('limit','20');
+          const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
+          if (!response.ok) throw new Error('Kalshi market catalog HTTP '+response.status);
+          const body = await response.json();
+          if (!Array.isArray(body.markets)) throw new Error('Invalid Kalshi market catalog');
+          const now = Date.now();
+          const selected = selectCurrent(body.markets,now);
+          const near = body.markets.filter(m => /^KXBTC15M-/.test(m.ticker||'')).slice(0,8)
+            .map(m=>({ticker:m.ticker,status:m.status,open_time:m.open_time,close_time:m.close_time,
+              has_strike:Number.isFinite(Number(m.floor_strike))&&Number(m.floor_strike)>0}));
+          console.log(JSON.stringify({catalogSize:body.markets.length, selected:selected?.ticker||null,near},null,2));
+          for (const status of [null,'open','active','unopened']) {
+            const probe = new URL(PUBLIC_BASE+'/markets');
+            probe.searchParams.set('series_ticker','KXBTC15M');
+            probe.searchParams.set('limit','20');
+            if (status) probe.searchParams.set('status',status);
+            const res=await fetch(probe,{signal:AbortSignal.timeout(12000)});
+            const raw=await res.json();
+            const markets=Array.isArray(raw.markets)?raw.markets:[];
+            console.log(JSON.stringify({status:status||'omitted',http:res.status,count:markets.length,
+              sample:markets.slice(0,3).map(m=>({ticker:m.ticker,status:m.status,open_time:m.open_time,close_time:m.close_time,has_strike:Number(m.floor_strike)>0}))}));
+          }
+          const minClose=new URL(PUBLIC_BASE+'/markets');
+          minClose.searchParams.set('series_ticker','KXBTC15M');
+          minClose.searchParams.set('min_close_ts',String(Math.floor(Date.now()/1000)-900));
+          minClose.searchParams.set('limit','100');
+          const closeResp=await fetch(minClose,{signal:AbortSignal.timeout(12000)});
+          const closeData=await closeResp.json();
+          console.log(JSON.stringify({probe:'min_close_ts',http:closeResp.status,count:closeData.markets?.length,
+            candidates:closeData.markets?.slice(0,6).map(m=>({ticker:m.ticker,status:m.status,close_time:m.close_time,floor_strike:m.floor_strike}))}));
+          const deadline=Math.ceil(Date.now()/900000)*900000;
+          const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'2-digit',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(deadline)).map(x=>[x.type,x.value]));
+          const suffix=parts.minute.slice(-2);
+          const ticker='KXBTC15M-'+parts.year+parts.month.toUpperCase()+parts.day+parts.hour+parts.minute+'-'+suffix;
+          const exact=await fetch(PUBLIC_BASE+'/markets/'+ticker,{signal:AbortSignal.timeout(12000)});
+          const exactBody=await exact.json();
+          console.log(JSON.stringify({probe:'exact_ticker',ticker,http:exact.status,market:exactBody.market && {
+             ticker:exactBody.market.ticker,status:exactBody.market.status,open_time:exactBody.market.open_time,
+             close_time:exactBody.market.close_time,floor_strike:exactBody.market.floor_strike}}));
+          const direct = await fetchCurrentBtcMarket(Date.now());
+          console.log(JSON.stringify({directCurrentTicker:direct?.ticker || null}));
+          if (!direct) throw new Error('Live direct BTC market lookup failed validation');
+          NODE

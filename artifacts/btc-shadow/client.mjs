@@ -40,14 +40,38 @@ export async function bootstrapHistory(nowMs, fetcher = fetch) {
   if (earliest > cutoff) throw new Error("incomplete_28_day_btc_history");
   return facts.filter((f) => f.openTimeMs >= cutoff);
 }
+export function btcCurrentTicker(nowMs) {
+  const closeTimeMs = Math.floor(nowMs / WINDOW_MS) * WINDOW_MS + WINDOW_MS;
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", year: "2-digit", month: "short", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(closeTimeMs)).map((part) => [part.type, part.value]));
+  return `KXBTC15M-${parts.year}${parts.month.toUpperCase()}${parts.day}${parts.hour}${parts.minute}-${parts.minute}`;
+}
+export async function fetchCurrentBtcMarket(nowMs, fetcher = fetch) {
+  const ticker = btcCurrentTicker(nowMs);
+  const body = await publicJson(`${PUBLIC_BASE}/markets/${ticker}`, fetcher);
+  if (!body || !body.market || body.market.ticker !== ticker) return null;
+  return selectCurrent([body.market], nowMs);
+}
 export function selectCurrent(rows, nowMs) {
-  const matches = rows.filter((r) => /^KXBTC15M-[A-Z0-9-]+$/.test(r.ticker)
-    && ["active", "open"].includes(r.status) && Date.parse(r.open_time) <= nowMs && Date.parse(r.close_time) > nowMs);
+  // Kalshi open_time is the time order entry begins, which may precede
+  // the 15-minute outcome window. Close time defines the window boundary.
+  const matches = rows.filter((r) => {
+    const closeTimeMs = Date.parse(r.close_time);
+    const listedOpenMs = Date.parse(r.open_time);
+    const windowStartMs = closeTimeMs - WINDOW_MS;
+    return /^KXBTC15M-[A-Z0-9-]+$/.test(r.ticker)
+      && ["active", "open"].includes(r.status)
+      && Number.isSafeInteger(closeTimeMs) && closeTimeMs % WINDOW_MS === 0
+      && Number.isSafeInteger(listedOpenMs) && listedOpenMs <= nowMs
+      && nowMs >= windowStartMs && nowMs < closeTimeMs;
+  });
   if (matches.length !== 1) return null;
   const row = matches[0];
-  const floorStrike = Number(row.floor_strike), openTimeMs = Date.parse(row.open_time), closeTimeMs = Date.parse(row.close_time);
-  if (!Number.isFinite(floorStrike) || floorStrike <= 0 || closeTimeMs - openTimeMs !== WINDOW_MS || openTimeMs % WINDOW_MS !== 0) return null;
-  return { ticker: row.ticker, floorStrike, openTimeMs, observedAtMs: nowMs };
+  const floorStrike = Number(row.floor_strike), closeTimeMs = Date.parse(row.close_time);
+  if (!Number.isFinite(floorStrike) || floorStrike <= 0) return null;
+  return { ticker: row.ticker, floorStrike, openTimeMs: closeTimeMs - WINDOW_MS, observedAtMs: nowMs };
 }
 export function parseCandles(body, nowMs) {
   if (Array.isArray(body.error) && body.error.length) throw new Error("kraken_candle_error");

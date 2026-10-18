@@ -6,7 +6,7 @@ import { reconcilePendingBtcOrder } from "./btcAuthenticatedRecovery.mjs";
 import { recordBtcFilled, recordBtcVerifiedZeroFill, recordBtcVerifiedSettlement } from "./btcSharedLadderStore.mjs";
 import { createHash, createSign } from "node:crypto";
 import { evaluatePortfolio, SERVICES, WINDOW_MS, HISTORY_MS } from "./signals.mjs";
-import { bootstrapHistory, parseFact, selectCurrent, parseCandles, publicJson, PUBLIC_BASE } from "./client.mjs";
+import { bootstrapHistory, parseFact, fetchCurrentBtcMarket, parseCandles, publicJson, PUBLIC_BASE } from "./client.mjs";
 
 const LIVE_ENABLED = process.env.BTC_LIVE_ENABLED === "true" && process.env.TRADING_ENABLED === "true";
 const ORDER_EXECUTION_ENABLED =
@@ -597,12 +597,9 @@ async function tick() {
       history = [...map.values()].filter((f) => f.openTimeMs >= now - HISTORY_MS - 2 * WINDOW_MS);
       lastHistoryMs = now;
     }
-    let open = null;
     let market = null;
     for (let attempt = 0; attempt < 5 && !market; attempt++) {
-      open = await publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=open&limit=20`);
-      if (!Array.isArray(open.markets)) throw new Error("invalid_open_catalog");
-      market = selectCurrent(open.markets, Date.now());
+      market = await fetchCurrentBtcMarket(Date.now());
       if (!market && attempt < 4) await new Promise((resolve) => setTimeout(resolve, 2000));
     }
     if (!market) throw new Error("current_btc_market_unavailable");
