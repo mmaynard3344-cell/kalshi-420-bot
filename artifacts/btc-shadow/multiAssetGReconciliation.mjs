@@ -1,7 +1,7 @@
 // Exchange evidence gate for SOL/XRP/DOGE G (review only).
 // Never places orders or writes ladder state. Authenticated data is supplied by caller.
 import { assertAsset } from "./multiAssetGCore.mjs";
-export async function verifyAssetGSettlement({asset,clientOrderId,ticker,exchangeOrderId,authJson,publicJson,publicBase}) {
+export async function verifyAssetGSettlement({asset,clientOrderId,ticker,exchangeOrderId,expectedSide,authJson,publicJson,publicBase}) {
  const series=assertAsset(asset);
  if(!ticker?.startsWith(series+"-")||!clientOrderId||!exchangeOrderId ||
     typeof authJson!=="function"||typeof publicJson!=="function"||typeof publicBase!=="string")
@@ -26,9 +26,11 @@ export async function verifyAssetGSettlement({asset,clientOrderId,ticker,exchang
  const market=marketBody?.market??marketBody;
  if(market?.ticker!==ticker||!["yes","no"].includes(market?.result))
    return {state:"held",reason:"settled_market_result_missing"};
- const side=String(order.action_side??order.side??"").toLowerCase();
- // Kalshi side may be bid/ask in some order schema; require explicit verified yes/no.
+ const rawSide=String(order.action_side??order.side??"").toLowerCase();
+ const side=rawSide==="bid"?"yes":rawSide==="ask"?"no":rawSide;
  if(!["yes","no"].includes(side)) return {state:"held",reason:"order_side_not_verified"};
+ if(expectedSide!=null && (expectedSide!=="yes"&&expectedSide!=="no"||expectedSide!==side))
+  return {state:"held",reason:"order_side_mismatch"};
  return {state:"verified",asset,clientOrderId,exchangeOrderId,ticker,filledContracts:count,
    settlementId:exchangeOrderId, outcome:market.result===side?"win":"loss"};
 }
