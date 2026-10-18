@@ -15,7 +15,8 @@ export async function submitEthG({state,orderId,ticker,side,askCents,feeCents=0,
   return {kind:"skipped",reason:"insufficient_principal_to_buy_one_contract"};
  // This callback must atomically persist state and client ID before any HTTP POST.
  const reserved=await reserve({orderId,ticker,side,step:state.step});
- if(!reserved||reserved.clientOrderId!==orderId)return {kind:"held",reason:"reservation_not_verified"};
+ if(!reserved||reserved.clientOrderId!==orderId||reserved.step!==state.step||reserved.stakeCents!==principal)
+  return {kind:"held",reason:"reservation_state_changed"};
  try{
   const ack=await send({orderId,ticker,side,contracts,askCents});
   if(ack?.exchangeOrderId)await recordExchangeId({orderId,exchangeOrderId:ack.exchangeOrderId});
