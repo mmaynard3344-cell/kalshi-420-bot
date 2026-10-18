@@ -41,13 +41,23 @@ export async function bootstrapHistory(nowMs, fetcher = fetch) {
   return facts.filter((f) => f.openTimeMs >= cutoff);
 }
 export function selectCurrent(rows, nowMs) {
-  const matches = rows.filter((r) => /^KXBTC15M-[A-Z0-9-]+$/.test(r.ticker)
-    && ["active", "open"].includes(r.status) && Date.parse(r.open_time) <= nowMs && Date.parse(r.close_time) > nowMs);
+  // Kalshi open_time is the time order entry begins, which may precede
+  // the 15-minute outcome window. Close time defines the window boundary.
+  const matches = rows.filter((r) => {
+    const closeTimeMs = Date.parse(r.close_time);
+    const listedOpenMs = Date.parse(r.open_time);
+    const windowStartMs = closeTimeMs - WINDOW_MS;
+    return /^KXBTC15M-[A-Z0-9-]+$/.test(r.ticker)
+      && ["active", "open"].includes(r.status)
+      && Number.isSafeInteger(closeTimeMs) && closeTimeMs % WINDOW_MS === 0
+      && Number.isSafeInteger(listedOpenMs) && listedOpenMs <= nowMs
+      && nowMs >= windowStartMs && nowMs < closeTimeMs;
+  });
   if (matches.length !== 1) return null;
   const row = matches[0];
-  const floorStrike = Number(row.floor_strike), openTimeMs = Date.parse(row.open_time), closeTimeMs = Date.parse(row.close_time);
-  if (!Number.isFinite(floorStrike) || floorStrike <= 0 || closeTimeMs - openTimeMs !== WINDOW_MS || openTimeMs % WINDOW_MS !== 0) return null;
-  return { ticker: row.ticker, floorStrike, openTimeMs, observedAtMs: nowMs };
+  const floorStrike = Number(row.floor_strike), closeTimeMs = Date.parse(row.close_time);
+  if (!Number.isFinite(floorStrike) || floorStrike <= 0) return null;
+  return { ticker: row.ticker, floorStrike, openTimeMs: closeTimeMs - WINDOW_MS, observedAtMs: nowMs };
 }
 export function parseCandles(body, nowMs) {
   if (Array.isArray(body.error) && body.error.length) throw new Error("kraken_candle_error");
