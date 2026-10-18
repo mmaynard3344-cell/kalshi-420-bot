@@ -1,0 +1,8 @@
+FROM node:24-alpine
+WORKDIR /app
+COPY artifacts/btc-shadow/multiAssetG*.mjs ./
+RUN npm install --no-save --ignore-scripts pg@8
+ENV NODE_ENV=production PORT=8080 MULTI_ASSET_G_LIVE_ENABLED=false
+EXPOSE 8080
+USER node
+CMD ["node", "multiAssetGService.mjs"]
