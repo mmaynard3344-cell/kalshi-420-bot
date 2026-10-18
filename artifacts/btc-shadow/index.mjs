@@ -6,7 +6,7 @@ import { reconcilePendingBtcOrder } from "./btcAuthenticatedRecovery.mjs";
 import { recordBtcFilled, recordBtcVerifiedZeroFill, recordBtcVerifiedSettlement } from "./btcSharedLadderStore.mjs";
 import { createHash, createSign } from "node:crypto";
 import { evaluatePortfolio, SERVICES, WINDOW_MS, HISTORY_MS } from "./signals.mjs";
-import { bootstrapHistory, parseFact, selectCurrent, parseCandles, publicJson, PUBLIC_BASE } from "./client.mjs";
+import { bootstrapHistory, parseFact, fetchCurrentBtcMarket, parseCandles, publicJson, PUBLIC_BASE } from "./client.mjs";
 
 const LIVE_ENABLED = process.env.BTC_LIVE_ENABLED === "true" && process.env.TRADING_ENABLED === "true";
 const ORDER_EXECUTION_ENABLED =
@@ -139,7 +139,7 @@ function orderPayload(ticker, side, clientOrderId, contracts, outcomePriceCents)
     side: side === "yes" ? "bid" : "ask",
     count: contracts + ".00",
     price: ((side === "yes" ? outcomePriceCents : 100 - outcomePriceCents) / 100).toFixed(4),
-    time_in_force: "immediate_or_cancel",
+    time_in_force: "good_till_canceled",
     self_trade_prevention_type: "taker_at_cross",
   };
 }
@@ -187,19 +187,13 @@ async function executeDecision(decision, market) {
 
   try {
     const limitPriceCents = Number(decision.limitPriceCents ?? 50);
-    const fresh = await publicJson(`${PUBLIC_BASE}/markets/${encodeURIComponent(decision.ticker)}`);
-    const quoteMarket = fresh?.market ?? fresh;
-    const askCents = quoteCents(quoteMarket, decision.side);
-    if (!Number.isInteger(askCents) || askCents < 1 || askCents > 99) {
-      totals[decision.service].skippedOrders++;
-      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, reason: "executable_ask_unavailable", retryable: true });
-      return "retry";
+    // Rest the GTC bid at our authorized limit; a higher market ask is not a blocker.
+    // Keep sizing, reserve budgeting, and exchange order price at this same limit.
+    if (!Number.isInteger(limitPriceCents) || limitPriceCents < 1 || limitPriceCents > 99) {
+      json({event:"btc_live_order_skipped",service:decision.service,ticker:decision.ticker,reason:"invalid_limit_price"});
+      return "terminal";
     }
-    if (askCents > limitPriceCents) {
-      totals[decision.service].skippedOrders++;
-      json({ event: "btc_live_order_skipped", service: decision.service, ticker: decision.ticker, side: decision.side, askCents, limitPriceCents, reason: "ask_above_limit", retryable: true });
-      return "retry";
-    }
+    const askCents = limitPriceCents;
 
     if (BTC_SHARED_LADDER_REVIEW) {
       // New shared-ladder order path. The flag is OFF by default and requires
@@ -603,12 +597,9 @@ async function tick() {
       history = [...map.values()].filter((f) => f.openTimeMs >= now - HISTORY_MS - 2 * WINDOW_MS);
       lastHistoryMs = now;
     }
-    let open = null;
     let market = null;
     for (let attempt = 0; attempt < 5 && !market; attempt++) {
-      open = await publicJson(`${PUBLIC_BASE}/markets?series_ticker=KXBTC15M&status=open&limit=20`);
-      if (!Array.isArray(open.markets)) throw new Error("invalid_open_catalog");
-      market = selectCurrent(open.markets, Date.now());
+      market = await fetchCurrentBtcMarket(Date.now());
       if (!market && attempt < 4) await new Promise((resolve) => setTimeout(resolve, 2000));
     }
     if (!market) throw new Error("current_btc_market_unavailable");
