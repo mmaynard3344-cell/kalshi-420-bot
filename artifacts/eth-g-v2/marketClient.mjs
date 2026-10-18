@@ -25,8 +25,8 @@ export async function readLastThreeEthSettlements(currentOpenMs,fetcher=fetch){
   const openMs=currentOpenMs-offset*WINDOW;
   const ticker=ethCurrentTicker(openMs);
   const market=await readMarket(ticker,fetcher);
-  const actualOpen=Date.parse(market.open_time);
-  if(market.ticker!==ticker||actualOpen!==openMs||!["settled","finalized"].includes(market.status)||!["yes","no"].includes(market.result))
+  const actualClose=Date.parse(market.close_time);
+  if(market.ticker!==ticker||actualClose!==openMs+WINDOW||!["settled","finalized"].includes(market.status)||!["yes","no"].includes(market.result))
    return null;
   rows.push({ticker,openMs,result:market.result,finalized:true});
  }
