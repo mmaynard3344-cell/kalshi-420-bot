@@ -60,3 +60,15 @@ export async function getPendingEthG(pool){
  return {step:Number(row.step),clientOrderId:row.pending_client_order_id,ticker:row.ticker,
   side:row.side,exchangeOrderId:row.exchange_order_id,filledContracts:Number(row.verified_filled_contracts)};
 }
+
+export async function attachEthGExchangeOrderId(pool,{clientOrderId,exchangeOrderId}){
+ if(!clientOrderId||!exchangeOrderId)throw Error("invalid_exchange_identity");
+ return locked(pool,async(c,state)=>{
+  if(state.pending_client_order_id!==clientOrderId)throw Error("eth_g_v2_order_mismatch");
+  const r=await c.query(
+   "UPDATE eth_g_v2_orders SET exchange_order_id=$2 WHERE client_order_id=$1 AND (exchange_order_id IS NULL OR exchange_order_id=$2)",
+   [clientOrderId,exchangeOrderId]);
+  if(r.rowCount!==1)throw Error("eth_g_v2_exchange_identity_conflict");
+  return {clientOrderId,exchangeOrderId};
+ });
+}
