@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS multi_asset_g_order_identity (
  verified_filled_contracts INTEGER NOT NULL DEFAULT 0 CHECK (verified_filled_contracts >= 0),
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  PRIMARY KEY (asset,client_order_id),
- UNIQUE(asset,exchange_order_id)
+ UNIQUE(asset,exchange_order_id),
+ UNIQUE(asset,ticker)
 );
 INSERT INTO multi_asset_g_ladders(asset) VALUES ('SOL'),('XRP'),('DOGE') ON CONFLICT DO NOTHING;
