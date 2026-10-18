@@ -40,6 +40,20 @@ export async function bootstrapHistory(nowMs, fetcher = fetch) {
   if (earliest > cutoff) throw new Error("incomplete_28_day_btc_history");
   return facts.filter((f) => f.openTimeMs >= cutoff);
 }
+export function btcCurrentTicker(nowMs) {
+  const closeTimeMs = Math.floor(nowMs / WINDOW_MS) * WINDOW_MS + WINDOW_MS;
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", year: "2-digit", month: "short", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(closeTimeMs)).map((part) => [part.type, part.value]));
+  return `KXBTC15M-${parts.year}${parts.month.toUpperCase()}${parts.day}${parts.hour}${parts.minute}-${parts.minute}`;
+}
+export async function fetchCurrentBtcMarket(nowMs, fetcher = fetch) {
+  const ticker = btcCurrentTicker(nowMs);
+  const body = await publicJson(`${PUBLIC_BASE}/markets/${ticker}`, fetcher);
+  if (!body || !body.market || body.market.ticker !== ticker) return null;
+  return selectCurrent([body.market], nowMs);
+}
 export function selectCurrent(rows, nowMs) {
   // Kalshi open_time is the time order entry begins, which may precede
   // the 15-minute outcome window. Close time defines the window boundary.
