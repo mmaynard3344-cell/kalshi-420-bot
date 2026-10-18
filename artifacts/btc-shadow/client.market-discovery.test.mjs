@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { selectCurrent } from "./client.mjs";
+import { selectCurrent, btcCurrentTicker, fetchCurrentBtcMarket } from "./client.mjs";
 
 const WINDOW = 15 * 60_000;
 const start = Date.parse("2026-10-18T18:00:00Z");
@@ -46,4 +46,27 @@ test("fails closed on wrong status, invalid ticker, and listing not yet open", (
 });
 test("selects the right interval from a list of future-open markets", () => {
   assert.equal(selectCurrent([market({close_time: new Date(start + 2 * WINDOW).toISOString(), ticker:"KXBTC15M-NEXT"}), market()], start + 1)?.ticker, market().ticker);
+});
+
+test("derives the exact current ticker from New York market close time", () => {
+  assert.equal(btcCurrentTicker(Date.parse("2026-10-18T18:20:00Z")), "KXBTC15M-26OCT181430-30");
+  assert.equal(btcCurrentTicker(Date.parse("2026-10-18T18:30:00Z")), "KXBTC15M-26OCT181445-45");
+});
+test("direct market request selects validated active BTC contract", async () => {
+  const now = start + 60_000;
+  const seen = [];
+  const selected = await fetchCurrentBtcMarket(now, async (url) => {
+    seen.push(url);
+    return {ok:true,json: async()=>({market: market()})};
+  });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].endsWith("/"+btcCurrentTicker(now)),true);
+  assert.equal(selected?.ticker,market().ticker);
+});
+test("direct lookup rejects mismatched or closed contracts", async () => {
+  const now = start + 60_000;
+  for (const bad of [market({ticker:"KXBTC15M-OTHER"}),market({status:"closed"})]) {
+    const selected = await fetchCurrentBtcMarket(now, async()=>({ok:true,json:async()=>({market:bad})}));
+    assert.equal(selected,null);
+  }
 });
