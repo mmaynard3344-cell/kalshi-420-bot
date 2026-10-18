@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import pg from "pg";
-import {reserveEthG,attachVerifiedEthGFill,settleVerifiedEthG,getPendingEthG} from "./store.mjs";
+import {reserveEthG,attachVerifiedEthGFill,settleVerifiedEthG,getPendingEthG,attachEthGExchangeOrderId} from "./store.mjs";
 const pool=new pg.Pool();
 try{
  const first=await reserveEthG(pool,{clientOrderId:"test-order-1",ticker:"KXETH15M-26OCT181530-30",side:"yes",triggerKey:"older|latest"});
@@ -14,5 +14,16 @@ try{
  assert.equal(await getPendingEthG(pool),null);
  await assert.rejects(reserveEthG(pool,{clientOrderId:"replay",ticker:"KXETH15M-26OCT181600-00",side:"yes",triggerKey:"older|latest"}),/trigger_replayed/);
  assert.equal((await reserveEthG(pool,{clientOrderId:"test-order-3",ticker:"KXETH15M-26OCT181600-00",side:"no",triggerKey:"latest|newest"})).stakeCents,400);
+ await attachEthGExchangeOrderId(pool,{clientOrderId:"test-order-3",exchangeOrderId:"ex-3"});
+ const restarted=new pg.Pool();
+ try {
+  const pending=await getPendingEthG(restarted);
+  assert.equal(pending.clientOrderId,"test-order-3");
+  assert.equal(pending.exchangeOrderId,"ex-3");
+  await attachVerifiedEthGFill(restarted,{clientOrderId:"test-order-3",exchangeOrderId:"ex-3",filledContracts:2});
+  const result=await settleVerifiedEthG(restarted,{clientOrderId:"test-order-3",settlementId:"ex-3",outcome:"win"});
+  assert.equal(result.step,0);
+  await assert.rejects(settleVerifiedEthG(restarted,{clientOrderId:"test-order-3",settlementId:"ex-3",outcome:"win"}),/order_mismatch/);
+ } finally {await restarted.end()}
  console.log("ETH_G_V2_REAL_PG_PASS order reservation, duplicate lock, verified fill, loss progression, trigger replay");
 }finally{await pool.end()}
