@@ -1,0 +1,29 @@
+name: Multi-asset G container smoke
+on:
+  pull_request:
+    paths:
+      - 'artifacts/btc-shadow/multiAssetG*'
+      - 'artifacts/btc-shadow/Dockerfile.multi-asset-g'
+      - '.github/workflows/multi-asset-g-container.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  shadow-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f artifacts/btc-shadow/Dockerfile.multi-asset-g -t multi-asset-g:review .
+      - run: docker run -d --name multi-asset-g-shadow -p 8080:8080 -e PORT=8080 -e MULTI_ASSET_G_LIVE_ENABLED=false multi-asset-g:review
+      - run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/ > /tmp/multi-asset-g-health.json; then
+              cat /tmp/multi-asset-g-health.json
+              grep -q '"liveTrading":false' /tmp/multi-asset-g-health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs multi-asset-g-shadow
+          exit 1
