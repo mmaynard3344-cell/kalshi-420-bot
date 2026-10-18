@@ -1,0 +1,19 @@
+name: ETH G v2 live public smoke
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'artifacts/eth-g-v2/liveSmoke.mjs'
+      - '.github/workflows/eth-g-v2-live-smoke.yml'
+permissions:
+  contents: read
+jobs:
+  public-market-read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node artifacts/eth-g-v2/liveSmoke.mjs
