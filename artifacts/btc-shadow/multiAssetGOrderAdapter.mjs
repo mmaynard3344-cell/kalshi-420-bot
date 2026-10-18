@@ -13,7 +13,8 @@ export async function submitAssetG({pool,asset,ticker,side,orderId,askCents,feeC
  // A durable reservation must precede any exchange POST, and it is never
  // released for ambiguous errors or unknown fills.
  const reserved=await reserveAssetG(pool,{asset,orderId,ticker,side});
- const total=askCents+feeCents;
+ const conservativeFeeCents=Math.ceil(0.07*askCents*(100-askCents)/100);
+ const total=askCents+Math.max(feeCents,conservativeFeeCents);
  const contracts=Math.floor(reserved.stakeCents/total);
  if(!Number.isSafeInteger(contracts)||contracts<1)
    return {state:"held",reason:"reserved_without_affordable_contract",orderId};
