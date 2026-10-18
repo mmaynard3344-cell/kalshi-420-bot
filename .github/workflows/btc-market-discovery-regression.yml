@@ -19,3 +19,23 @@ jobs:
           node-version: '22'
       - name: Fail-closed BTC market boundary regression
         run: node --test artifacts/btc-shadow/client.market-discovery.test.mjs
+      - name: Read-only Kalshi open-market response check
+        run: |
+          node --input-type=module <<'NODE'
+          import { selectCurrent, PUBLIC_BASE } from './artifacts/btc-shadow/client.mjs';
+          const url = new URL(PUBLIC_BASE+'/markets');
+          url.searchParams.set('series_ticker','KXBTC15M');
+          url.searchParams.set('status','open');
+          url.searchParams.set('limit','20');
+          const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
+          if (!response.ok) throw new Error('Kalshi market catalog HTTP '+response.status);
+          const body = await response.json();
+          if (!Array.isArray(body.markets)) throw new Error('Invalid Kalshi market catalog');
+          const now = Date.now();
+          const selected = selectCurrent(body.markets,now);
+          const near = body.markets.filter(m => /^KXBTC15M-/.test(m.ticker||'')).slice(0,8)
+            .map(m=>({ticker:m.ticker,status:m.status,open_time:m.open_time,close_time:m.close_time,
+              has_strike:Number.isFinite(Number(m.floor_strike))&&Number(m.floor_strike)>0}));
+          console.log(JSON.stringify({catalogSize:body.markets.length, selected:selected?.ticker||null,near},null,2));
+          if (!selected) throw new Error('Live Kalshi catalog does not yield exactly one eligible BTC market');
+          NODE
