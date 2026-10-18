@@ -50,3 +50,20 @@ test("read-only shard balances are scoped to 0/1/2 and cannot authorize transfer
   assert.match(dashboard, /Manual shard transfer · preview only/);
   assert.match(dashboard, /<button type="button" disabled className=/);
 });
+
+test("operator login and session preview stay private and login defaults off", () => {
+  const repoRoot = resolve(process.cwd(), "../..");
+  const routes = readFileSync(resolve(repoRoot, "artifacts/api-server/src/routes/trade.ts"), "utf8");
+  const proxy = readFileSync(resolve(repoRoot, "artifacts/kalshi-reader/server.mjs"), "utf8");
+  const login = routes.match(/router\.post\("\/trade\/shard-transfer\/operator-login"[\s\S]*?\n\}\);/);
+  const preview = routes.match(/router\.post\("\/trade\/shard-transfer\/session-preview"[\s\S]*?\n\}\);/);
+  assert.ok(login && preview);
+  assert.match(login[0], /requireTradeAuth/);
+  assert.match(login[0], /SHARD_OPERATOR_LOGIN_ENABLED/);
+  assert.match(login[0], /allowSharedShardOperatorLogin/);
+  assert.match(login[0], /issueShardOperatorSession/);
+  assert.match(preview[0], /requireTradeAuth/);
+  assert.match(preview[0], /authorizedShardTransferPreview/);
+  assert.doesNotMatch(proxy, /ALLOWED_(?:POST|WRITE)_PATHS/);
+  assert.doesNotMatch(proxy.match(/ALLOWED_READ_PATHS = new Set\(\[([\s\S]*?)\]\)/)?.[1] ?? "", /shard-transfer/);
+});
