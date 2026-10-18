@@ -21,7 +21,7 @@ export async function recoverAssetG({pool,asset,authJson,publicJson,publicBase})
   exchangeOrderId=found.order_id;
   if(!exchangeOrderId)return {state:"held",asset,reason:"exchange_id_unverified"};
  }
- const proof=await verifyAssetGSettlement({asset,clientOrderId:pending.orderId,ticker:pending.ticker,exchangeOrderId,authJson,publicJson,publicBase});
+ const proof=await verifyAssetGSettlement({asset,clientOrderId:pending.orderId,ticker:pending.ticker,exchangeOrderId,expectedSide:pending.side,authJson,publicJson,publicBase});
  if(proof.state!=="verified")return {...proof,asset};
  await recordAssetGExchangeId(pool,{asset,orderId:pending.orderId,exchangeOrderId});
  await recordVerifiedAssetGFill(pool,{asset,orderId:pending.orderId,exchangeOrderId,filledContracts:proof.filledContracts});
