@@ -1,7 +1,7 @@
 // Order lifecycle orchestration: read-only recovery, then optional guarded submission.
 // Requires externally supplied persistent pool and authenticated Kalshi client.
 import {randomUUID} from "node:crypto";
-import {getPendingEthG,attachVerifiedEthGFill} from "./store.mjs";
+import {getPendingEthG,attachEthGExchangeOrderId} from "./store.mjs";
 import {recoverPendingEthG} from "./recoveryCoordinator.mjs";
 import {submitEvaluatedEthG} from "./liveCoordinator.mjs";
 import {orderPayload} from "./authClient.mjs";
@@ -25,6 +25,6 @@ export async function runEthGLifecycle({pool,authJson,marketJson,evaluation,askC
    if(!exchangeOrderId)return {kind:"uncertain"};
    return {kind:"accepted",exchangeOrderId};
   },
-  recordExchangeId:async()=>{ /* Exchange identity attached only on authenticated fill verification during recovery. */ }
+  recordExchangeId:async({orderId,exchangeOrderId})=>attachEthGExchangeOrderId(pool,{clientOrderId:orderId,exchangeOrderId})
  });
 }
