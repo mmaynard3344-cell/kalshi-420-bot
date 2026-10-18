@@ -47,9 +47,16 @@ export async function operatorGateway(req, res, path, config) {
     const responseHeaders = { 'cache-control': 'no-store', 'content-type': 'application/json', 'x-content-type-options': 'nosniff' };
     if (path.endsWith('/login') && upstream.ok) {
       const cookie = upstream.headers.get('set-cookie');
-      if (cookie && /^__Host-shard_operator=[A-Za-z0-9_.-]+;/.test(cookie) &&
-          cookie.includes('HttpOnly') && cookie.includes('Secure') && cookie.includes('SameSite=Strict')) {
-        responseHeaders['set-cookie'] = cookie;
+      const match = typeof cookie === 'string'
+        ? cookie.match(/^__Host-shard_operator=([A-Za-z0-9_.-]{20,1024})(?:;|$)/)
+        : null;
+      if (match && /(?:^|;)\\s*HttpOnly(?:;|$)/i.test(cookie) &&
+          /(?:^|;)\\s*Secure(?:;|$)/i.test(cookie) &&
+          /(?:^|;)\\s*SameSite=Strict(?:;|$)/i.test(cookie)) {
+        // Reissue on the dashboard origin; never forward Domain or other
+        // upstream attributes that might expand cookie scope.
+        responseHeaders['set-cookie'] = '__Host-shard_operator=' + match[1] +
+          '; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=900';
       } else {
         res.writeHead(502, responseHeaders); res.end('{"error":"Invalid operator session response"}'); return;
       }
