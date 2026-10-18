@@ -24,6 +24,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck:libs
+      - name: Check dashboard server syntax
+        run: node --check artifacts/kalshi-reader/server.mjs
       - name: Typecheck read-only dashboard
         working-directory: artifacts/kalshi-reader
         run: pnpm typecheck
