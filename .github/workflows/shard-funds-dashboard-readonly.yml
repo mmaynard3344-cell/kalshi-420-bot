@@ -1,0 +1,34 @@
+name: Shard funds read-only dashboard validation
+on:
+  push:
+    branches:
+      - feat/shard-funds-readonly-release-20261017
+  pull_request:
+    paths:
+      - 'artifacts/kalshi-reader/**'
+      - 'artifacts/api-server/src/routes/trade.ts'
+      - '.github/workflows/shard-funds-dashboard-readonly.yml'
+jobs:
+  readonly-dashboard:
+    runs-on: ubuntu-latest
+    env:
+      SHARD_TRANSFERS_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.26.1'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck:libs
+      - name: Check dashboard server syntax
+        run: node --check artifacts/kalshi-reader/server.mjs
+      - name: Typecheck read-only dashboard
+        working-directory: artifacts/kalshi-reader
+        run: pnpm typecheck
+      - name: Build read-only dashboard
+        working-directory: artifacts/kalshi-reader
+        run: pnpm build

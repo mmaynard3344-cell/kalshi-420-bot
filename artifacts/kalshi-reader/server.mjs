@@ -1231,6 +1231,7 @@ function serveSimpleTradeLog(req,res) {
 </head><body><main><header><div><h1>Shawshank · Trade Log</h1><p>Existing exchange orders and fills · read only</p></div><div><select id="market"><option value="ALL">All markets</option><option>ETH</option><option>BTC</option><option>USD</option></select> <button id="refresh">Refresh</button></div></header>
 <p id="status">Loading trades…</p><p class="warn">EUR/USD pilot orders are held by a separate Railway Function and may not be present in this feed. Missing entries do not mean no USD trades occurred.</p>
 <section id="martingale-cycles" style="border:1px solid #40516a;border-radius:12px;padding:18px;background:#172336;margin-top:20px"><h2 style="margin:0 0 5px">Martingale Cycle Tracker</h2><p style="font-size:13px">Current verified stages for USD, ETH and BTC · updates every 10 seconds</p><div id="martingale-cycle-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px"><p>Loading stages…</p></div><small id="martingale-cycle-updated" class="muted">Waiting for cycle data</small></section>
+<section id="shard-funds" style="border:1px solid #40516a;border-radius:12px;padding:18px;background:#172336;margin-top:16px"><h2>Shard Balances</h2><p>Available cash on Kalshi shards 0, 1 and 2 · read only</p><div id="shard-fund-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px">Loading balances…</div><small id="shard-funds-updated" class="muted">Waiting for balance data</small></section>
 <section><table><thead><tr><th>Time (ET)</th><th>Market</th><th>Service</th><th>Ticker</th><th>Side</th><th>Requested</th><th>Filled</th><th>Price</th><th>Bet Amount</th><th>Status</th><th>W/L</th><th>Net P&L</th><th>Order ID</th></tr></thead><tbody id="rows"></tbody></table></section><p><small>Source: Shawshank existing authenticated order/fill API. No trades submitted by this page.</small></p></main>
 <script>
 let all=[];
@@ -1333,6 +1334,31 @@ async function load(){
  finally{el('refresh').disabled=false}
 }
 el('refresh').addEventListener('click',load);el('market').addEventListener('change',draw);load();
+</script><script>
+async function refreshShardFunds(){
+ const cards=document.getElementById('shard-fund-cards'),updated=document.getElementById('shard-funds-updated');
+ try{
+  const response=await fetch('/api/trade/balance',{cache:'no-store'});
+  if(!response.ok)throw Error('Balance feed unavailable');
+  const data=await response.json();
+  const shards=Array.isArray(data.shard_balances)?data.shard_balances:[];
+  cards.replaceChildren();
+  for(const index of [0,1,2]){
+   const item=shards.find(value=>value.exchange_index===index);
+   const cents=item?.available_balance_cents;
+   const valid=typeof cents==='number'&&Number.isSafeInteger(cents)&&cents>=0;
+   const card=document.createElement('div');card.style.cssText='border:1px solid #40516a;border-radius:9px;padding:14px;min-width:0';
+   const heading=document.createElement('strong');heading.textContent='Shard '+index;
+   const amount=document.createElement('div');amount.style.cssText='font-size:25px;font-weight:700;margin:9px 0';
+   amount.textContent=valid?String.fromCharCode(36)+(cents/100).toFixed(2):'Unavailable';
+   const status=document.createElement('small');status.className='muted';
+   status.textContent=!item?'No data':item.stale?'Stale data':valid?'Available cash':'Invalid balance';
+   card.append(heading,amount,status);cards.append(card);
+  }
+  updated.textContent='Last checked '+new Date().toLocaleTimeString('en-US',{timeZone:'America/New_York'})+' ET · transfers disabled';
+ }catch(error){cards.textContent='Shard balances unavailable right now';updated.textContent='Balance data could not be refreshed · transfers disabled';}
+}
+refreshShardFunds();window.setInterval(refreshShardFunds,30000);
 </script><script src="/martingale-cycles.js?v=20261017-outcomes-2" defer></script></body></html>`;
   return send(res,200,req.method === 'HEAD' ? '' : html,'text/html; charset=utf-8');
 }
