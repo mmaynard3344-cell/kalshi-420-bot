@@ -49,3 +49,14 @@ export async function settleVerifiedEthG(pool,{clientOrderId,settlementId,outcom
   return {step:after,stakeCents:stake(after)};
  });
 }
+
+export async function getPendingEthG(pool){
+ const r=await pool.query(
+  "SELECT s.step,s.pending_client_order_id,o.ticker,o.side,o.exchange_order_id,o.verified_filled_contracts FROM eth_g_v2_state s LEFT JOIN eth_g_v2_orders o ON o.client_order_id=s.pending_client_order_id WHERE s.id=1");
+ const row=r.rows[0];
+ if(!row)throw Error("eth_g_v2_state_missing");
+ if(!row.pending_client_order_id)return null;
+ if(!row.ticker||!row.side)throw Error("eth_g_v2_pending_identity_missing");
+ return {step:Number(row.step),clientOrderId:row.pending_client_order_id,ticker:row.ticker,
+  side:row.side,exchangeOrderId:row.exchange_order_id,filledContracts:Number(row.verified_filled_contracts)};
+}
