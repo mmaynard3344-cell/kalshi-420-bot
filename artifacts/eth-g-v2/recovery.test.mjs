@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {reconcileEthG} from "./recovery.mjs";
 const ticker="KXETH15M-26OCT181530-30";
 const pending={clientOrderId:"client1",ticker,side:"yes",exchangeOrderId:"exchange1"};
-const order={order_id:"exchange1",client_order_id:"client1",ticker};
+const order={order_id:"exchange1",client_order_id:"client1",ticker,status:"executed"};
 function args(){return {pending,authJson:async(method,path)=>path.includes("/fills")?{fills:[{order_id:"exchange1",ticker,count:2}]}:{order},
  marketJson:async()=>({market:{ticker,result:"yes"}})}}
 test("verified outcome based on authenticated order, fills and final market",async()=>{
@@ -32,4 +32,9 @@ test("fully paginates fills before deciding",async()=>{
  return {fills:[{order_id:"exchange1",ticker,count:2}]};
  };
  assert.equal((await reconcileEthG(x)).filledContracts,3);
+});
+
+test("active or partially filled GTC order cannot advance ladder",async()=>{
+ const x=args();x.authJson=async(method,path)=>path.includes("/fills")?{fills:[{order_id:"exchange1",ticker,count:1}]}:{order:{...order,status:"resting"}};
+ assert.equal((await reconcileEthG(x)).reason,"exchange_order_not_final");
 });
