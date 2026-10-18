@@ -79,6 +79,7 @@ import { getProtectiveExitMonitorStatus } from "../lib/protectiveExit.js";
 import { getExchangeDiscoverySweepStatus } from "../lib/fillReconciler.js";
 import { timingSafeEqual } from "crypto";
 import { verifyShardTransferOperatorToken } from "../lib/shardTransferOperatorAuth.js";
+import { authorizedShardTransferPreview } from "../lib/shardTransferAuthorizedPreview.js";
 import { validateShardTransferHttpBoundary } from "../lib/shardTransferRequestBoundary.js";
 import { previewManualShardTransfer } from "../lib/shardTransferDryRun.js";
 import { describeShardTransferStatus } from "../lib/shardTransferStatusView.js";
@@ -1398,6 +1399,36 @@ router.get("/trade/account-fingerprint", requireTradeAuth, async (_req, res) => 
  * authentication are built and validated. Do not enable by setting environment
  * variables alone: this route deliberately performs no Kalshi POST.
  */
+/**
+ * Private signed-session transfer preview. No execution path.
+ * Only an independent authenticated operator login may issue a cookie;
+ * no such public login route is enabled yet.
+ */
+router.post("/trade/shard-transfer/session-preview", requireTradeAuth, (req, res) => {
+  const rawCookie = req.header("cookie") ?? "";
+  const match = rawCookie.match(/(?:^|;\\s*)__Host-shard_operator=([A-Za-z0-9_.-]+)/);
+  try {
+    const preview = authorizedShardTransferPreview({
+      sessionCookie: match?.[1],
+      sessionSigningKey: process.env["SHARD_OPERATOR_SESSION_SIGNING_KEY"],
+      csrfHeader: req.header("x-shard-operator-csrf"),
+      contentType: req.header("content-type"),
+      origin: req.header("origin"),
+      expectedOrigin: process.env["SHARD_TRANSFER_ALLOWED_ORIGIN"],
+      fetchSite: req.header("sec-fetch-site"),
+      contentLength: req.header("content-length"),
+      requestBody: req.body,
+    });
+    if (!preview) {
+      res.status(403).json({ error: "Operator session or request rejected", transfer_submitted: false });
+      return;
+    }
+    res.json(preview);
+  } catch {
+    res.status(400).json({ error: "Invalid transfer preview", transfer_submitted: false });
+  }
+});
+
 router.post("/trade/shard-transfer/preview", requireTradeAuth, (req, res) => {
   if (!verifyShardTransferOperatorToken(
     req.header("x-shard-transfer-operator-token"),
