@@ -1,4 +1,5 @@
 import http from "node:http";
+import { ethGReversalSide } from "./lib/strategies/ethGStreakDirection.js";
 import { sql } from "drizzle-orm";
 import { kalshiFetch, kalshiSeriesFetch, normalizeMarket } from "./lib/kalshi.js";
 import { kalshiAuthFetch } from "./lib/kalshiAuth.js";
@@ -431,8 +432,9 @@ async function exactTwoStreakDecision(currentOpenMs: number): Promise<MarketDire
     const three = byOpen.get(currentOpenMs - 45 * 60_000);
     // Never declare NO SIGNAL until all three necessary settlements are known.
     if (!one || !two || !three) return { kind: "unknown" };
-    if (one.result !== two.result || three.result === one.result) return { kind: "none" };
-    return { kind: "signal", side: one.result === "yes" ? "no" : "yes", priorResult: one.result, key: `${two.ticker}|${one.ticker}` };
+    const side = ethGReversalSide(three.result, two.result, one.result);
+    if (side == null) return { kind: "none" };
+    return { kind: "signal", side, priorResult: one.result, key: `${two.ticker}|${one.ticker}` };
   } catch (err) {
     logger.warn({ err }, "G direction settlement history unavailable; decision deferred");
     return { kind: "unknown" };
