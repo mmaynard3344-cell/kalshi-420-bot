@@ -1,10 +1,9 @@
-import { describe, expect, it } from "vitest";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { ethGReversalSide } from "./ethGStreakDirection.js";
 
-describe("ETH G exact-two opposite side", () => {
-  it("reverses newly formed YES streak", () => expect(ethGReversalSide("no","yes","yes")).toBe("no"));
-  it("reverses newly formed NO streak", () => expect(ethGReversalSide("yes","no","no")).toBe("yes"));
-  it("does not fire without two matching recent settlements", () => expect(ethGReversalSide("yes","yes","no")).toBeNull());
-  it("does not fire on a streak of three", () => expect(ethGReversalSide("yes","yes","yes")).toBeNull());
-  it("does not fire on a NO streak of three", () => expect(ethGReversalSide("no","no","no")).toBeNull());
-});
+test("newly formed YES streak predicts NO", () => assert.equal(ethGReversalSide("no","yes","yes"), "no"));
+test("newly formed NO streak predicts YES", () => assert.equal(ethGReversalSide("yes","no","no"), "yes"));
+test("unmatched recent outcomes do not trigger", () => assert.equal(ethGReversalSide("yes","yes","no"), null));
+test("three YES settlements do not trigger", () => assert.equal(ethGReversalSide("yes","yes","yes"), null));
+test("three NO settlements do not trigger", () => assert.equal(ethGReversalSide("no","no","no"), null));
