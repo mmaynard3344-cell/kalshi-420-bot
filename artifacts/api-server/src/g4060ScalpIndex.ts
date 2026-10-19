@@ -1,4 +1,5 @@
 import http from "node:http";
+import { ethGReversalSide } from "./lib/strategies/ethGStreakDirection.js";
 import { sql } from "drizzle-orm";
 import { kalshiFetch, kalshiSeriesFetch, normalizeMarket } from "./lib/kalshi.js";
 import { kalshiAuthFetch } from "./lib/kalshiAuth.js";
@@ -306,13 +307,37 @@ async function settleOrder(order: GOrder, result: OutcomeSide): Promise<void> {
       ||verified.fillCount<0||verified.fillCount>order.requestedContracts)return;
     const verifiedFills=verified.fillCount;
     const outcome=verifiedFills===0?"ZERO_FILL":order.side===result?"WIN":"LOSS";
-    await finalizeEthClaim(sharedEthPgProvider,String(linked["claim_id"]),
+    const sharedSettlement = await finalizeEthClaim(sharedEthPgProvider,String(linked["claim_id"]),
       "G:"+order.clientOrderId+":"+result,outcome);
-    await d.execute(sql`
-      UPDATE eth_g_streak_reversal_orders SET settlement_result=${result},
-        won=${verifiedFills>0?order.side===result:null},filled_contracts=${verifiedFills},settled_at_ms=${Date.now()},
-        updated_at_ms=${Date.now()} WHERE id=${order.id} AND settled_at_ms IS NULL
-    `);
+    // Shared settlement commits first; the local journal and direction update
+    // are atomic only with each other. A crash between these commits must be
+    // recovered by reconcileOutstanding before any subsequent submission.
+    await d.transaction(async (tx) => {
+      const settled = await tx.execute(sql`
+        UPDATE eth_g_streak_reversal_orders SET settlement_result=${result},
+          won=${verifiedFills>0?order.side===result:null},
+          filled_contracts=${verifiedFills},settled_at_ms=${Date.now()},
+          updated_at_ms=${Date.now()} WHERE id=${order.id} AND settled_at_ms IS NULL
+        RETURNING id
+      `);
+      if (rows(settled).length !== 1 || outcome === "ZERO_FILL") return;
+      if (outcome === "WIN" || (outcome === "LOSS" && sharedSettlement.step === 0)) {
+        await tx.execute(sql`
+          UPDATE eth_g_streak_reversal_state SET ladder_side=NULL, step=0,
+            updated_at_ms=${Date.now()} WHERE id=1 AND ladder_side=${order.side}
+        `);
+        logger.info({ ticker:order.ticker }, "G shared cycle complete: direction cleared");
+      } else {
+        // Shared ETH owns the six-rung cycle; local step is diagnostic only.
+        await tx.execute(sql`
+          UPDATE eth_g_streak_reversal_state
+          SET step=${sharedSettlement.step}, updated_at_ms=${Date.now()}
+          WHERE id=1 AND ladder_side=${order.side}
+        `);
+        logger.info({ticker:order.ticker, sharedStep:sharedSettlement.step},
+          "G shared loss: direction retained until shared cycle resets");
+      }
+    });
     return;
   }
   const won = order.filledContracts > 0 ? order.side === result : null;
@@ -407,8 +432,9 @@ async function exactTwoStreakDecision(currentOpenMs: number): Promise<MarketDire
     const three = byOpen.get(currentOpenMs - 45 * 60_000);
     // Never declare NO SIGNAL until all three necessary settlements are known.
     if (!one || !two || !three) return { kind: "unknown" };
-    if (one.result !== two.result || three.result === one.result) return { kind: "none" };
-    return { kind: "signal", side: one.result, priorResult: one.result, key: `${two.ticker}|${one.ticker}` };
+    const side = ethGReversalSide(three.result, two.result, one.result);
+    if (side == null) return { kind: "none" };
+    return { kind: "signal", side, priorResult: one.result, key: `${two.ticker}|${one.ticker}` };
   } catch (err) {
     logger.warn({ err }, "G direction settlement history unavailable; decision deferred");
     return { kind: "unknown" };
@@ -512,7 +538,7 @@ async function submitOrder(market: { ticker: string; closeMs: number; exchangeIn
  * ETH_G_SHARED_MARTINGALE_ENABLED can be enabled. Fail closed otherwise.
  */
 async function submitGWithSharedReservation(
- market:{ticker:string;closeMs:number;exchangeIndex:number},side:OutcomeSide
+ market:{ticker:string;closeMs:number;exchangeIndex:number},side:OutcomeSide,expectedVersion:number
 ):Promise<void>{
  if(process.env["ETH_SHARED_SETTLEMENT_BRIDGE_READY"]!=="true"){
   logger.error({ticker:market.ticker},"Shared ETH G submission blocked: settlement bridge not installed");
@@ -521,7 +547,7 @@ async function submitGWithSharedReservation(
  if(await orderForTicker(market.ticker))return;
  const clientOrderId="g-shared-v1:"+market.ticker;
  const attempt=await submitThroughSharedEthGate(sharedEthPgProvider,{
-  service:"G",ticker:market.ticker,side,clientOrderId
+  service:"G",ticker:market.ticker,side,clientOrderId,expectedVersion
  },async(claim,id)=>{
   const size=ethContractsWithinBudget(claim.budgetCents,LIMIT_PRICE_CENTS,feeCents);
   if(size.contracts===0)throw Error("Shared ETH wager cannot fund a contract including fees");
@@ -580,26 +606,77 @@ async function tick(): Promise<void> {
     const market = await discoverCurrentMarket();
     if (!market || Date.now() < market.openMs || Date.now() > market.openMs + ENTRY_WINDOW_MS) return;
     let state = await loadState();
-
-    if (state.ladderSide == null) {
-      const stored = await publishedDirection(market.ticker);
-      if (stored.exists && stored.side == null) return;
-      const decision = await exactTwoStreakDecision(market.openMs);
-      if (decision.kind === "unknown") return;
-      if (decision.kind === "none" || decision.key === state.lastTriggerKey) {
-        await publishDirection(market.ticker, null, "no_eligible_g_streak");
-        return;
+    let expectedSharedVersion: number | null = null;
+    if (process.env["ETH_G_SHARED_MARTINGALE_ENABLED"] === "true") {
+      const snapshot = await sharedEthPgProvider.transaction(async tx => tx.query<{version:number}>(
+        "SELECT version FROM eth_shared_martingale_state WHERE singleton=TRUE"
+      ));
+      const version = Number(snapshot.rows[0]?.version);
+      if (!Number.isSafeInteger(version) || version < 0) return;
+      expectedSharedVersion = version;
+    }
+    if (process.env["ETH_G_SHARED_MARTINGALE_ENABLED"] === "true" && state.ladderSide != null) {
+      // Reconcile against the authoritative shared ledger before carrying G's
+      // direction into another market. Fail closed if a different service
+      // settled the shared cycle after G's last settlement.
+      const latest = await sharedEthPgProvider.transaction(async tx =>
+        tx.query<{service:string;ticker:string;outcome:string}>(
+          "SELECT service,ticker,outcome FROM eth_shared_martingale_claims " +
+          "WHERE status IN ('SETTLED','ZERO_FILL') " +
+          "ORDER BY resolved_at DESC, claim_id DESC LIMIT 1"
+        )
+      );
+      const lastG = rows(await (await db()).execute(sql`
+        SELECT ticker FROM eth_g_streak_reversal_orders
+        WHERE settled_at_ms IS NOT NULL ORDER BY settled_at_ms DESC LIMIT 1
+      `))[0];
+      const claim = latest.rows[0];
+      if (!claim || !lastG || claim.service !== "G"
+        || claim.ticker !== lastG["ticker"] || claim.outcome === "WIN") {
+        await (await db()).execute(sql`
+          UPDATE eth_g_streak_reversal_state
+          SET ladder_side=NULL, step=0, updated_at_ms=${Date.now()}
+          WHERE id=1
+        `);
+        logger.warn({ticker:market.ticker, latestService:claim?.service},
+          "G stale shared direction reset after external or mismatched settlement");
+        state = await loadState();
       }
+    }
+
+    // Every rung requires a fresh, fully settled G signal for this market.
+    // An absent, unknown, replayed, or opposite-side signal skips the window
+    // without changing the carried side or the shared martingale rung.
+    const stored = await publishedDirection(market.ticker);
+    if (stored.exists && stored.side == null) return;
+    const decision = await exactTwoStreakDecision(market.openMs);
+    if (decision.kind === "unknown") return;
+    if (decision.kind === "none" || decision.key === state.lastTriggerKey) {
+      await publishDirection(market.ticker, null, "no_fresh_g_signal");
+      return;
+    }
+    if (state.ladderSide != null && decision.side !== state.ladderSide) {
+      await publishDirection(market.ticker, null, "g_signal_opposes_active_ladder");
+      return;
+    }
+    if (state.ladderSide == null) {
       await setState(decision.side, 0, decision.key);
       state = { ladderSide: decision.side, step: 0, lastTriggerKey: decision.key };
       logger.info({ ticker: market.ticker, priorResult: decision.priorResult, side: decision.side, triggerKey: decision.key },
         "G streak reversal two-consecutive-side trigger armed");
+    } else {
+      // Claim entry still checks the shared version and active-claim fence.
+      await setState(state.ladderSide, state.step, decision.key);
+      state = { ...state, lastTriggerKey: decision.key };
+      logger.info({ ticker: market.ticker, side: state.ladderSide, triggerKey: decision.key },
+        "G fresh signal authorized recovery rung");
     }
 
     if (state.ladderSide == null) return;
-    if (!await publishDirection(market.ticker, state.ladderSide, "g_ladder_direction")) return;
+    if (!await publishDirection(market.ticker, state.ladderSide, "g_fresh_signal")) return;
     if(process.env["ETH_G_SHARED_MARTINGALE_ENABLED"]==="true"){
-      await submitGWithSharedReservation(market,state.ladderSide);
+      if (expectedSharedVersion === null) return;
+       await submitGWithSharedReservation(market,state.ladderSide,expectedSharedVersion);
     }else{
       await submitOrder(market,state.ladderSide,state.step);
     }
