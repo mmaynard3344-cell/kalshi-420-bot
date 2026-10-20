@@ -119,7 +119,9 @@ export function buildTarget75IocPayload(input: {
     client_order_id: input.decisionKey,
     side: input.heldSide === "yes" ? "ask" : "bid",
     count: input.contracts.toFixed(2),
-    price: (input.minPriceCents / 100).toFixed(4),
+    // Event-order price is denominated in YES. A held NO at 75¢ is
+    // closed by buying YES for at most 25¢, not 75¢.
+    price: ((input.heldSide === "yes" ? input.minPriceCents : 100 - input.minPriceCents) / 100).toFixed(4),
     time_in_force: "immediate_or_cancel",
     self_trade_prevention_type: "taker_at_cross",
   };
