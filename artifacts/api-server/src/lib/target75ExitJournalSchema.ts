@@ -29,6 +29,11 @@ CREATE TABLE IF NOT EXISTS eth_target75_exit_fills (
   fee_cents BIGINT NOT NULL CHECK (fee_cents >= 0),
   observed_at_ms BIGINT NOT NULL
 );
+-- Prevent concurrent exits for the same strategy-owned entry while an
+-- existing order's exchange outcome is not fully reconciled.
+CREATE UNIQUE INDEX IF NOT EXISTS eth_target75_single_active_per_entry_idx
+ ON eth_target75_exits(strategy,entry_order_id)
+ WHERE status NOT IN ('unfilled','reconciled');
 CREATE INDEX IF NOT EXISTS eth_target75_exits_unresolved_idx
  ON eth_target75_exits(status,updated_at_ms)
  WHERE status NOT IN ('unfilled','reconciled');
