@@ -111,3 +111,24 @@ export function identifyTarget75ExchangeOrder(input: {
     typeof order["order_id"] === "string" && (order["order_id"] as string).length > 0);
   return matches.length === 1 ? matches[0]!["order_id"] as string : null;
 }
+
+/**
+ * Recover a known exchange order only after a read-only authenticated query
+ * identifies exactly one matching client order ID and ticker. The durable
+ * post_started fence remains in force if identification is ambiguous.
+ */
+export async function recoverTarget75ProviderOrder(db: ExitDb, input: {
+  clientOrderId: string; ticker: string;
+  orderCandidates: ReadonlyArray<Record<string, unknown>>;
+}): Promise<boolean> {
+  const providerOrderId = identifyTarget75ExchangeOrder(input);
+  if (!providerOrderId) return false;
+  const existing = rows(await db.execute(sql`
+    SELECT exit_client_order_id, ticker, status, provider_order_id
+    FROM eth_target75_exits WHERE exit_client_order_id=${input.clientOrderId}
+  `))[0];
+  if (!existing || existing["ticker"] !== input.ticker ||
+      existing["status"] !== "post_started" ||
+      existing["provider_order_id"] !== null) return false;
+  return linkExitProviderOrder(db, input.clientOrderId, providerOrderId);
+}
