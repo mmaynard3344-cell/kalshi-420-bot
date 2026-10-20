@@ -12,15 +12,21 @@ export type Target75Exchange = {
 };
 
 export function makeTarget75Adapter(db: ExitDb, exchange: Target75Exchange,
-  entry: { strategy: string; entryId: string }): Target75ExecutionAdapter {
+  entry: { strategy: string; entryId: string; ticker: string; heldSide: "yes" | "no"; bidCents: number; contracts: number }): Target75ExecutionAdapter {
   return {
     reserveOnce: (key, quantity) => {
-      // The target decision's bid/side/ticker are not provided to reserveOnce.
-      // Fail closed; do not invent a reserve from incomplete input.
-      void key; void quantity; return Promise.resolve(false);
+      if (quantity !== entry.contracts) return Promise.resolve(false);
+      return reserveExit(db, {
+        key, strategy: entry.strategy, entryId: entry.entryId,
+        ticker: entry.ticker, side: entry.heldSide,
+        quantity, bidCents: entry.bidCents,
+      });
     },
     markPostStarted: (key) => fenceExitPost(db, key),
     async submitIocSell(input) {
+      if (input.ticker !== entry.ticker || input.heldSide !== entry.heldSide ||
+          input.contracts !== entry.contracts || input.minPriceCents !== entry.bidCents)
+        throw new Error("exit_order_identity_changed");
       const payload = buildTarget75IocPayload({
         ticker: input.ticker, decisionKey: input.decisionKey,
         heldSide: input.heldSide, contracts: input.contracts,
