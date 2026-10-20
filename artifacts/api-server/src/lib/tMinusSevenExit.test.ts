@@ -45,7 +45,7 @@ test("execution submits only after durable reservation and post-start fence", as
     async recordResult() { steps.push("reconcile"); return true; },
   };
   assert.equal(await executeTarget75Decision(adapter, {
-    decisionKey: "strategy:market:close", ticker: "KXETH15M-test", heldSide: "yes", snapshot: base,
+    decisionKey: "strategy:market:close", ticker: "KXETH15M-TEST", heldSide: "yes", snapshot: base,
   }), "submitted");
   assert.deepEqual(steps, ["reserve", "fence", "post", "reconcile"]);
 });
@@ -58,7 +58,7 @@ test("failed pre-POST durable fence prevents submission", async () => {
     async recordResult() { return true; },
   };
   assert.equal(await executeTarget75Decision(adapter, {
-    decisionKey: "x", ticker: "KXETH15M-test", heldSide: "yes", snapshot: base,
+    decisionKey: "x", ticker: "KXETH15M-TEST", heldSide: "yes", snapshot: base,
   }), "persistence_failed");
   assert.equal(submitted, false);
 });
@@ -73,7 +73,7 @@ test("uncertain POST is never automatically retried", async () => {
     async recordResult() { return true; },
   };
   assert.equal(await executeTarget75Decision(adapter, {
-    decisionKey: "x", ticker: "KXETH15M-test", heldSide: "yes", snapshot: base,
+    decisionKey: "x", ticker: "KXETH15M-TEST", heldSide: "yes", snapshot: base,
   }), "unknown");
   assert.equal(posts, 1);
 });
