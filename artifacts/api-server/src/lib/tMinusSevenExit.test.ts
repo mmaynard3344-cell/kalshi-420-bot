@@ -207,3 +207,8 @@ test("exit journal allows at most one unresolved reservation per owned ETH entry
   assert.match(TARGET75_EXIT_DDL,/ON eth_target75_exits\(strategy,entry_order_id\)/);
   assert.match(TARGET75_EXIT_DDL,/WHERE status NOT IN \('unfilled','reconciled'\)/);
 });
+
+test("negative snapshot quantities always fail closed", () => {
+  assert.deepEqual(decideTarget75Exit({...base,pendingExitContracts:-1}), {action:"hold",reason:"invalid_snapshot"});
+  assert.deepEqual(decideTarget75Exit({...base,executableBidDepthContracts:-1}), {action:"hold",reason:"invalid_snapshot"});
+});
