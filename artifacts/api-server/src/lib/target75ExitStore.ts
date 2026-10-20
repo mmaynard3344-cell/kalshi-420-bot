@@ -12,7 +12,8 @@ export async function reserveExit(db: ExitDb, p: {
   key: string; strategy: string; ticker: string; entryId: string;
   side: "yes" | "no"; quantity: number; bidCents: number;
 }): Promise<boolean> {
-  if (!/^KXETH[A-Z0-9]*-[A-Z0-9-]+$/.test(p.ticker) ||
+  if (p.strategy.trim().toUpperCase() === "G" ||
+      !/^KXETH[A-Z0-9]*-[A-Z0-9-]+$/.test(p.ticker) ||
       !p.key || !p.strategy || !p.entryId ||
       !Number.isSafeInteger(p.quantity) || p.quantity <= 0 ||
       !Number.isSafeInteger(p.bidCents) || p.bidCents < 75 || p.bidCents > 99)
