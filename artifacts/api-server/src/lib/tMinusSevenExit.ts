@@ -63,3 +63,42 @@ export function decideTMinusSevenExit(s: TMinusSevenSnapshot): TMinusSevenDecisi
     minimumPriceCents: bid, projectedNetProfitCents,
   };
 }
+
+/**
+ * Runner-side execution contract. The exchange integration must implement a
+ * durable, atomic reserve (ticker + strategy + close time), and recover unknown
+ * order outcomes before permitting another reservation. A false reservation
+ * means no POST, even if this process restarted during the window.
+ */
+export interface TMinusSevenExecutionAdapter {
+  reserveOnce(decisionKey: string, quantity: number): Promise<boolean>;
+  markPostStarted(decisionKey: string): Promise<boolean>;
+  submitIocSell(input: {
+    decisionKey: string; ticker: string; heldSide: "yes" | "no";
+    contracts: number; minPriceCents: number;
+  }): Promise<{ status: "filled" | "partial" | "unfilled" | "unknown"; orderId: string | null }>;
+  recordResult(decisionKey: string, result: { status: string; orderId: string | null }): Promise<boolean>;
+}
+
+/** No live call site until strategy-specific ledgers and the adapter exist. */
+export async function executeTMinusSevenDecision(
+  adapter: TMinusSevenExecutionAdapter,
+  input: { decisionKey: string; ticker: string; heldSide: "yes" | "no"; snapshot: TMinusSevenSnapshot },
+): Promise<"held" | "reserved_elsewhere" | "persistence_failed" | "submitted" | "unknown"> {
+  const decision = decideTMinusSevenExit(input.snapshot);
+  if (decision.action !== "sell_ioc") return "held";
+  if (!await adapter.reserveOnce(input.decisionKey, decision.contracts)) return "reserved_elsewhere";
+  if (!await adapter.markPostStarted(input.decisionKey)) return "persistence_failed";
+  try {
+    const result = await adapter.submitIocSell({
+      decisionKey: input.decisionKey, ticker: input.ticker, heldSide: input.heldSide,
+      contracts: decision.contracts, minPriceCents: decision.minimumPriceCents,
+    });
+    if (!await adapter.recordResult(input.decisionKey, result)) return "unknown";
+    return result.status === "unknown" ? "unknown" : "submitted";
+  } catch {
+    // The POST might have succeeded. The durable post_started fence must
+    // prevent automatic retries until exchange reconciliation confirms it.
+    return "unknown";
+  }
+}
