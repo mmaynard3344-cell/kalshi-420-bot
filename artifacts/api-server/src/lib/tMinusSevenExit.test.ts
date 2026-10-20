@@ -212,3 +212,10 @@ test("negative snapshot quantities always fail closed", () => {
   assert.deepEqual(decideTarget75Exit({...base,pendingExitContracts:-1}), {action:"hold",reason:"invalid_snapshot"});
   assert.deepEqual(decideTarget75Exit({...base,executableBidDepthContracts:-1}), {action:"hold",reason:"invalid_snapshot"});
 });
+
+test("runtime-invalid held side cannot create exit IOC", () => {
+  assert.throws(() => buildTarget75IocPayload({
+    ticker:"KXETH15M-TEST", decisionKey:"invalid-side", contracts:1,
+    minPriceCents:75, heldSide:"unknown" as "yes",
+  }));
+});
