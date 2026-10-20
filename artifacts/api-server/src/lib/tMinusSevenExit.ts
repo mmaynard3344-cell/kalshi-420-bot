@@ -1,8 +1,9 @@
 /** Profit-taking target: exit owned contracts whenever buyers bid 75¢ or better. */
 export const PROFIT_TAKE_TARGET_CENTS = 75;
-export const TARGET75_ETH_TICKER_PREFIX = "KXETH15M";
+export const TARGET75_ETH_TICKER_PREFIX = "KXETH";
+/** Covers ETH-family markets across ETH services; other assets always excluded. */
 export function isTarget75PilotTicker(ticker: string): boolean {
-  return /^KXETH15M-[A-Z0-9-]+$/.test(ticker);
+  return /^KXETH[A-Z0-9]*-[A-Z0-9-]+$/.test(ticker);
 }
 
 export interface Target75Snapshot {
