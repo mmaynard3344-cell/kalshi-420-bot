@@ -85,6 +85,7 @@ test("75-cent YES and NO exits use opposite event-order directions", () => {
   assert.equal(yes.side,"ask");
   assert.equal(no.side,"bid");
   assert.equal(yes.price,"0.7500");
+  assert.equal(no.price,"0.2500");
   assert.equal(yes.count,"2.00");
   assert.equal(yes.time_in_force,"immediate_or_cancel");
 });
