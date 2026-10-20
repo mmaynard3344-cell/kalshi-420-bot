@@ -18,6 +18,7 @@
     "test:recoverability": "node scripts/run-recoverability-capture-test.mjs",
     "test:analytics-report-loader": "node scripts/run-analytics-report-loader-test.mjs",
     "test:protective-exit": "node scripts/run-protective-exit-test.mjs",
+    "test:target75": "node scripts/run-target75-test.mjs",
     "test:eth420-live-market": "node scripts/run-eth420-live-market-test.mjs",
     "test:eth420-emergency-reduction": "node scripts/run-eth420-emergency-reduction-test.mjs",
     "test:eth30": "node scripts/run-eth30-test.mjs",
