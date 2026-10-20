@@ -3052,7 +3052,7 @@ router.get("/analytics/martingale-cycles", async (_req, res) => {
     market, step: null, maxSteps: null, nextWagerCents: null,
     status: reason, source: "not verified", activeTicker: null,
   });
-  const cycles = [
+  const cycles: Array<{market: "ETH" | "BTC" | "USD"; step: number | null; maxSteps: number | null; nextWagerCents: number | null; status: string; source: string; activeTicker: string | null}> = [
     unknown("ETH", "Shared state unavailable"),
     unknown("BTC", "Independent BTC ladder not instrumented"),
     unknown("USD", "Independent USD ladder not instrumented"),
