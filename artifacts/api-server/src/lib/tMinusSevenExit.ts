@@ -19,6 +19,8 @@ export interface Target75Snapshot {
   pendingExitContracts: number;
   ownershipIsExclusive: boolean;
   exchangeOrderStateCertain: boolean;
+  /** True only after every entry GTC is confirmed terminal on exchange. */
+  entryOrdersTerminal: boolean;
 }
 export type Target75Decision =
   | { action: "hold"; reason: string }
@@ -32,6 +34,7 @@ export function decideTarget75Exit(s: Target75Snapshot): Target75Decision {
   ];
   if (values.some(v => !Number.isSafeInteger(v))) return hold("invalid_snapshot");
   if (!s.ownershipIsExclusive || !s.exchangeOrderStateCertain) return hold("ownership_or_order_uncertain");
+  if (!s.entryOrdersTerminal) return hold("entry_orders_not_terminal");
   if (s.strategyOwnedContracts <= 0 || s.confirmedExchangeContracts !== s.strategyOwnedContracts)
     return hold("position_mismatch");
   if (s.pendingExitContracts !== 0) return hold("existing_exit_order");
