@@ -1,5 +1,9 @@
 /** Profit-taking target: exit owned contracts whenever buyers bid 75¢ or better. */
 export const PROFIT_TAKE_TARGET_CENTS = 75;
+export const TARGET75_ETH_TICKER_PREFIX = "KXETH15M";
+export function isTarget75PilotTicker(ticker: string): boolean {
+  return /^KXETH15M-[A-Z0-9-]+$/.test(ticker);
+}
 
 export interface Target75Snapshot {
   strategyOwnedContracts: number;
@@ -74,6 +78,8 @@ export async function executeTarget75Decision(
   adapter: Target75ExecutionAdapter,
   input: { decisionKey: string; ticker: string; heldSide: "yes" | "no"; snapshot: Target75Snapshot },
 ): Promise<"held" | "reserved_elsewhere" | "persistence_failed" | "submitted" | "unknown"> {
+  // Pilot is explicitly ETH 15-minute only; fail closed for all other assets.
+  if (!isTarget75PilotTicker(input.ticker)) return "held";
   const decision = decideTarget75Exit(input.snapshot);
   if (decision.action !== "sell_ioc") return "held";
   // Any datastore exception fails closed, before an exchange POST.
@@ -119,7 +125,7 @@ export function buildTarget75IocPayload(input: {
   count: string; price: string; time_in_force: "immediate_or_cancel";
   self_trade_prevention_type: "taker_at_cross";
 } {
-  if (!/^KX[A-Z0-9-]+$/.test(input.ticker) ||
+  if (!isTarget75PilotTicker(input.ticker) ||
       !input.decisionKey || !Number.isSafeInteger(input.contracts) || input.contracts <= 0 ||
       !Number.isSafeInteger(input.minPriceCents) ||
       input.minPriceCents < PROFIT_TAKE_TARGET_CENTS || input.minPriceCents > 99)
