@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { build } from "esbuild";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const suites = ["tMinusSevenExit.test.ts", "target75ExitStore.test.ts", "target75ExchangeBoundary.test.ts", "target75SettlementAccounting.test.ts"];
+const suites = ["tMinusSevenExit.test.ts", "target75ExitStore.test.ts", "target75ExchangeBoundary.test.ts", "target75SettlementAccounting.test.ts", "target75MartingaleSettlementGate.test.ts"];
 let failed = false;
 for (const suite of suites) {
   const outfile = "/tmp/shawshank-target75-test/" + suite.replace(".ts", ".mjs");
