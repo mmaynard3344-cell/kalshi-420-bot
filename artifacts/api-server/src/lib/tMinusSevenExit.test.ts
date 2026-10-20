@@ -1,3 +1,4 @@
+import { target75MaySubmit, target75NeedsReconciliation, TARGET75_EXIT_DDL } from "./target75ExitJournalSchema.js";
 import { validateTarget75FillEvidence } from "./target75FillEvidence.js";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -186,4 +187,15 @@ test("exit fill IDs require exact strategy ownership and unique provider evidenc
   assert.equal(validateTarget75FillEvidence({...f,strategy:"B"},expected),"mismatch");
   assert.equal(validateTarget75FillEvidence({...f,contracts:3},expected),"mismatch");
   assert.equal(validateTarget75FillEvidence({...f,ticker:"KXBTC15M-TEST"},expected),"invalid");
+});
+
+test("durable journal fences all previously attempted exits", () => {
+  assert.equal(target75MaySubmit(null),true);
+  for (const status of ["reserved","post_started","submitted","partial","filled","unknown","reconciled"]) {
+    assert.equal(target75MaySubmit(status),false);
+  }
+  assert.equal(target75NeedsReconciliation("post_started"),true);
+  assert.equal(target75NeedsReconciliation("unknown"),true);
+  assert.match(TARGET75_EXIT_DDL,/provider_fill_id TEXT PRIMARY KEY/);
+  assert.match(TARGET75_EXIT_DDL,/CHECK \(ticker/);
 });
