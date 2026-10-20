@@ -199,3 +199,9 @@ test("durable journal fences all previously attempted exits", () => {
   assert.match(TARGET75_EXIT_DDL,/provider_fill_id TEXT PRIMARY KEY/);
   assert.match(TARGET75_EXIT_DDL,/CHECK \(ticker/);
 });
+
+test("exit journal allows at most one unresolved reservation per owned ETH entry", () => {
+  assert.match(TARGET75_EXIT_DDL,/CREATE UNIQUE INDEX IF NOT EXISTS eth_target75_single_active_per_entry_idx/);
+  assert.match(TARGET75_EXIT_DDL,/ON eth_target75_exits\(strategy,entry_order_id\)/);
+  assert.match(TARGET75_EXIT_DDL,/WHERE status NOT IN \('unfilled','reconciled'\)/);
+});
