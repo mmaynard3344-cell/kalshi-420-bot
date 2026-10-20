@@ -24,7 +24,7 @@ class FakeExitDb implements ExitDb {
         held_side:side,requested_contracts:quantity,minimum_held_bid_cents:bid,status:"reserved",provider_order_id:null};
       return {rows:[{exit_client_order_id:key}]};
     }
-    if (literal.includes("UPDATE eth_target75_exits") && literal.includes("status='post_started'")) {
+    if (literal.includes("UPDATE eth_target75_exits") && literal.includes("SET status='post_started'")) {
       if (!this.exit || this.exit.status !== "reserved") return {rows:[]};
       this.exit.status="post_started";return {rows:[{exit_client_order_id:this.exit.exit_client_order_id}]};
     }
