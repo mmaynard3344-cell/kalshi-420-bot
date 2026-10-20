@@ -27,4 +27,5 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @workspace/api-server run test:target75
+      - run: pnpm run typecheck:libs
       - run: pnpm --filter @workspace/api-server run typecheck
