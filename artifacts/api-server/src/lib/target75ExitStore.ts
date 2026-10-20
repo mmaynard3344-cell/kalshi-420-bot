@@ -44,7 +44,8 @@ export async function recordExitFill(db: ExitDb, fill: Target75FillEvidence): Pr
       SELECT * FROM eth_target75_exits
       WHERE exit_client_order_id=${fill.exitClientOrderId} FOR UPDATE
     `))[0];
-    if (!record) return false;
+    if (!record || !["submitted", "partial", "filled"].includes(String(record["status"])) ||
+        typeof record["provider_order_id"] !== "string" || !record["provider_order_id"]) return false;
     const previous = rows(await tx.execute(sql`
       SELECT COALESCE(SUM(contracts),0) AS filled FROM eth_target75_exit_fills
       WHERE exit_client_order_id=${fill.exitClientOrderId}
@@ -54,7 +55,7 @@ export async function recordExitFill(db: ExitDb, fill: Target75FillEvidence): Pr
       strategy: String(record["strategy"]), ticker: String(record["ticker"]),
       entryOrderId: String(record["entry_order_id"]),
       exitClientOrderId: String(record["exit_client_order_id"]),
-      providerOrderId: String(record["provider_order_id"]),
+      providerOrderId: record["provider_order_id"] as string,
       heldSide: record["held_side"] === "no" ? "no" : "yes",
       maxOpenContracts: remaining, seenFillIds: new Set(),
     });
@@ -69,11 +70,13 @@ export async function recordExitFill(db: ExitDb, fill: Target75FillEvidence): Pr
       ON CONFLICT DO NOTHING RETURNING provider_fill_id
     `));
     if (inserted.length !== 1) return false;
-    await tx.execute(sql`
+    const changed = rows(await tx.execute(sql`
       UPDATE eth_target75_exits SET status=${remaining === fill.contracts ? "filled" : "partial"},
         updated_at_ms=${Date.now()}
       WHERE exit_client_order_id=${fill.exitClientOrderId}
-    `);
+      RETURNING exit_client_order_id
+    `));
+    if (changed.length !== 1) throw new Error("exit_fill_status_commit_failed");
     return true;
   });
 }
