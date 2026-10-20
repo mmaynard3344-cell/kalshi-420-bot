@@ -11,9 +11,12 @@ class FakeExitDb implements ExitDb {
     const query = q as { queryChunks?: unknown[] };
     // Drizzle SQL template interpolations are represented as queryChunks.
     const chunks = query.queryChunks ?? [];
-    const literal = chunks.filter((v): v is {value:string[]} => typeof v === "object" && v !== null && "value" in v)
+    const literal = chunks.filter((v): v is {value:string[]} => typeof v === "object" && v !== null && "value" in v && Array.isArray((v as {value:unknown}).value))
       .map(x => x.value.join("")).join("");
-    const values = chunks.filter(v => !(typeof v === "object" && v !== null && "value" in v)) as unknown[];
+    // Drizzle interpolated primitives are Param objects. Read their .value;
+    // treating Param itself as a primitive gives a false test failure.
+    const values = chunks.filter(v => !(typeof v === "object" && v !== null && "value" in v && Array.isArray((v as {value:unknown}).value)))
+      .map(v => typeof v === "object" && v !== null && "value" in v ? (v as {value:unknown}).value : v);
     if (literal.includes("INSERT INTO eth_target75_exits")) {
       if (this.exit) return {rows:[]};
       const [key,strategy,ticker,entryId,side,quantity,bid] = values;
