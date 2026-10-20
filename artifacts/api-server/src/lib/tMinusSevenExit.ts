@@ -76,13 +76,23 @@ export async function executeTarget75Decision(
 ): Promise<"held" | "reserved_elsewhere" | "persistence_failed" | "submitted" | "unknown"> {
   const decision = decideTarget75Exit(input.snapshot);
   if (decision.action !== "sell_ioc") return "held";
-  if (!await adapter.reserveOnce(input.decisionKey, decision.contracts)) return "reserved_elsewhere";
-  if (!await adapter.markPostStarted(input.decisionKey)) return "persistence_failed";
+  // Any datastore exception fails closed, before an exchange POST.
+  let reserved = false;
+  try { reserved = await adapter.reserveOnce(input.decisionKey, decision.contracts); }
+  catch { return "persistence_failed"; }
+  if (!reserved) return "reserved_elsewhere";
+  let fenced = false;
+  try { fenced = await adapter.markPostStarted(input.decisionKey); }
+  catch { return "persistence_failed"; }
+  if (!fenced) return "persistence_failed";
   try {
     const result = await adapter.submitIocSell({
       decisionKey: input.decisionKey, ticker: input.ticker, heldSide: input.heldSide,
       contracts: decision.contracts, minPriceCents: decision.minimumPriceCents,
     });
+    // An accepted-looking response may not have a provider order ID. Without
+    // that ID we cannot reconcile partial fills; keep the durable fence.
+    if (result.status !== "unfilled" && !result.orderId) return "unknown";
     if (!await adapter.recordResult(input.decisionKey, result)) return "unknown";
     return result.status === "unknown" ? "unknown" : "submitted";
   } catch {
