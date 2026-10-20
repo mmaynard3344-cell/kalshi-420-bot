@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { reserveExit, fenceExitPost, linkExitProviderOrder, recordExitFill, type ExitDb } from "./target75ExitStore.js";
+import { reserveExit, fenceExitPost, linkExitProviderOrder, recordExitFill, type ExitDb, identifyTarget75ExchangeOrder } from "./target75ExitStore.js";
 
 type Row = Record<string, unknown>;
 class FakeExitDb implements ExitDb {
@@ -71,4 +71,14 @@ test("BTC excluded from ETH exit reservations", async () => {
   assert.equal(await reserveExit(new FakeExitDb(),{
     key:"btc",strategy:"G",ticker:"KXBTC15M-TEST",entryId:"btc",side:"yes",quantity:1,bidCents:75,
   }),false);
+});
+
+test("uncertain exit identifies only one exact provider order", () => {
+  const input = {clientOrderId:"exit-a",ticker:"KXETH15M-TEST"};
+  const correct = {client_order_id:"exit-a",ticker:"KXETH15M-TEST",order_id:"order-a"};
+  assert.equal(identifyTarget75ExchangeOrder({...input,orderCandidates:[correct]}),"order-a");
+  assert.equal(identifyTarget75ExchangeOrder({...input,orderCandidates:[correct,correct]}),null);
+  assert.equal(identifyTarget75ExchangeOrder({...input,orderCandidates:[
+    {...correct,ticker:"KXBTC15M-TEST"}]}),null);
+  assert.equal(identifyTarget75ExchangeOrder({...input,orderCandidates:[]}),null);
 });
