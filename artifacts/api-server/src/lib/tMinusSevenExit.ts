@@ -130,6 +130,7 @@ export function buildTarget75IocPayload(input: {
   self_trade_prevention_type: "taker_at_cross";
 } {
   if (!isTarget75PilotTicker(input.ticker) ||
+      (input.heldSide !== "yes" && input.heldSide !== "no") ||
       !input.decisionKey || !Number.isSafeInteger(input.contracts) || input.contracts <= 0 ||
       !Number.isSafeInteger(input.minPriceCents) ||
       input.minPriceCents < PROFIT_TAKE_TARGET_CENTS || input.minPriceCents > 99)
