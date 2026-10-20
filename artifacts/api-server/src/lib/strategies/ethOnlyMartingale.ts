@@ -802,7 +802,7 @@ export const placeEthMartingaleGtcEntry: EthPlacementLifecycleGateway = async ({
   requestedContracts: contracts, easternDate: date, expectedMartingaleState,
 }) => {
   const exchangeIndex = state.exchangeIndex;
-  if (!Number.isInteger(exchangeIndex) || exchangeIndex < 0) {
+  if (typeof exchangeIndex !== "number" || !Number.isInteger(exchangeIndex) || exchangeIndex < 0) {
     setEthBlockerStatus("missing_exchange_index", "ETH order placement requires an exact exchange index");
     return;
   } // Kalshi auto-route by market ticker.
@@ -1002,7 +1002,7 @@ export const runEthPreflightAndPlacement: EthPreflightAndPlacementGateway = asyn
   // Fail closed unless the authoritative market snapshot identifies the exact
   // Kalshi exchange. Balance authorization and order submission must use the same shard.
   const routingExchangeIndex = state.exchangeIndex;
-  if (!Number.isInteger(routingExchangeIndex) || routingExchangeIndex < 0) {
+  if (typeof routingExchangeIndex !== "number" || !Number.isInteger(routingExchangeIndex) || routingExchangeIndex < 0) {
     setEthBlockerStatus("missing_exchange_index", "ETH entry is blocked until the current market exchange index is known");
     return;
   }
