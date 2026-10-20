@@ -33,15 +33,19 @@ export function makeTarget75Adapter(db: ExitDb, exchange: Target75Exchange,
         minPriceCents: input.minPriceCents,
       });
       const result = await exchange.postOrder(payload);
-      if (result.providerOrderId &&
-          !await linkExitProviderOrder(db, input.decisionKey, result.providerOrderId))
+      if (!result.providerOrderId) {
+        // An IOC can fill even if the response loses its order ID. Never
+        // release the durable post_started fence based on an unlinked reply.
+        return { status: "unknown", orderId: null };
+      }
+      if (!await linkExitProviderOrder(db, input.decisionKey, result.providerOrderId))
         return { status: "unknown", orderId: null };
       return { status: result.state, orderId: result.providerOrderId };
     },
     async recordResult(_key, result) {
       // Acknowledgement is not a verified fill. The order reconciliation
       // worker must authenticate and record every fill by provider fill ID.
-      return result.status === "unfilled" || !!result.orderId;
+      return !!result.orderId;
     },
   };
 }
