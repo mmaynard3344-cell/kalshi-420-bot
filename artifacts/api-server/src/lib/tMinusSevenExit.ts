@@ -91,3 +91,36 @@ export async function executeTarget75Decision(
     return "unknown";
   }
 }
+
+/**
+ * Kalshi event-order wire representation for closing a verified position.
+ * YES is held as YES shares (ask YES); held NO is represented as a YES
+ * short/negative position (bid YES). This follows the same event-order
+ * convention as eth30_50.ts rather than the old protectiveExit.ts path.
+ *
+ * This is ONLY a payload builder; callers must enforce the durable ownership
+ * and POST fences in executeTarget75Decision before invoking the exchange.
+ */
+export function buildTarget75IocPayload(input: {
+  ticker: string; decisionKey: string; heldSide: "yes" | "no";
+  contracts: number; minPriceCents: number;
+}): {
+  ticker: string; client_order_id: string; side: "ask" | "bid";
+  count: string; price: string; time_in_force: "immediate_or_cancel";
+  self_trade_prevention_type: "taker_at_cross";
+} {
+  if (!/^KX[A-Z0-9-]+$/.test(input.ticker) ||
+      !input.decisionKey || !Number.isSafeInteger(input.contracts) || input.contracts <= 0 ||
+      !Number.isSafeInteger(input.minPriceCents) ||
+      input.minPriceCents < PROFIT_TAKE_TARGET_CENTS || input.minPriceCents > 99)
+    throw new Error("invalid_target75_exit_order");
+  return {
+    ticker: input.ticker,
+    client_order_id: input.decisionKey,
+    side: input.heldSide === "yes" ? "ask" : "bid",
+    count: input.contracts.toFixed(2),
+    price: (input.minPriceCents / 100).toFixed(4),
+    time_in_force: "immediate_or_cancel",
+    self_trade_prevention_type: "taker_at_cross",
+  };
+}
