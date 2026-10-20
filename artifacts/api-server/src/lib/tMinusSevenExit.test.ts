@@ -1,3 +1,4 @@
+import { validateTarget75FillEvidence } from "./target75FillEvidence.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { decideTarget75Exit, executeTarget75Decision, PROFIT_TAKE_TARGET_CENTS, buildTarget75IocPayload, isTarget75PilotTicker, applyTarget75VerifiedExitFill } from "./tMinusSevenExit.js";
@@ -167,4 +168,22 @@ test("partial exit rejects duplicate or overfilled quantity", () => {
   };
   assert.throws(() => applyTarget75VerifiedExitFill(baseFill));
   assert.throws(() => applyTarget75VerifiedExitFill({...baseFill,previouslyExitedContracts:1,newExitFillContracts:2}));
+});
+
+test("exit fill IDs require exact strategy ownership and unique provider evidence", () => {
+  const f = {
+    strategy:"G", ticker:"KXETH15M-TEST", entryOrderId:"entry-1",
+    exitClientOrderId:"exit-1", providerOrderId:"order-1", providerFillId:"fill-1",
+    heldSide:"yes" as const, contracts:1, grossProceedsCents:75, feeCents:1,
+  };
+  const expected = {
+    strategy:"G",ticker:f.ticker,entryOrderId:f.entryOrderId,
+    exitClientOrderId:f.exitClientOrderId,providerOrderId:f.providerOrderId,
+    heldSide:"yes" as const,maxOpenContracts:2,seenFillIds:new Set<string>(),
+  };
+  assert.equal(validateTarget75FillEvidence(f,expected),"ok");
+  assert.equal(validateTarget75FillEvidence(f,{...expected,seenFillIds:new Set(["fill-1"])}),"duplicate");
+  assert.equal(validateTarget75FillEvidence({...f,strategy:"B"},expected),"mismatch");
+  assert.equal(validateTarget75FillEvidence({...f,contracts:3},expected),"mismatch");
+  assert.equal(validateTarget75FillEvidence({...f,ticker:"KXBTC15M-TEST"},expected),"invalid");
 });
