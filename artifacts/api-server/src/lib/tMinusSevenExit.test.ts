@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { decideTarget75Exit, executeTarget75Decision, PROFIT_TAKE_TARGET_CENTS } from "./tMinusSevenExit.js";
+import { decideTarget75Exit, executeTarget75Decision, PROFIT_TAKE_TARGET_CENTS, buildTarget75IocPayload } from "./tMinusSevenExit.js";
 const close = 900_000;
 const base = {
   strategyOwnedContracts: 2, confirmedExchangeContracts: 2,
@@ -76,4 +76,20 @@ test("uncertain POST is never automatically retried", async () => {
     decisionKey: "x", ticker: "KXETH15M-test", heldSide: "yes", snapshot: base,
   }), "unknown");
   assert.equal(posts, 1);
+});
+
+test("75-cent YES and NO exits use opposite event-order directions", () => {
+  const order = {ticker:"KXETH15M-26OCT191530-30", decisionKey:"exit:test1", contracts:2, minPriceCents:75};
+  const yes = buildTarget75IocPayload({...order, heldSide:"yes"});
+  const no = buildTarget75IocPayload({...order, heldSide:"no"});
+  assert.equal(yes.side,"ask");
+  assert.equal(no.side,"bid");
+  assert.equal(yes.price,"0.7500");
+  assert.equal(yes.count,"2.00");
+  assert.equal(yes.time_in_force,"immediate_or_cancel");
+});
+test("rejects below-target or zero-contract sell payloads", () => {
+  const input = {ticker:"KXETH15M-TEST", decisionKey:"key", contracts:2, minPriceCents:75, heldSide:"yes" as const};
+  assert.throws(() => buildTarget75IocPayload({...input,minPriceCents:74}));
+  assert.throws(() => buildTarget75IocPayload({...input,contracts:0}));
 });
