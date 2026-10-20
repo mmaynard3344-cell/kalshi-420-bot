@@ -51,13 +51,13 @@ class FakeExitDb implements ExitDb {
 
 test("ETH exit reserve -> fence -> provider ID -> unique partial fills", async () => {
   const db = new FakeExitDb();
-  const request = {key:"exit-a",strategy:"G",ticker:"KXETH15M-TEST",entryId:"entry-a",side:"yes" as const,quantity:2,bidCents:75};
+  const request = {key:"exit-a",strategy:"A",ticker:"KXETH15M-TEST",entryId:"entry-a",side:"yes" as const,quantity:2,bidCents:75};
   assert.equal(await reserveExit(db,request),true);
   assert.equal(await reserveExit(db,request),false);
   assert.equal(await fenceExitPost(db,request.key),true);
   assert.equal(await fenceExitPost(db,request.key),false);
   assert.equal(await linkExitProviderOrder(db,request.key,"provider-a"),true);
-  const fill = {strategy:"G",ticker:request.ticker,entryOrderId:"entry-a",exitClientOrderId:"exit-a",
+  const fill = {strategy:"A",ticker:request.ticker,entryOrderId:"entry-a",exitClientOrderId:"exit-a",
     providerOrderId:"provider-a",providerFillId:"fill-a",heldSide:"yes" as const,
     contracts:1,grossProceedsCents:75,feeCents:1};
   assert.equal(await recordExitFill(db,fill),true);
@@ -69,7 +69,7 @@ test("ETH exit reserve -> fence -> provider ID -> unique partial fills", async (
 });
 test("BTC excluded from ETH exit reservations", async () => {
   assert.equal(await reserveExit(new FakeExitDb(),{
-    key:"btc",strategy:"G",ticker:"KXBTC15M-TEST",entryId:"btc",side:"yes",quantity:1,bidCents:75,
+    key:"btc",strategy:"A",ticker:"KXBTC15M-TEST",entryId:"btc",side:"yes",quantity:1,bidCents:75,
   }),false);
 });
 
@@ -86,11 +86,22 @@ test("uncertain exit identifies only one exact provider order", () => {
 test("uncertain order recovery does not mutate without a matching exchange identity", async () => {
   const db = new FakeExitDb();
   const ticker="KXETH15M-TEST";
-  assert.equal(await reserveExit(db,{key:"exit-r",strategy:"G",ticker,entryId:"entry-r",side:"yes",quantity:1,bidCents:75}),true);
+  assert.equal(await reserveExit(db,{key:"exit-r",strategy:"A",ticker,entryId:"entry-r",side:"yes",quantity:1,bidCents:75}),true);
   assert.equal(await fenceExitPost(db,"exit-r"),true);
   assert.equal(await recoverTarget75ProviderOrder(db,{
     clientOrderId:"exit-r",ticker,
     orderCandidates:[{client_order_id:"other",ticker,order_id:"order-r"}],
   }),false);
   assert.equal(db.exit?.status,"post_started");
+});
+
+test("G is excluded from all ETH 75-cent exit reservations", async () => {
+  const db = new FakeExitDb();
+  for (const strategy of ["G", "g"]) {
+    assert.equal(await reserveExit(db,{
+      key:"excluded-"+strategy,strategy,ticker:"KXETH15M-TEST",
+      entryId:"entry-g",side:"yes",quantity:2,bidCents:75,
+    }),false);
+  }
+  assert.equal(db.exit,null);
 });
