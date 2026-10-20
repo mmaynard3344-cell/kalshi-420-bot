@@ -94,3 +94,28 @@ test("rejects below-target or zero-contract sell payloads", () => {
   assert.throws(() => buildTarget75IocPayload({...input,minPriceCents:74}));
   assert.throws(() => buildTarget75IocPayload({...input,contracts:0}));
 });
+
+test("storage exception blocks all exit submissions", async () => {
+  let posts = 0;
+  const adapter = {
+    async reserveOnce(): Promise<boolean> { throw new Error("database offline"); },
+    async markPostStarted() { return true; },
+    async submitIocSell() { posts++; return {status:"filled" as const, orderId:"order"}; },
+    async recordResult() { return true; },
+  };
+  assert.equal(await executeTarget75Decision(adapter, {
+    decisionKey:"x", ticker:"KXETH15M-TEST", heldSide:"yes", snapshot:base,
+  }), "persistence_failed");
+  assert.equal(posts, 0);
+});
+test("missing exchange order ID is uncertain and must not be treated as filled", async () => {
+  const adapter = {
+    async reserveOnce() { return true; },
+    async markPostStarted() { return true; },
+    async submitIocSell() { return {status:"filled" as const, orderId:null}; },
+    async recordResult(): Promise<boolean> { throw new Error("must not mark filled"); },
+  };
+  assert.equal(await executeTarget75Decision(adapter, {
+    decisionKey:"x", ticker:"KXETH15M-TEST", heldSide:"yes", snapshot:base,
+  }), "unknown");
+});
