@@ -77,3 +77,18 @@ export async function recordExitFill(db: ExitDb, fill: Target75FillEvidence): Pr
     return true;
   });
 }
+
+/** Persist an authenticated exchange order identity before accepting fills. */
+export async function linkExitProviderOrder(
+  db: ExitDb, key: string, providerOrderId: string,
+): Promise<boolean> {
+  if (!key || !providerOrderId) return false;
+  const result = await db.execute(sql`
+    UPDATE eth_target75_exits
+    SET provider_order_id=${providerOrderId},status='submitted',updated_at_ms=${Date.now()}
+    WHERE exit_client_order_id=${key} AND status='post_started'
+      AND provider_order_id IS NULL
+    RETURNING exit_client_order_id
+  `);
+  return rows(result).length === 1;
+}
