@@ -143,3 +143,44 @@ export function buildTarget75IocPayload(input: {
     self_trade_prevention_type: "taker_at_cross",
   };
 }
+
+/**
+ * Apply a VERIFIED exchange exit fill to the open strategy lot, without
+ * treating it as a binary settlement. This does not change a martingale rung.
+ * Each caller must durably store fill IDs and call this once per unique fill.
+ */
+export function applyTarget75VerifiedExitFill(input: {
+  ownedContracts: number;
+  previouslyExitedContracts: number;
+  newExitFillContracts: number;
+  grossExitProceedsCents: number;
+  exitFeeCents: number;
+  originalEntryNotionalCents: number;
+  originalEntryFeesCents: number;
+}): {
+  remainingContracts: number;
+  totalExitedContracts: number;
+  realizedProfitNumerator: number;
+  realizedProfitDenominator: number;
+} {
+  const n = input.ownedContracts;
+  const e = input.previouslyExitedContracts;
+  const f = input.newExitFillContracts;
+  const integers = Object.values(input);
+  if (integers.some(v => !Number.isSafeInteger(v) || v < 0)
+    || n <= 0 || f <= 0 || e >= n || f > n - e)
+    throw new Error("invalid_or_duplicate_target75_fill");
+  // Retain exact rational allocated entry costs instead of rounding each
+  // partial fill independently, which could overstate realized P&L.
+  const originalCost = input.originalEntryNotionalCents + input.originalEntryFeesCents;
+  if (!Number.isSafeInteger(originalCost)) throw new Error("invalid_entry_cost");
+  const realizedProfitNumerator =
+    (input.grossExitProceedsCents - input.exitFeeCents) * n - originalCost * f;
+  if (!Number.isSafeInteger(realizedProfitNumerator)) throw new Error("overflow_exit_pnl");
+  return {
+    remainingContracts: n - e - f,
+    totalExitedContracts: e + f,
+    realizedProfitNumerator,
+    realizedProfitDenominator: n,
+  };
+}
