@@ -32,7 +32,7 @@ export function decideTarget75Exit(s: Target75Snapshot): Target75Decision {
     s.strategyOwnedContracts, s.confirmedExchangeContracts,
     s.executableBidDepthContracts, s.pendingExitContracts,
   ];
-  if (values.some(v => !Number.isSafeInteger(v))) return hold("invalid_snapshot");
+  if (values.some(v => !Number.isSafeInteger(v) || v < 0)) return hold("invalid_snapshot");
   if (!s.ownershipIsExclusive || !s.exchangeOrderStateCertain) return hold("ownership_or_order_uncertain");
   if (!s.entryOrdersTerminal) return hold("entry_orders_not_terminal");
   if (s.strategyOwnedContracts <= 0 || s.confirmedExchangeContracts !== s.strategyOwnedContracts)
