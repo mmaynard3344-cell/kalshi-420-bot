@@ -120,9 +120,10 @@ test("missing exchange order ID is uncertain and must not be treated as filled",
   }), "unknown");
 });
 
-test("ETH-only pilot rejects BTC, USD and other ETH markets", async () => {
+test("ETH-family scope accepts other ETH markets but rejects BTC and USD", async () => {
   assert.equal(isTarget75PilotTicker("KXETH15M-26OCT201200-00"), true);
-  for (const ticker of ["KXBTC15M-26OCT201200-00", "KXEURUSD15M-26OCT201200-00", "KXETH30M-26OCT201200-00"]) {
+  assert.equal(isTarget75PilotTicker("KXETH30M-26OCT201200-00"), true);
+  for (const ticker of ["KXBTC15M-26OCT201200-00", "KXEURUSD15M-26OCT201200-00"]) {
     assert.equal(isTarget75PilotTicker(ticker), false);
     assert.throws(() => buildTarget75IocPayload({
       ticker, decisionKey:"pilot-check", heldSide:"yes", contracts:2, minPriceCents:75,
