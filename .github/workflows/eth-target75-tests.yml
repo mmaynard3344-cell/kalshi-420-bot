@@ -1,0 +1,30 @@
+name: ETH 75 Exit Tests
+on:
+  push:
+    branches:
+      - feat/tminus7-profitable-exit-20261019
+  pull_request:
+    paths:
+      - 'artifacts/api-server/src/lib/tMinusSevenExit*'
+      - 'artifacts/api-server/src/lib/target75*'
+      - 'artifacts/api-server/scripts/run-target75-test.mjs'
+      - '.github/workflows/eth-target75-tests.yml'
+  workflow_dispatch:
+jobs:
+  verify-target75:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @workspace/api-server run test:target75
+      - run: pnpm --filter @workspace/api-server run typecheck
