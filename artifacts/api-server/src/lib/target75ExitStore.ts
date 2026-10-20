@@ -95,3 +95,19 @@ export async function linkExitProviderOrder(
   `);
   return rows(result).length === 1;
 }
+
+/**
+ * Read-only identity recovery for an uncertain IOC POST.
+ * Exactly one authenticated matching order is required; ambiguity remains
+ * fenced for manual/independent reconciliation. This function does not retry.
+ */
+export function identifyTarget75ExchangeOrder(input: {
+  clientOrderId: string; ticker: string; orderCandidates: ReadonlyArray<Record<string,unknown>>;
+}): string | null {
+  if (!input.clientOrderId || !/^KXETH[A-Z0-9]*-[A-Z0-9-]+$/.test(input.ticker)) return null;
+  const matches = input.orderCandidates.filter(order =>
+    order["client_order_id"] === input.clientOrderId &&
+    order["ticker"] === input.ticker &&
+    typeof order["order_id"] === "string" && (order["order_id"] as string).length > 0);
+  return matches.length === 1 ? matches[0]!["order_id"] as string : null;
+}
