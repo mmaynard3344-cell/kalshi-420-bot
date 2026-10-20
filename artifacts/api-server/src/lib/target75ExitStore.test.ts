@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { reserveExit, fenceExitPost, linkExitProviderOrder, recordExitFill, type ExitDb, identifyTarget75ExchangeOrder } from "./target75ExitStore.js";
+import { reserveExit, fenceExitPost, linkExitProviderOrder, recordExitFill, type ExitDb, identifyTarget75ExchangeOrder, recoverTarget75ProviderOrder } from "./target75ExitStore.js";
 
 type Row = Record<string, unknown>;
 class FakeExitDb implements ExitDb {
@@ -81,4 +81,16 @@ test("uncertain exit identifies only one exact provider order", () => {
   assert.equal(identifyTarget75ExchangeOrder({...input,orderCandidates:[
     {...correct,ticker:"KXBTC15M-TEST"}]}),null);
   assert.equal(identifyTarget75ExchangeOrder({...input,orderCandidates:[]}),null);
+});
+
+test("uncertain order recovery does not mutate without a matching exchange identity", async () => {
+  const db = new FakeExitDb();
+  const ticker="KXETH15M-TEST";
+  assert.equal(await reserveExit(db,{key:"exit-r",strategy:"G",ticker,entryId:"entry-r",side:"yes",quantity:1,bidCents:75}),true);
+  assert.equal(await fenceExitPost(db,"exit-r"),true);
+  assert.equal(await recoverTarget75ProviderOrder(db,{
+    clientOrderId:"exit-r",ticker,
+    orderCandidates:[{client_order_id:"other",ticker,order_id:"order-r"}],
+  }),false);
+  assert.equal(db.exit?.status,"post_started");
 });
