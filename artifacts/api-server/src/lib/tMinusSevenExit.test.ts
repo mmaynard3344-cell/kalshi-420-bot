@@ -10,6 +10,7 @@ const base = {
   executableBidCents: 75, executableBidDepthContracts: 2,
   estimatedExitFeesCents: 2, pendingExitContracts: 0,
   ownershipIsExclusive: true, exchangeOrderStateCertain: true,
+  entryOrdersTerminal: true,
 };
 test("sells exactly owned quantity when bid is at least 75 cents and net profitable", () => {
   assert.deepEqual(decideTarget75Exit(base), {
@@ -31,6 +32,7 @@ test("fails closed on mixed ownership, pending exits and ledger mismatch", () =>
   assert.equal(decideTarget75Exit({...base, pendingExitContracts: 1}).action, "hold");
   assert.equal(decideTarget75Exit({...base, confirmedExchangeContracts: 3}).action, "hold");
   assert.equal(decideTarget75Exit({...base, entryCostCents: null}).action, "hold");
+  assert.deepEqual(decideTarget75Exit({...base, entryOrdersTerminal: false}), {action:"hold",reason:"entry_orders_not_terminal"});
   assert.equal(decideTarget75Exit({...base, executableBidDepthContracts: 1}).action, "hold");
 });
 
