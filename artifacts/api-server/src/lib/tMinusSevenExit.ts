@@ -1,17 +1,7 @@
-/**
- * T−7:00 profitable-exit decision policy.
- *
- * This module is deliberately pure: an exchange order must NOT be submitted
- * without an independently confirmed strategy-owned fill ledger, fees and
- * executable held-side bid. Never use a ticker-level net position as proof of
- * ownership where different strategies can share a market.
- */
-export const T_MINUS_SEVEN_MS = 7 * 60_000;
-export const T_MINUS_SEVEN_GRACE_MS = 5_000;
+/** Profit-taking target: exit owned contracts whenever buyers bid 75¢ or better. */
+export const PROFIT_TAKE_TARGET_CENTS = 75;
 
-export interface TMinusSevenSnapshot {
-  nowMs: number;
-  marketCloseMs: number;
+export interface Target75Snapshot {
   strategyOwnedContracts: number;
   confirmedExchangeContracts: number;
   // All-in historical costs in cents for precisely the open owned contracts.
@@ -25,20 +15,17 @@ export interface TMinusSevenSnapshot {
   ownershipIsExclusive: boolean;
   exchangeOrderStateCertain: boolean;
 }
-export type TMinusSevenDecision =
+export type Target75Decision =
   | { action: "hold"; reason: string }
   | { action: "sell_ioc"; contracts: number; minimumPriceCents: number; projectedNetProfitCents: number };
 
-export function decideTMinusSevenExit(s: TMinusSevenSnapshot): TMinusSevenDecision {
-  const hold = (reason: string): TMinusSevenDecision => ({ action: "hold", reason });
+export function decideTarget75Exit(s: Target75Snapshot): Target75Decision {
+  const hold = (reason: string): Target75Decision => ({ action: "hold", reason });
   const values = [
-    s.nowMs, s.marketCloseMs, s.strategyOwnedContracts, s.confirmedExchangeContracts,
+    s.strategyOwnedContracts, s.confirmedExchangeContracts,
     s.executableBidDepthContracts, s.pendingExitContracts,
   ];
   if (values.some(v => !Number.isSafeInteger(v))) return hold("invalid_snapshot");
-  if (s.marketCloseMs - s.nowMs > T_MINUS_SEVEN_MS ||
-      s.marketCloseMs - s.nowMs < T_MINUS_SEVEN_MS - T_MINUS_SEVEN_GRACE_MS)
-    return hold("outside_t_minus_seven_window");
   if (!s.ownershipIsExclusive || !s.exchangeOrderStateCertain) return hold("ownership_or_order_uncertain");
   if (s.strategyOwnedContracts <= 0 || s.confirmedExchangeContracts !== s.strategyOwnedContracts)
     return hold("position_mismatch");
@@ -52,11 +39,13 @@ export function decideTMinusSevenExit(s: TMinusSevenSnapshot): TMinusSevenDecisi
   const bid = s.executableBidCents;
   if (![cost, entryFees, exitFees, bid].every(v => Number.isSafeInteger(v) && v >= 0))
     return hold("invalid_economics");
-  if (bid < 1 || bid > 99) return hold("invalid_bid");
+  if (bid < PROFIT_TAKE_TARGET_CENTS || bid > 99) return hold("below_target");
   if (s.executableBidDepthContracts < s.strategyOwnedContracts)
     return hold("insufficient_bid_depth");
   const projectedNetProfitCents =
     s.strategyOwnedContracts * bid - cost - entryFees - exitFees;
+  // A 75¢ bid alone is not proof of net profitability; preserve the explicitly
+  // requested profit-taking behavior to avoid booking a loss after fees.
   if (projectedNetProfitCents <= 0) return hold("not_profitable_after_fees");
   return {
     action: "sell_ioc", contracts: s.strategyOwnedContracts,
@@ -70,7 +59,7 @@ export function decideTMinusSevenExit(s: TMinusSevenSnapshot): TMinusSevenDecisi
  * order outcomes before permitting another reservation. A false reservation
  * means no POST, even if this process restarted during the window.
  */
-export interface TMinusSevenExecutionAdapter {
+export interface Target75ExecutionAdapter {
   reserveOnce(decisionKey: string, quantity: number): Promise<boolean>;
   markPostStarted(decisionKey: string): Promise<boolean>;
   submitIocSell(input: {
@@ -81,11 +70,11 @@ export interface TMinusSevenExecutionAdapter {
 }
 
 /** No live call site until strategy-specific ledgers and the adapter exist. */
-export async function executeTMinusSevenDecision(
-  adapter: TMinusSevenExecutionAdapter,
-  input: { decisionKey: string; ticker: string; heldSide: "yes" | "no"; snapshot: TMinusSevenSnapshot },
+export async function executeTarget75Decision(
+  adapter: Target75ExecutionAdapter,
+  input: { decisionKey: string; ticker: string; heldSide: "yes" | "no"; snapshot: Target75Snapshot },
 ): Promise<"held" | "reserved_elsewhere" | "persistence_failed" | "submitted" | "unknown"> {
-  const decision = decideTMinusSevenExit(input.snapshot);
+  const decision = decideTarget75Exit(input.snapshot);
   if (decision.action !== "sell_ioc") return "held";
   if (!await adapter.reserveOnce(input.decisionKey, decision.contracts)) return "reserved_elsewhere";
   if (!await adapter.markPostStarted(input.decisionKey)) return "persistence_failed";
