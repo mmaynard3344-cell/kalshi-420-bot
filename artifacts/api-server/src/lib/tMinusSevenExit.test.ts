@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { decideTarget75Exit, executeTarget75Decision, PROFIT_TAKE_TARGET_CENTS, buildTarget75IocPayload } from "./tMinusSevenExit.js";
+import { decideTarget75Exit, executeTarget75Decision, PROFIT_TAKE_TARGET_CENTS, buildTarget75IocPayload, isTarget75PilotTicker } from "./tMinusSevenExit.js";
 const close = 900_000;
 const base = {
   strategyOwnedContracts: 2, confirmedExchangeContracts: 2,
@@ -118,4 +118,25 @@ test("missing exchange order ID is uncertain and must not be treated as filled",
   assert.equal(await executeTarget75Decision(adapter, {
     decisionKey:"x", ticker:"KXETH15M-TEST", heldSide:"yes", snapshot:base,
   }), "unknown");
+});
+
+test("ETH-only pilot rejects BTC, USD and other ETH markets", async () => {
+  assert.equal(isTarget75PilotTicker("KXETH15M-26OCT201200-00"), true);
+  for (const ticker of ["KXBTC15M-26OCT201200-00", "KXEURUSD15M-26OCT201200-00", "KXETH30M-26OCT201200-00"]) {
+    assert.equal(isTarget75PilotTicker(ticker), false);
+    assert.throws(() => buildTarget75IocPayload({
+      ticker, decisionKey:"pilot-check", heldSide:"yes", contracts:2, minPriceCents:75,
+    }));
+    let invoked = false;
+    const adapter = {
+      async reserveOnce() { invoked = true; return true; },
+      async markPostStarted() { invoked = true; return true; },
+      async submitIocSell() { invoked = true; return {status:"filled" as const,orderId:"id"}; },
+      async recordResult() { invoked = true; return true; },
+    };
+    assert.equal(await executeTarget75Decision(adapter, {
+      decisionKey:"pilot",ticker,heldSide:"yes",snapshot:base,
+    }), "held");
+    assert.equal(invoked,false);
+  }
 });
