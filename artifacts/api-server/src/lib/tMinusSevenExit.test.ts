@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { decideTarget75Exit, executeTarget75Decision, PROFIT_TAKE_TARGET_CENTS, buildTarget75IocPayload, isTarget75PilotTicker } from "./tMinusSevenExit.js";
+import { decideTarget75Exit, executeTarget75Decision, PROFIT_TAKE_TARGET_CENTS, buildTarget75IocPayload, isTarget75PilotTicker, applyTarget75VerifiedExitFill } from "./tMinusSevenExit.js";
 const close = 900_000;
 const base = {
   strategyOwnedContracts: 2, confirmedExchangeContracts: 2,
@@ -140,4 +140,31 @@ test("ETH-family scope accepts other ETH markets but rejects BTC and USD", async
     }), "held");
     assert.equal(invoked,false);
   }
+});
+
+test("partial exit fill preserves remaining contracts and prorates entry cost", () => {
+  const first = applyTarget75VerifiedExitFill({
+    ownedContracts:4, previouslyExitedContracts:0, newExitFillContracts:1,
+    grossExitProceedsCents:75, exitFeeCents:2,
+    originalEntryNotionalCents:200, originalEntryFeesCents:4,
+  });
+  assert.equal(first.remainingContracts,3);
+  assert.equal(first.realizedProfitNumerator, 88); // 73 - (204 / 4) = 22 cents
+  assert.equal(first.realizedProfitDenominator,4);
+  const second = applyTarget75VerifiedExitFill({
+    ownedContracts:4, previouslyExitedContracts:1, newExitFillContracts:3,
+    grossExitProceedsCents:225, exitFeeCents:6,
+    originalEntryNotionalCents:200, originalEntryFeesCents:4,
+  });
+  assert.equal(second.remainingContracts,0);
+  assert.equal(first.realizedProfitNumerator + second.realizedProfitNumerator, 4 * (300 - 8 - 204));
+});
+test("partial exit rejects duplicate or overfilled quantity", () => {
+  const baseFill = {
+    ownedContracts:2, previouslyExitedContracts:2, newExitFillContracts:1,
+    grossExitProceedsCents:75, exitFeeCents:2,
+    originalEntryNotionalCents:100, originalEntryFeesCents:2,
+  };
+  assert.throws(() => applyTarget75VerifiedExitFill(baseFill));
+  assert.throws(() => applyTarget75VerifiedExitFill({...baseFill,previouslyExitedContracts:1,newExitFillContracts:2}));
 });
