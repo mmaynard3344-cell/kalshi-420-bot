@@ -180,7 +180,7 @@ export function Eth420DailyTransactionLog({
     </div>
     <div className="mt-5 overflow-x-auto border border-border">
       {orderHistoryDisplay.kind === 'unavailable' ? <div className="p-6 text-center text-sm font-mono text-muted-foreground">{orderHistoryDisplay.detail}</div> : transactionOrders.length === 0 ? <div className="p-6 text-center text-sm font-mono text-muted-foreground">No candidate orders are currently available.</div> :
-        <table className="w-full min-w-[1120px] text-left font-mono text-xs"><thead className="bg-muted/30 text-[10px] uppercase text-muted-foreground"><tr><th className="p-3">ET day / time</th><th className="p-3">Service</th><th className="p-3">Ticker</th><th className="p-3">Step</th><th className="p-3">Side</th><th className="p-3 text-right">Requested / filled</th><th className="p-3 text-right">Avg fill</th><th className="p-3 text-right">Fee</th><th className="p-3 text-right">Wager</th><th className="p-3">Status</th><th className="p-3 text-right">Realized P&amp;L</th></tr></thead><tbody className="divide-y divide-border">{transactionOrders.map((order) => <tr key={order.id}><td className="p-3 whitespace-nowrap">{displayEasternDate(easternDateKey(order.createdAtMs))} · {easternClock(order.createdAtMs)}</td><td className="p-3 font-medium">{order.service ?? 'ETH420'}</td><td className="p-3 max-w-56 truncate" title={order.ticker}>{order.ticker}</td><td className="p-3">{order.service === 'DER200' ? '—' : `Step ${order.step}`}</td><td className="p-3 uppercase">{order.side}</td><td className="p-3 text-right">{order.requestedContracts} / {order.filledContracts ?? '—'}</td><td className="p-3 text-right">{order.fillPriceCents == null ? '—' : `${order.fillPriceCents.toFixed(1)}¢`}</td><td className="p-3 text-right">{order.actualFeeDollars == null ? '—' : `${Number(order.actualFeeDollars).toFixed(2)}`}</td><td className="p-3 text-right">${(order.effectiveWagerCents / 100).toFixed(2)}</td><td className="p-3 uppercase">{order.status.replaceAll('_', ' ')}{order.settlementResult ? ` · ${order.settlementResult}` : ''}</td><td className={cn('p-3 text-right font-medium', (order.realizedPnlDeltaCents ?? 0) > 0 ? 'text-emerald-600' : (order.realizedPnlDeltaCents ?? 0) < 0 ? 'text-destructive' : '')}>{order.realizedPnlDeltaCents == null ? 'Pending' : formatCandidatePnl(order.realizedPnlDeltaCents)}</td></tr>)}</tbody></table>}
+        <table className="w-full min-w-[1120px] text-left font-mono text-xs"><thead className="bg-muted/30 text-[10px] uppercase text-muted-foreground"><tr><th className="p-3">ET day / time</th><th className="p-3">Service</th><th className="p-3">Ticker</th><th className="p-3">Step</th><th className="p-3">Side</th><th className="p-3 text-right">Requested / filled</th><th className="p-3 text-right">Avg fill</th><th className="p-3 text-right">Fee</th><th className="p-3 text-right">Wager</th><th className="p-3">Status</th><th className="p-3 text-right">Realized P&amp;L</th></tr></thead><tbody className="divide-y divide-border">{transactionOrders.map((order) => <tr key={order.id}><td className="p-3 whitespace-nowrap">{displayEasternDate(easternDateKey(order.createdAtMs))} · {easternClock(order.createdAtMs)}</td><td className="p-3 font-medium">{('service' in order ? order.service : undefined) ?? 'ETH420'}</td><td className="p-3 max-w-56 truncate" title={order.ticker}>{order.ticker}</td><td className="p-3">{('service' in order && order.service === 'DER200') ? '—' : `Step ${order.step}`}</td><td className="p-3 uppercase">{order.side}</td><td className="p-3 text-right">{order.requestedContracts} / {order.filledContracts ?? '—'}</td><td className="p-3 text-right">{order.fillPriceCents == null ? '—' : `${order.fillPriceCents.toFixed(1)}¢`}</td><td className="p-3 text-right">{order.actualFeeDollars == null ? '—' : `${Number(order.actualFeeDollars).toFixed(2)}`}</td><td className="p-3 text-right">${(order.effectiveWagerCents / 100).toFixed(2)}</td><td className="p-3 uppercase">{order.status.replaceAll('_', ' ')}{order.settlementResult ? ` · ${order.settlementResult}` : ''}</td><td className={cn('p-3 text-right font-medium', (order.realizedPnlDeltaCents ?? 0) > 0 ? 'text-emerald-600' : (order.realizedPnlDeltaCents ?? 0) < 0 ? 'text-destructive' : '')}>{order.realizedPnlDeltaCents == null ? 'Pending' : formatCandidatePnl(order.realizedPnlDeltaCents)}</td></tr>)}</tbody></table>}
     </div>
     <p className="mt-3 text-xs text-muted-foreground">This read-only table does not create, change, reconcile, or backfill records.</p>
   </section>;
@@ -234,6 +234,38 @@ export function Eth420BalanceSheet({
       <div className="bg-card p-4"><h4 className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Archival restoration context</h4><dl className="mt-3 space-y-2 text-sm"><div className="flex justify-between gap-6"><dt>Aug. 9 fixed opening equity</dt><dd className="font-mono">$1,000.00</dd></div><div className="flex justify-between gap-6"><dt>Later Maynard net deposits</dt><dd className="font-mono">+$1,470.00</dd></div><div className="flex justify-between gap-6"><dt>Teal capital restored</dt><dd className="font-mono text-emerald-600">$500.00 · complete</dd></div><div className="flex justify-between gap-6 border-t border-border pt-2 font-medium"><dt>Maynard capital remaining</dt><dd className="font-mono">$1,644.7597</dd></div></dl></div>
     </div>
     <p className="mt-4 text-xs text-muted-foreground">The restoration context is a fixed historical convention: $1,785 reimbursable expenses, $2,000 Maynard capital, and $500 Teal capital. It is not used to calculate the live date, equity, or P&amp;L above and performs no account, trading, or database action.</p>
+  </section>;
+}
+
+/** Preview-only transfer request; submission remains deliberately disabled. */
+function ShardTransferPreview({balance}: {balance: MartingaleBalance | undefined}) {
+  const [direction, setDirection] = useState<'0to2' | '2to0'>('0to2');
+  const [amount, setAmount] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+  const source = direction === '0to2' ? 0 : 2;
+  const destination = direction === '0to2' ? 2 : 0;
+  const cents = /^\\d+(?:\\.\\d{1,2})?$/.test(amount) ? Math.round(Number(amount) * 100) : null;
+  const sourceBalance = balance?.shard_balances?.find((item) => item.exchange_index === source);
+  const valid = cents != null && cents > 0 && cents <= 100000
+    && sourceBalance?.stale === false
+    && sourceBalance.available_balance_cents != null
+    && sourceBalance.available_balance_cents >= cents;
+  return <section className="mt-3 border-t border-border pt-3 text-xs font-mono">
+    <div className="font-semibold">Manual shard transfer · preview only</div>
+    <div className="mt-1 text-muted-foreground">Submitting transfers is disabled until operator authentication and durable duplicate protection are tested.</div>
+    <label className="mt-2 block">Direction
+      <select className="mt-1 w-full border border-border bg-background p-2" value={direction} onChange={(event) => {setDirection(event.target.value as '0to2' | '2to0');setConfirmed(false);}}>
+        <option value="0to2">Shard 0 to Shard 2</option>
+        <option value="2to0">Shard 2 to Shard 0</option>
+      </select>
+    </label>
+    <label className="mt-2 block">Amount (USD)
+      <input className="mt-1 w-full border border-border bg-background p-2" inputMode="decimal" placeholder="25.00" value={amount} onChange={(event) => {setAmount(event.target.value);setConfirmed(false);}}/>
+    </label>
+    <div className="mt-2 text-muted-foreground">{valid ? `Preview: move ${(cents! / 100).toFixed(2)} from Shard ${source} to Shard ${destination}` : 'Enter an amount within the available source-shard balance ($0.01–$1,000.00).'}</div>
+    <label className="mt-2 flex items-center gap-2"><input type="checkbox" checked={confirmed} disabled={!valid} onChange={(event) => setConfirmed(event.target.checked)}/>I have reviewed the amount and direction</label>
+    <button type="button" disabled className="mt-2 w-full border border-border bg-muted p-2 text-muted-foreground">Transfer disabled — testing required</button>
+    {confirmed && <div className="mt-2 text-muted-foreground">Review captured locally only. No transfer was submitted.</div>}
   </section>;
 }
 
@@ -299,7 +331,13 @@ function EthLiveMarketCard({
     <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-px bg-border">
       <div className="bg-card p-4 font-mono text-xs"><div className="text-[10px] text-muted-foreground uppercase">Current market</div><div className="mt-2 break-all font-medium text-foreground">{market?.ticker ?? 'Unavailable'}</div><div className="mt-1 text-muted-foreground">Closes in {countdown}</div><div className="mt-1 text-muted-foreground">Exchange {market?.exchangeIndex ?? '—'} · strike {evidence?.floorStrike ?? '—'}</div></div>
       <div className="bg-card p-4 font-mono text-xs"><div className="text-[10px] text-muted-foreground uppercase">Best quotes</div><div className="mt-2 text-foreground">YES {evidence ? `${evidence.yesBid} / ${evidence.yesAsk}¢` : 'Unavailable'}</div><div className="mt-1 text-foreground">NO&nbsp;&nbsp; {evidence ? `${evidence.noBid} / ${evidence.noAsk}¢` : 'Unavailable'}</div><div className="mt-1 text-muted-foreground">Adjacent move {evidenceDisplay.adjacentMove}</div></div>
-      <div className="bg-card p-4 font-mono text-xs"><div className="text-[10px] text-muted-foreground uppercase">Account</div><div className="mt-2 text-foreground">Cash {formatDollars(aggregateCents)}{balance?.stale ? ' · stale' : ''}</div><div className="mt-1 text-foreground">Portfolio {formatDollars(balance?.portfolio_value)}</div><div className="mt-1 text-muted-foreground">ETH shard {balance?.active_eth_exchange_balance?.exchange_index ?? balance?.active_eth_exchange_index ?? '—'} · {formatDollars(balance?.active_eth_exchange_balance?.available_balance_cents)}</div><div className="mt-1 text-foreground">Shard 2 · {formatDollars(balance?.shard_2_balance?.available_balance_cents)}{balance?.shard_2_balance?.stale ? ' · stale' : ''}</div></div>
+      <div className="bg-card p-4 font-mono text-xs"><div className="text-[10px] text-muted-foreground uppercase">Account</div><div className="mt-2 text-foreground">Cash {formatDollars(aggregateCents)}{balance?.stale ? ' · stale' : ''}</div><div className="mt-1 text-foreground">Portfolio {formatDollars(balance?.portfolio_value)}</div><div className="mt-1 text-muted-foreground">ETH shard {balance?.active_eth_exchange_balance?.exchange_index ?? balance?.active_eth_exchange_index ?? '—'} · {formatDollars(balance?.active_eth_exchange_balance?.available_balance_cents)}</div>
+      <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3">
+        {[0, 1, 2].map((index) => {
+          const shard = balance?.shard_balances?.find((item) => item.exchange_index === index);
+          return <div key={index}><div className="text-[10px] text-muted-foreground">Shard {index}</div><div>{formatDollars(shard?.available_balance_cents)}</div><div className="text-[10px] text-muted-foreground">{shard == null ? 'unavailable' : shard.stale ? 'stale' : 'available'}</div></div>;
+        })}
+      </div><div className="mt-2 text-muted-foreground">Available cash by shard · refreshes every 10 seconds · read-only</div><ShardTransferPreview balance={balance}/></div>
       <div className="bg-card p-4 font-mono text-xs"><div className="text-[10px] text-muted-foreground uppercase">Live ETH position</div><div className="mt-2 text-foreground">{positionDisplay.kind === 'position' && livePosition ? `${livePosition.side.toUpperCase()} · Step ${livePosition.step}` : positionDisplay.detail}</div><div className="mt-1 text-muted-foreground">{positionDisplay.kind === 'position' && livePosition ? `${formatContracts(livePosition.filledContracts ?? 0)} filled · ${livePosition.lifecycleStatus.replaceAll('_', ' ')}` : 'Durable candidate ledger'}</div></div>
     </div>
     <details className="border-t border-border p-4 font-mono text-xs">

@@ -1,0 +1,47 @@
+name: Shard transfer disposable PostgreSQL
+on:
+  push:
+    branches: [feat/shard-funds-manager-20261017]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'artifacts/api-server/src/lib/shardTransfer*'
+      - 'artifacts/api-server/scripts/run-shard-transfer-db-test.mjs'
+      - '.github/workflows/shard-transfer-db.yml'
+jobs:
+  shard-transfer-db:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: shard_transfer_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U testuser -d shard_transfer_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: test
+      SHARD_TRANSFERS_ENABLED: "false"
+      SHARD_TRANSFER_TEST_DATABASE: "1"
+      SHARD_TRANSFER_DISPOSABLE_DB_CONFIRMED: "yes"
+      DATABASE_URL: postgresql://testuser:testpass@127.0.0.1:5432/shard_transfer_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Test durable transfer idempotency against disposable Postgres
+        working-directory: artifacts/api-server
+        run: node scripts/run-shard-transfer-db-test.mjs

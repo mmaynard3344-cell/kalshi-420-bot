@@ -1,0 +1,117 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { operatorGatewayAllowed, operatorGatewayUpstreamPath } from './shard-operator-gateway.mjs';
+const origin='https://shawshank.example.com';
+const req={method:'POST',headers:{origin,'sec-fetch-site':'same-origin','content-type':'application/json','content-length':'70'}};
+test('only explicit login and preview paths accepted',()=>{
+ assert.equal(operatorGatewayUpstreamPath('/api/operator/shards/login'),'/api/trade/shard-transfer/operator-login');
+ assert.equal(operatorGatewayUpstreamPath('/api/operator/shards/preview'),'/api/trade/shard-transfer/session-preview');
+ assert.equal(operatorGatewayUpstreamPath('/api/trade/shard-transfer'),null);
+ assert.equal(operatorGatewayUpstreamPath('/api/operator/shards/submit'),null);
+ assert.equal(operatorGatewayAllowed(req,'/api/operator/shards/login',origin),true);
+ assert.equal(operatorGatewayAllowed(req,'/api/operator/shards/submit',origin),false);
+});
+test('non-POST and cross-site requests denied',()=>{
+ assert.equal(operatorGatewayAllowed({...req,method:'GET'},'/api/operator/shards/login',origin),false);
+ assert.equal(operatorGatewayAllowed({...req,headers:{...req.headers,origin:'https://bad.example'}},'/api/operator/shards/login',origin),false);
+ assert.equal(operatorGatewayAllowed({...req,headers:{...req.headers,'sec-fetch-site':'cross-site'}},'/api/operator/shards/login',origin),false);
+ assert.equal(operatorGatewayAllowed({...req,headers:{...req.headers,'content-length':'5000'}},'/api/operator/shards/login',origin),false);
+});
+
+test('gateway remains off by default and makes zero upstream requests',async()=>{
+ const {Readable}=await import('node:stream');
+ const {operatorGateway}=await import('./shard-operator-gateway.mjs');
+ const request=Readable.from(['{"operatorCredential":"test"}']);
+ request.method='POST';request.headers={...req.headers,'content-length':'29'};
+ const response={status:null,headers:null,body:null,writeHead(status,headers){this.status=status;this.headers=headers;},end(body){this.body=body;}};
+ const oldFetch=globalThis.fetch;
+ let called=false;
+ globalThis.fetch=async()=>{called=true;throw Error('No upstream request expected');};
+ try{
+  await operatorGateway(request,response,'/api/operator/shards/login',{enabled:false,origin,baseUrl:'https://api.example.com',tradeToken:'server-only'});
+  assert.equal(response.status,403);
+  assert.equal(called,false);
+ }finally{globalThis.fetch=oldFetch;}
+});
+
+test('same-origin gateway forwards secure login cookie but never leaks trade token',async()=>{
+ const {Readable}=await import('node:stream');
+ const {operatorGateway}=await import('./shard-operator-gateway.mjs');
+ const body=JSON.stringify({operatorCredential:'not-a-real-credential'});
+ const request=Readable.from([body]);
+ request.method='POST';
+ request.headers={...req.headers,'content-length':String(Buffer.byteLength(body))};
+ const response={status:null,headers:null,body:null,writeHead(status,headers){this.status=status;this.headers=headers;},end(body){this.body=body;}};
+ const oldFetch=globalThis.fetch;
+ let upstreamHeaders=null;
+ globalThis.fetch=async(url,init)=>{
+   assert.equal(url,'https://api.example.com/api/trade/shard-transfer/operator-login');
+   upstreamHeaders=init.headers;
+   return new Response(JSON.stringify({authenticated:true,csrf:'dummy',transfer_submitted:false}),{
+     status:200,headers:{'set-cookie':'__Host-shard_operator=mock.long-session-token-0123456789; HttpOnly; Secure; SameSite=Strict; Path=/; Domain=.example.com; Max-Age=900','content-type':'application/json'}
+   });
+ };
+ try{
+  await operatorGateway(request,response,'/api/operator/shards/login',{enabled:true,origin,baseUrl:'https://api.example.com',tradeToken:'private-server-key'});
+  assert.equal(response.status,200);
+  assert.match(response.headers['set-cookie'],/^__Host-shard_operator=/);
+  assert.doesNotMatch(response.headers['set-cookie'],/Domain=/i);
+  assert.match(response.headers['set-cookie'],/Max-Age=900/);
+  assert.equal(upstreamHeaders['x-trade-token'],'private-server-key');
+  assert.doesNotMatch(JSON.stringify(response),/private-server-key/);
+ }finally{globalThis.fetch=oldFetch;}
+});
+
+test('session preview forwards only cookie and CSRF, never a transfer submission',async()=>{
+ const {Readable}=await import('node:stream');
+ const {operatorGateway}=await import('./shard-operator-gateway.mjs');
+ const body=JSON.stringify({requestId:'69e61066-4170-4eb4-bfca-1b33800ca633',sourceExchangeShard:0,destinationExchangeShard:2,amountCents:100,confirmation:'TRANSFER $1.00 FROM 0 TO 2'});
+ const request=Readable.from([body]);
+ request.method='POST';
+ request.headers={...req.headers,'content-length':String(Buffer.byteLength(body)),cookie:'__Host-shard_operator=mock.token; unrelated=ignored','x-shard-operator-csrf':'csrf-test-value'};
+ const response={status:null,headers:null,body:null,writeHead(status,headers){this.status=status;this.headers=headers;},end(body){this.body=body;}};
+ const oldFetch=globalThis.fetch;
+ let called=0;
+ globalThis.fetch=async(url,init)=>{
+   called++;
+   assert.equal(url,'https://api.example.com/api/trade/shard-transfer/session-preview');
+   assert.equal(init.headers.cookie,'__Host-shard_operator=mock.token');
+   assert.equal(init.headers['x-shard-operator-csrf'],'csrf-test-value');
+   assert.equal(init.method,'POST');
+   return new Response(JSON.stringify({wouldSubmit:false,sourceShard:0,destinationShard:2,amountCents:100}),{status:200,headers:{'content-type':'application/json'}});
+ };
+ try{
+   await operatorGateway(request,response,'/api/operator/shards/preview',{enabled:true,origin,baseUrl:'https://api.example.com',tradeToken:'private-server-key'});
+   assert.equal(called,1);
+   assert.equal(response.status,200);
+   assert.equal(JSON.parse(response.body).wouldSubmit,false);
+   assert.equal(response.headers['set-cookie'],undefined);
+   assert.equal(operatorGatewayUpstreamPath('/api/operator/shards/transfer'),null);
+ }finally{globalThis.fetch=oldFetch;}
+});
+
+test('Trade Log sign-in and preview use same-origin gateway, with transfer still disabled', async()=>{
+ const {readFileSync}=await import('node:fs');
+ const page=readFileSync(new URL('./server.mjs',import.meta.url),'utf8');
+ assert.match(page,/fetch\('\/api\/operator\/shards\/login'/);
+ assert.match(page,/fetch\('\/api\/operator\/shards\/preview'/);
+ assert.match(page,/id="shard-operator-credential" type="password"/);
+ assert.match(page,/id="shard-signin-button"/);
+ assert.match(page,/id="shard-preview-button"/);
+ assert.match(page,/type="button" disabled aria-disabled="true">Transfer disabled/);
+ assert.doesNotMatch(page,/fetch\('\/api\/trade\/shard-transfer'/);
+});
+
+test('Trade Log embedded browser scripts parse independently', async()=>{
+ const {readFileSync}=await import('node:fs');
+ const {Script}=await import('node:vm');
+ const page=readFileSync(new URL('./server.mjs',import.meta.url),'utf8');
+ const start=page.indexOf('function serveSimpleTradeLog(');
+ const finish=page.indexOf('async function receiveUsdCycleSnapshot(',start);
+ assert.ok(start>=0&&finish>start);
+ const template=page.slice(start,finish);
+ const scripts=[...template.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)].map(m=>m[1]);
+ assert.ok(scripts.length>=2,'Trade Log inline scripts must be present');
+ for(const script of scripts) assert.doesNotThrow(()=>new Script(script));
+ assert.ok(scripts.some(script=>script.includes('/api/operator/shards/preview')));
+});

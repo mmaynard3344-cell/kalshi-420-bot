@@ -27,6 +27,7 @@ export interface MartingaleBalance {
     stale: boolean;
     read_only?: boolean;
   } | null;
+  shard_balances?: Array<{ exchange_index: number; available_balance_cents: number | null; stale: boolean }>;
   balance_breakdown?: Array<{
     exchange_index?: number;
     balance?: string | number;

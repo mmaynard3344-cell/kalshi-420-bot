@@ -78,6 +78,16 @@ import { kalshiStream } from "../lib/kalshiStream.js";
 import { getProtectiveExitMonitorStatus } from "../lib/protectiveExit.js";
 import { getExchangeDiscoverySweepStatus } from "../lib/fillReconciler.js";
 import { timingSafeEqual } from "crypto";
+import { verifyShardTransferOperatorToken } from "../lib/shardTransferOperatorAuth.js";
+import { authorizedShardTransferPreview } from "../lib/shardTransferAuthorizedPreview.js";
+import { issueShardOperatorSession } from "../lib/shardTransferOperatorLogin.js";
+import { allowSharedShardOperatorLogin } from "../lib/shardTransferSharedLoginLimiter.js";
+import { SHARD_OPERATOR_COOKIE_NAME, SHARD_OPERATOR_COOKIE_ATTRIBUTES, SHARD_OPERATOR_SESSION_MAX_AGE_SECONDS } from "../lib/shardTransferOperatorSession.js";
+import { validateShardTransferHttpBoundary } from "../lib/shardTransferRequestBoundary.js";
+import { previewManualShardTransfer } from "../lib/shardTransferDryRun.js";
+import { describeShardTransferStatus } from "../lib/shardTransferStatusView.js";
+import { checkShardTransferReadOnly } from "../lib/shardTransferReadOnlyReconciliation.js";
+import { readShardTransfer } from "../lib/shardTransferLedgerRepository.js";
 import { ethMartingaleLedgerToCSV } from "../lib/csvExport.js";
 import { getAccountHistoryFingerprint } from "../lib/kalshiAccountFingerprint.js";
 import { getRuntimeHeartbeatStatus, isRuntimeEntryHealthy } from "../lib/runtimeHeartbeat.js";
@@ -1386,6 +1396,188 @@ router.get("/trade/account-fingerprint", requireTradeAuth, async (_req, res) => 
   });
 });
 
+/**
+ * Manual transfer endpoint is deliberately fail-closed.
+ * It does not accept submissions until durable idempotency and independent operator
+ * authentication are built and validated. Do not enable by setting environment
+ * variables alone: this route deliberately performs no Kalshi POST.
+ */
+/**
+ * Private signed-session transfer preview. No execution path.
+ * Only an independent authenticated operator login may issue a cookie;
+ * no such public login route is enabled yet.
+ */
+// Development-only login path; disabled by default. Requires reviewed migration,
+// operator-only authentication, and security review before any production enablement.
+router.post("/trade/shard-transfer/operator-login", requireTradeAuth, async (req, res) => {
+  if (process.env["SHARD_OPERATOR_LOGIN_ENABLED"] !== "true") {
+    res.status(503).json({ error: "Operator login is not enabled", transfer_submitted: false });
+    return;
+  }
+  if (!validateShardTransferHttpBoundary({
+    contentType: req.header("content-type"), origin: req.header("origin"),
+    expectedOrigin: process.env["SHARD_TRANSFER_ALLOWED_ORIGIN"],
+    fetchSite: req.header("sec-fetch-site"), contentLength: req.header("content-length"),
+  })) {
+    res.status(403).json({ error: "Login request rejected", transfer_submitted: false });
+    return;
+  }
+  // Atomic shared PostgreSQL throttle fails closed if the schema is absent.
+  const identity = req.ip || "unknown";
+  if (!await allowSharedShardOperatorLogin(identity, Date.now())) {
+    res.status(429).json({ error: "Too many operator sign-in attempts", transfer_submitted: false });
+    return;
+  }
+  const credential = req.body && typeof req.body === "object" && !Array.isArray(req.body)
+    ? (req.body as Record<string, unknown>).operatorCredential : undefined;
+  const issued = issueShardOperatorSession({
+    presentedOperatorCredential: typeof credential === "string" ? credential : undefined,
+    configuredOperatorCredential: process.env["SHARD_TRANSFER_OPERATOR_TOKEN"],
+    sessionSigningKey: process.env["SHARD_OPERATOR_SESSION_SIGNING_KEY"],
+    tradeTokens: VALID_TRADE_TOKENS,
+  });
+  if (!issued) {
+    res.status(403).json({ error: "Operator sign-in rejected", transfer_submitted: false });
+    return;
+  }
+  res.setHeader("Set-Cookie", SHARD_OPERATOR_COOKIE_NAME + "=" + issued.token +
+    "; " + SHARD_OPERATOR_COOKIE_ATTRIBUTES + "; Max-Age=" + SHARD_OPERATOR_SESSION_MAX_AGE_SECONDS);
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ authenticated: true, csrf: issued.csrf, expiresInSeconds: SHARD_OPERATOR_SESSION_MAX_AGE_SECONDS, transfer_submitted: false });
+});
+
+router.post("/trade/shard-transfer/session-preview", requireTradeAuth, (req, res) => {
+  const rawCookie = req.header("cookie") ?? "";
+  const match = rawCookie.match(/(?:^|;\\s*)__Host-shard_operator=([A-Za-z0-9_.-]+)/);
+  try {
+    const preview = authorizedShardTransferPreview({
+      sessionCookie: match?.[1],
+      sessionSigningKey: process.env["SHARD_OPERATOR_SESSION_SIGNING_KEY"],
+      csrfHeader: req.header("x-shard-operator-csrf"),
+      contentType: req.header("content-type"),
+      origin: req.header("origin"),
+      expectedOrigin: process.env["SHARD_TRANSFER_ALLOWED_ORIGIN"],
+      fetchSite: req.header("sec-fetch-site"),
+      contentLength: req.header("content-length"),
+      requestBody: req.body,
+    });
+    if (!preview) {
+      res.status(403).json({ error: "Operator session or request rejected", transfer_submitted: false });
+      return;
+    }
+    res.json(preview);
+  } catch {
+    res.status(400).json({ error: "Invalid transfer preview", transfer_submitted: false });
+  }
+});
+
+router.post("/trade/shard-transfer/preview", requireTradeAuth, (req, res) => {
+  if (!verifyShardTransferOperatorToken(
+    req.header("x-shard-transfer-operator-token"),
+    process.env["SHARD_TRANSFER_OPERATOR_TOKEN"],
+    VALID_TRADE_TOKENS,
+  ) || !validateShardTransferHttpBoundary({
+    contentType: req.header("content-type"),
+    origin: req.header("origin"),
+    expectedOrigin: process.env["SHARD_TRANSFER_ALLOWED_ORIGIN"],
+    fetchSite: req.header("sec-fetch-site"),
+    contentLength: req.header("content-length"),
+  })) {
+    res.status(403).json({ error: "Transfer preview authorization or request rejected", transfer_submitted: false });
+    return;
+  }
+  try {
+    res.json(previewManualShardTransfer(req.body));
+  } catch {
+    res.status(400).json({ error: "Invalid transfer request", transfer_submitted: false });
+  }
+});
+
+router.post("/trade/shard-transfer", requireTradeAuth, (req, res) => {
+  // Separately require a strong operator secret, distinct from the dashboard
+  // trade token. This is only a security gate; submission stays disabled.
+  if (!verifyShardTransferOperatorToken(
+    req.header("x-shard-transfer-operator-token"),
+    process.env["SHARD_TRANSFER_OPERATOR_TOKEN"],
+    VALID_TRADE_TOKENS,
+  )) {
+    res.status(403).json({error: "Independent transfer operator authorization required", transfer_submitted: false});
+    return;
+  }
+  if (!validateShardTransferHttpBoundary({
+    contentType: req.header("content-type"),
+    origin: req.header("origin"),
+    expectedOrigin: process.env["SHARD_TRANSFER_ALLOWED_ORIGIN"],
+    fetchSite: req.header("sec-fetch-site"),
+    contentLength: req.header("content-length"),
+  })) {
+    res.status(403).json({ error: "Transfer request origin or content rejected", transfer_submitted: false });
+    return;
+  }
+  res.status(503).json({
+    error: "Manual shard transfers are not yet enabled",
+    reason: "Operator authentication and durable duplicate-submission handling are pending",
+    transfer_submitted: false,
+  });
+});
+
+/**
+ * Private reconciliation lookup, not exposed through the public read proxy.
+ * Even the read uses a separate operator credential and never changes funds.
+ */
+router.get("/trade/shard-transfer/:requestId", requireTradeAuth, async (req, res) => {
+  if (!verifyShardTransferOperatorToken(
+    req.header("x-shard-transfer-operator-token"),
+    process.env["SHARD_TRANSFER_OPERATOR_TOKEN"],
+    VALID_TRADE_TOKENS,
+  )) {
+    res.status(403).json({ error: "Independent transfer operator authorization required" });
+    return;
+  }
+  const requestId = req.params.requestId;
+  if (typeof requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+    res.status(400).json({ error: "A valid request UUID is required" });
+    return;
+  }
+  try {
+    const record = await readShardTransfer(requestId);
+    if (!record) {
+      res.status(404).json({ error: "Transfer request not found" });
+      return;
+    }
+    // An explicit ?reconcile=read requests one signed GET; never modifies ledger.
+    // It does not mark completion, even if the exchange response looks final.
+    if (req.query.reconcile === "read") {
+      const reconciliation = await checkShardTransferReadOnly(
+        { state: typeof record.state === "string" ? record.state : "unknown", exchangeTransferId: typeof record.exchange_transfer_id === "string" ? record.exchange_transfer_id : null },
+        (path) => kalshiAuthFetch("GET", path),
+      );
+      res.json({ transfer: record, interpretation: describeShardTransferStatus(record), reconciliation });
+      return;
+    }
+    res.json({ transfer: record, interpretation: describeShardTransferStatus(record) });
+  } catch (error) {
+    logger.warn({ err: error }, "transfer ledger lookup unavailable");
+    res.status(503).json({ error: "Transfer ledger unavailable" });
+  }
+});
+
+/**
+ * Read-only Kalshi transfer history for the operator UI.
+ * A transfer is not considered completed until the exchange reports it.
+ */
+router.get("/trade/shard-transfers", requireTradeAuth, async (_req, res) => {
+  try {
+    const result = await kalshiAuthFetch<Record<string, unknown>>(
+      "GET", "/portfolio/intra_exchange_instance_transfers"
+    );
+    res.json(result);
+  } catch (error) {
+    const status = (error as { status?: number }).status;
+    res.status(status === 401 || status === 403 ? status : 502).json({ error: "Transfer history unavailable" });
+  }
+});
+
 /** GET /trade/balance — portfolio balance, also confirms auth is working. */
 router.get("/trade/balance", requireTradeAuth, async (_req, res) => {
   const kalshiUrl = `${KALSHI_TRADE_BASE}/portfolio/balance`;
@@ -1418,7 +1610,23 @@ router.get("/trade/balance", requireTradeAuth, async (_req, res) => {
           return null;
         }),
     ]);
-    res.json(buildTradeBalanceDashboardResponse(read, activeEthExchangeIndex, activeEthExchangeBalance));
+    // Presentation-only shard balances. Never authorize trading or transfers from this cached view.
+    const shardIndexes = [0, 1, 2] as const;
+    const shards = await Promise.all(shardIndexes.map(async (exchangeIndex) => {
+      try {
+        const scoped = await fetchKalshiBalanceForExchangeRead(exchangeIndex);
+        const cents = scoped.value["balance"];
+        return {
+          exchange_index: exchangeIndex,
+          available_balance_cents: typeof cents === "number" && Number.isSafeInteger(cents) && cents >= 0 ? cents : null,
+          stale: scoped.stale,
+        };
+      } catch (error) {
+        logger.warn({ exchangeIndex, error }, "Shard balance unavailable for display");
+        return { exchange_index: exchangeIndex, available_balance_cents: null, stale: true };
+      }
+    }));
+    res.json({ ...buildTradeBalanceDashboardResponse(read, activeEthExchangeIndex, activeEthExchangeBalance), shard_balances: shards });
   } catch (err: unknown) {
     const e = err as { status?: number; body?: unknown; message?: string; stack?: string };
 
