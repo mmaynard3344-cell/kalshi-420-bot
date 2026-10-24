@@ -1,0 +1,25 @@
+name: Ladder integration typecheck
+on:
+  pull_request:
+    paths:
+      - 'artifacts/api-server/src/lib/marketSharedLadder*.ts'
+      - 'artifacts/api-server/src/lib/marketLadderExecutionBridge.ts'
+      - '.github/workflows/ladder-integration-typecheck.yml'
+  workflow_dispatch:
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build referenced workspace libraries
+        run: pnpm typecheck:libs
+      - name: Typecheck API server
+        run: pnpm --dir artifacts/api-server typecheck
